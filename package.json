@@ -1,0 +1,33 @@
+{
+  "name": "@ng-org/expense-tracker-discrete",
+  "version": "0.1.0",
+  "private": true,
+  "authors": [
+    "Laurin Weger"
+  ],
+  "license": "MIT/Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build-automerge": "vite build",
+    "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm"
+  },
+  "dependencies": {
+    "@ng-org/orm": "0.1.2-alpha.11",
+    "@ng-org/web": "0.1.2-alpha.8",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@ng-org/shex-orm": "0.1.2-alpha.5",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "^5.1.4",
+    "vite": "^7.1.3",
+    "vite-plugin-wasm": "^3.5.0",
+    "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
