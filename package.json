@@ -9,7 +9,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build-automerge": "vite build",
+    "build": "vite build",
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm"
   },
   "dependencies": {
