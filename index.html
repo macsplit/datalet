@@ -8,13 +8,7 @@
     // Initialize as early as possible to prevent rendering before redirect to auth.
     import { init as initNg, sessionPromise } from "./src/utils/ngSession";
 
-    let crdt = import.meta.env.NG_CRDT;
-    initNg(crdt);
-
-    // // Only show screen once ng is initialized.
-    // sessionPromise.then(() => {
-    //   document.getElementById("react-main").style.display = "block";
-    // });
+    initNg();
   </script>
 
   <link rel="stylesheet" href="./src/expense-tracker.css" />
