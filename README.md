@@ -41,7 +41,11 @@ pnpm install
 pnpm dev
 ```
 
-Open the URL displayed in the console. You'll be redirected to NextGraph to authenticate with your wallet, then your app loads inside NextGraph's secure iframe.
+> In Chrome, there are new restrictions for a public website including an iframe to localhost. And that's what we do here in third party mode, when you are developing your app with vite on localhost.
+> The first time you will load the page, a popup will appear, asking you: "nextgraph.eu wants to Look for and connect to any device on your local network". You should click on "Allow". If you get a gray screen, click on the recycle icon that is on the right side of the blue thin banner. Then you should be all good. If not, you have to go to `chrome://flags/#local-network-access-check` and select Disabled. This dev env issue has no impact on your production app deployed on your own domain, specially if you host your app with TLS.
+
+- Open the URL displayed in the console. You'll be redirected to NextGraph to authenticate with your wallet, then your app loads inside NextGraph's secure iframe.
+- You can open the app in a second tab to see how the data is propagated.
 
 ---
 

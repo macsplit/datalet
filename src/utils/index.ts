@@ -9,4 +9,3 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 export * as ngSession from "./ngSession";
-export * from "./loadStore";

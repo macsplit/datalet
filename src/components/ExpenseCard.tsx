@@ -32,7 +32,7 @@ export function ExpenseCard({
   expense,
   availableCategories,
 }: {
-  expense: Expense;
+  expense: DeepSignal<Expense>;
   availableCategories: DeepSignal<Set<ExpenseCategory>>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -51,7 +51,9 @@ export function ExpenseCard({
   const toggleCategory = (category: ExpenseCategory, checked: boolean) => {
     if (checked) {
       if (!expense.expenseCategory) {
-        expense.expenseCategory = new Set([category["@id"]]);
+        expense.expenseCategory = new Set([category["@id"]]) as DeepSignal<
+          Set<any>
+        >;
       } else {
         expense.expenseCategory.add(category["@id"]);
       }
