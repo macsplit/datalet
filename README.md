@@ -46,6 +46,7 @@ pnpm dev
 
 - Open the URL displayed in the console. You'll be redirected to NextGraph to authenticate with your wallet, then your app loads inside NextGraph's secure iframe.
 - You can open the app in a second tab to see how the data is propagated.
+- **Note:** If the data hasn't loaded yet, the set appears empty.
 
 ---
 
