@@ -13,13 +13,13 @@
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm"
   },
   "dependencies": {
-    "@ng-org/orm": "0.1.2-alpha.11",
-    "@ng-org/web": "0.1.2-alpha.8",
+    "@ng-org/orm": "0.1.2-alpha.12",
+    "@ng-org/web": "0.1.2-alpha.9",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },
   "devDependencies": {
-    "@ng-org/shex-orm": "0.1.2-alpha.5",
+    "@ng-org/shex-orm": "0.1.2-alpha.6",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.7",
     "@vitejs/plugin-react": "^5.1.4",
