@@ -8,11 +8,12 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { ng, init as initNgWeb } from "@ng-org/web";
 import {
-  initNg as initNgSignals,
+  ng,
+  init as initNgWeb,
   type Session as NextGraphSession,
-} from "@ng-org/orm";
+} from "@ng-org/web";
+import { initNg as initNgSignals } from "@ng-org/orm";
 
 /** The session with the NextGraph engine or undefined if not loaded. */
 export let session: NextGraphSession | undefined;
