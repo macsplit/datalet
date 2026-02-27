@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@ng-org/orm':
-        specifier: 0.1.2-alpha.12
-        version: 0.1.2-alpha.12(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
+        specifier: 0.1.2-alpha.13
+        version: 0.1.2-alpha.13(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
       '@ng-org/web':
-        specifier: 0.1.2-alpha.9
-        version: 0.1.2-alpha.9
+        specifier: 0.1.2-alpha.10
+        version: 0.1.2-alpha.10
       react:
         specifier: 19.1.1
         version: 19.1.1
@@ -22,8 +22,8 @@ importers:
         version: 19.1.1(react@19.1.1)
     devDependencies:
       '@ng-org/shex-orm':
-        specifier: 0.1.2-alpha.6
-        version: 0.1.2-alpha.6
+        specifier: 0.1.2-alpha.7
+        version: 0.1.2-alpha.7
       '@types/react':
         specifier: 19.1.10
         version: 19.1.10
@@ -309,11 +309,11 @@ packages:
   '@ldo/type-traverser@1.0.0-alpha.28':
     resolution: {integrity: sha512-pGMIVxLzoLjYVhADuVhg6r5ZDNleXZ9DcyIvLXo1/ADEocLnysg/Xjk9D/7l/Rw3WtDJrTFOOtBv8OnH+VPgKA==}
 
-  '@ng-org/alien-deepsignals@0.1.2-alpha.9':
-    resolution: {integrity: sha512-c9hs7iEU+RHMUSaKaZTLXG78iBbhNcqJzMDrX8vPjKrJtMeogVhbKNv98N7IAmzZ8l/cPW5qxeItgct7lSA9KA==}
+  '@ng-org/alien-deepsignals@0.1.2-alpha.10':
+    resolution: {integrity: sha512-nwBm/r8zy8/wytt7OlNcGKsKfJ5zL4tuleAXk1f55nkYRZP3ddfUwcfRvhYs/XrkJkCspp+ealbpQ/EOGxtHow==}
     peerDependencies:
       react: ^19.0.0 || ^18.0.0
-      svelte: ^5.0.0 || ^4.0.0 || ^3.0.0
+      svelte: ^5.0.0 || ^4.0.0
       vue: ^3.0.0
     peerDependenciesMeta:
       react:
@@ -323,11 +323,11 @@ packages:
       vue:
         optional: true
 
-  '@ng-org/orm@0.1.2-alpha.12':
-    resolution: {integrity: sha512-HGSg8mWGhReM5rTzthOu/wdNxo/0QPnR2cf6grO8LOc5ZZecqAtfvsQVtaDtBWH/YXXRVluJAQ9pdTZ68TwkRA==}
+  '@ng-org/orm@0.1.2-alpha.13':
+    resolution: {integrity: sha512-Bx7IVoWVUh1as7HVVHB8+9do89Iks8nj0xQ6e32kH7+afS9hcYqYISDqCYrh8+OOCIyDkapCfCTF6ScSg5gsRw==}
     peerDependencies:
       react: ^19.0.0 || ^18.0.0
-      svelte: ^5.0.0 || ^4.0.0 || ^3.0.0
+      svelte: ^5.0.0 || ^4.0.0
       vue: ^3.0.0
     peerDependenciesMeta:
       react:
@@ -337,12 +337,12 @@ packages:
       vue:
         optional: true
 
-  '@ng-org/shex-orm@0.1.2-alpha.6':
-    resolution: {integrity: sha512-OhAe8YLWyd5r/mTVJD2b7DB3NRUOAwqeNU39g56WvIxiTleQ3/Dihcbhj0Fi/pgeZYvBeZIwikvFbJhIVaG1Pg==}
+  '@ng-org/shex-orm@0.1.2-alpha.7':
+    resolution: {integrity: sha512-/unvAycZiHgIG11KH57lTp0bM9nC7srsGQlS5lJq252BwpEbdvEkL1hBi9nllTVer7KbewMytAptPLiR1IP0vw==}
     hasBin: true
 
-  '@ng-org/web@0.1.2-alpha.9':
-    resolution: {integrity: sha512-ejiqgMeLxtCm4NVvffd2pUvgJUCT4oygSyIC42hisLluZKAu91VKQdMb/xF7yqTX+H89KSAJIBMyE3XANoPwkg==}
+  '@ng-org/web@0.1.2-alpha.10':
+    resolution: {integrity: sha512-m5pGPrIprVj5xVFHxHxmlgP/pjCL+h/kp3MrDfAz+8S6UPHJaRHQ375QAhCbvGWlp+x2nZhubpzatSp/jVPDjg==}
 
   '@rdfjs/types@1.1.2':
     resolution: {integrity: sha512-wqpOJK1QCbmsGNtyzYnojPU8gRDPid2JO0Q0kMtb4j65xhCK880cnKAfEOwC+dX85VJcCByQx5zOwyyfCjDJsg==}
@@ -662,8 +662,8 @@ packages:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
 
-  commander@14.0.2:
-    resolution: {integrity: sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ==}
+  commander@14.0.3:
+    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
     engines: {node: '>=20'}
 
   concat-stream@1.6.2:
@@ -757,8 +757,8 @@ packages:
       picomatch:
         optional: true
 
-  filelist@1.0.4:
-    resolution: {integrity: sha512-w1cEuf3S+DrLCQL7ET6kz+gmlJdbq9J7yXCSjK/OZCPA+qEN1WyF4ZAf0YYJa4/shHJra2t/d/r8SV4Ji+x+8Q==}
+  filelist@1.0.6:
+    resolution: {integrity: sha512-5giy2PkLYY1cP39p17Ech+2xlpTRL9HLspOfEgm0L6CwBXBTgsK5ou0JtzYuepxkaQ/tvhCFIJ5uXo0OrM2DxA==}
 
   form-data@2.5.5:
     resolution: {integrity: sha512-jqdObeR2rxZZbPSGL+3VckHMYtu+f9//KXBsVny6JSX/pa38Fy+bGjuG8eW/H6USNQWhLi8Num++cU2yOCNz4A==}
@@ -886,8 +886,8 @@ packages:
     resolution: {integrity: sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==}
     engines: {node: '>= 0.6'}
 
-  minimatch@5.1.6:
-    resolution: {integrity: sha512-lKwV/1brpG6mBUFHtb7NUmtABCb2WZZmm2wNiOA5hAb8VdCS4B3dtMWyvcoViccwAW/COERjXLt0zP1zXUN26g==}
+  minimatch@5.1.9:
+    resolution: {integrity: sha512-7o1wEA2RyMP7Iu7GNba9vc0RWWGACJOCZBJX2GJWip0ikV+wcOsgVuY9uE8CPiyQhkGFSlhuSkZPavN7u1c2Fw==}
     engines: {node: '>=10'}
 
   ms@2.1.3:
@@ -931,8 +931,8 @@ packages:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  prettier@3.7.4:
-    resolution: {integrity: sha512-v6UNi1+3hSlVvv8fSaoUbggEM5VErKmmpGA7Pl3HF8V6uKY7rvClBOJlH6yNwQtfTueNkGVpOv/mtWL9L4bgRA==}
+  prettier@3.8.1:
+    resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -942,8 +942,8 @@ packages:
   promise@8.3.0:
     resolution: {integrity: sha512-rZPNPKTOYVNEEKFaq1HqTgOwZD+4/YHS5ukLzQCypkj+OkYx7iv0mA91lJlpPPZ8vMau3IIGj5Qlwrx+8iiSmg==}
 
-  qs@6.14.0:
-    resolution: {integrity: sha512-YWWTjgABSKcvs/nWBi9PycY/JiPJqOD4JA6o9Sej2AtvSGarXxKC3OQSk4pAarbdQlKAh5D4FCQkJNkW+GAn3w==}
+  qs@6.15.0:
+    resolution: {integrity: sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==}
     engines: {node: '>=0.6'}
 
   rdf-data-factory@1.1.3:
@@ -1353,7 +1353,7 @@ snapshots:
     dependencies:
       uuid: 8.3.2
 
-  '@ng-org/alien-deepsignals@0.1.2-alpha.9(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
+  '@ng-org/alien-deepsignals@0.1.2-alpha.10(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
     dependencies:
       alien-signals: 2.0.8
     optionalDependencies:
@@ -1361,30 +1361,30 @@ snapshots:
       svelte: 5.39.12
       vue: 3.5.19(typescript@5.9.3)
 
-  '@ng-org/orm@0.1.2-alpha.12(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
+  '@ng-org/orm@0.1.2-alpha.13(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
     dependencies:
-      '@ng-org/alien-deepsignals': 0.1.2-alpha.9(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
+      '@ng-org/alien-deepsignals': 0.1.2-alpha.10(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
     optionalDependencies:
       react: 19.1.1
       svelte: 5.39.12
       vue: 3.5.19(typescript@5.9.3)
 
-  '@ng-org/shex-orm@0.1.2-alpha.6':
+  '@ng-org/shex-orm@0.1.2-alpha.7':
     dependencies:
       '@ldo/traverser-shexj': 1.0.0-alpha.28
       '@ldo/type-traverser': 1.0.0-alpha.28
       '@shexjs/parser': 1.0.0-alpha.28
-      commander: 14.0.2
+      commander: 14.0.3
       dts-dom: 3.6.0
       ejs: 3.1.10
       fs-extra: 10.1.0
       jsonld2graphobject: 0.0.5
       loading-cli: 1.1.2
-      prettier: 3.7.4
+      prettier: 3.8.1
     transitivePeerDependencies:
       - encoding
 
-  '@ng-org/web@0.1.2-alpha.9':
+  '@ng-org/web@0.1.2-alpha.10':
     dependencies:
       async-proxy: 0.4.1
 
@@ -1695,7 +1695,7 @@ snapshots:
     dependencies:
       delayed-stream: 1.0.0
 
-  commander@14.0.2: {}
+  commander@14.0.3: {}
 
   concat-stream@1.6.2:
     dependencies:
@@ -1800,9 +1800,9 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.3
 
-  filelist@1.0.4:
+  filelist@1.0.6:
     dependencies:
-      minimatch: 5.1.6
+      minimatch: 5.1.9
 
   form-data@2.5.5:
     dependencies:
@@ -1887,7 +1887,7 @@ snapshots:
   jake@10.9.4:
     dependencies:
       async: 3.2.6
-      filelist: 1.0.4
+      filelist: 1.0.6
       picocolors: 1.1.1
 
   js-tokens@4.0.0: {}
@@ -1945,7 +1945,7 @@ snapshots:
     dependencies:
       mime-db: 1.52.0
 
-  minimatch@5.1.6:
+  minimatch@5.1.9:
     dependencies:
       brace-expansion: 2.0.2
 
@@ -1975,7 +1975,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier@3.7.4: {}
+  prettier@3.8.1: {}
 
   process-nextick-args@2.0.1: {}
 
@@ -1983,7 +1983,7 @@ snapshots:
     dependencies:
       asap: 2.0.6
 
-  qs@6.14.0:
+  qs@6.15.0:
     dependencies:
       side-channel: 1.1.0
 
@@ -2124,7 +2124,7 @@ snapshots:
       http-basic: 8.1.3
       http-response-object: 3.0.2
       promise: 8.3.0
-      qs: 6.14.0
+      qs: 6.15.0
 
   tinyglobby@0.2.15:
     dependencies:
