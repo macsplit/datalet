@@ -54,6 +54,8 @@ export interface Expense {
   dateOfPurchase: string;
   /**
    * The use category of the product
+   *
+   * Original IRI: did:ng:z:expenseCategory
    */
   expenseCategory?: Set<string>;
   /**
