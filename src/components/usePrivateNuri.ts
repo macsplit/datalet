@@ -23,7 +23,6 @@ const usePrivateNuri = () => {
         setPrivateNuri(`did:ng:${session.private_store_id}`),
       );
   });
-  session && `did:ng:${session?.private_store_id}`;
 
   return privateNuri;
 };
