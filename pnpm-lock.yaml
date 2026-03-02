@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ng-org/orm':
-        specifier: 0.1.2-alpha.13
-        version: 0.1.2-alpha.13(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
+        specifier: 0.1.2-alpha.14
+        version: 0.1.2-alpha.14(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
       '@ng-org/web':
         specifier: 0.1.2-alpha.10
         version: 0.1.2-alpha.10
@@ -323,8 +323,8 @@ packages:
       vue:
         optional: true
 
-  '@ng-org/orm@0.1.2-alpha.13':
-    resolution: {integrity: sha512-Bx7IVoWVUh1as7HVVHB8+9do89Iks8nj0xQ6e32kH7+afS9hcYqYISDqCYrh8+OOCIyDkapCfCTF6ScSg5gsRw==}
+  '@ng-org/orm@0.1.2-alpha.14':
+    resolution: {integrity: sha512-necK+H0rPZyYCLRTgv6KiNhAruE4xVoERv33oulf1yWQPu78UbppFQH45jOS8wk1QUNFLhIf45gmJeH1rJRaJw==}
     peerDependencies:
       react: ^19.0.0 || ^18.0.0
       svelte: ^5.0.0 || ^4.0.0
@@ -1361,7 +1361,7 @@ snapshots:
       svelte: 5.39.12
       vue: 3.5.19(typescript@5.9.3)
 
-  '@ng-org/orm@0.1.2-alpha.13(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
+  '@ng-org/orm@0.1.2-alpha.14(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))':
     dependencies:
       '@ng-org/alien-deepsignals': 0.1.2-alpha.10(react@19.1.1)(svelte@5.39.12)(vue@3.5.19(typescript@5.9.3))
     optionalDependencies:
