@@ -8,23 +8,34 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+import { useEffect } from "react";
 import { createRootRoute, createRoute, createRouter, Outlet, Link } from "@tanstack/react-router";
 import { ExpensesPage } from "./pages/ExpensesPage";
-import { AboutPage } from "./pages/AboutPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { useSettings } from "./hooks/useSettings";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
+  const { appTitle } = useSettings();
+
+  // The nav brand reflects this reactively already (plain render), but the
+  // browser tab title is outside React's tree - has to be pushed to it
+  // imperatively whenever the configured title changes.
+  useEffect(() => {
+    document.title = appTitle;
+  }, [appTitle]);
+
   return (
     <div className="app-shell">
       <nav className="app-nav">
         <div className="app-nav-inner">
-          <span className="app-nav-brand">Expense Tracker</span>
+          <span className="app-nav-brand">{appTitle}</span>
           <div className="app-nav-links">
             <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: "active" }}>
               Expenses
             </Link>
-            <Link to="/about" activeProps={{ className: "active" }}>
-              About
+            <Link to="/settings" activeProps={{ className: "active" }}>
+              Settings
             </Link>
           </div>
         </div>
@@ -44,13 +55,13 @@ const expensesRoute = createRoute({
   component: ExpensesPage,
 });
 
-const aboutRoute = createRoute({
+const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/about",
-  component: AboutPage,
+  path: "/settings",
+  component: SettingsPage,
 });
 
-const routeTree = rootRoute.addChildren([expensesRoute, aboutRoute]);
+const routeTree = rootRoute.addChildren([expensesRoute, settingsRoute]);
 
 export const router = createRouter({ routeTree });
 

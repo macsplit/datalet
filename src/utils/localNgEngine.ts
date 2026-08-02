@@ -71,12 +71,32 @@ const channel =
     ? new BroadcastChannel(BROADCAST_CHANNEL_NAME)
     : undefined;
 
-channel?.addEventListener("message", (event: MessageEvent) => {
+function onChannelMessage(event: MessageEvent) {
   const { patches, shape } = event.data as { patches: Patch[]; shape?: string };
   applyPatchesToStore(patches);
   persist();
   broadcastToLocalSubscriptions(patches, undefined, shape);
-});
+}
+
+channel?.addEventListener("message", onChannelMessage);
+
+/**
+ * Vite's dev-mode HMR replaces this module's code in place while keeping the
+ * page alive, but a `BroadcastChannel` connection isn't torn down just
+ * because the module that opened it was replaced - it's a live browser
+ * object, independent of the JS module graph. Without this, every edit to
+ * this file during development leaves the previous channel+listener running
+ * forever alongside the new one: each accumulated stale listener still
+ * re-processes every future patch (a full store serialize + localStorage
+ * write), so a long dev session slows down more with every hot-reload.
+ * Production builds have no `import.meta.hot`, so this is a no-op there.
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    channel?.removeEventListener("message", onChannelMessage);
+    channel?.close();
+  });
+}
 
 function graphMatches(objGraph: string, graphs: string[]): boolean {
   if (graphs.length === 0) return false;
@@ -148,7 +168,27 @@ function applyPatchesToStore(patches: Patch[]) {
       }
       record[propKey] = current;
     } else if (patch.op === "add") {
-      record[propKey] = patch.value;
+      if (patch.value instanceof Set) {
+        // Properties the schema declares max cardinality 1 for (e.g. @type
+        // here, since ExpenseCategoryShape's "EXTRA a" only widens what's
+        // *allowed*, not the cardinality) get patched as a single scalar
+        // assignment carrying the whole Set object, rather than one
+        // valType: "set" patch per member the way multi-valued properties
+        // do. A raw Set silently serializes to "{}" via JSON.stringify,
+        // silently losing its contents on persist - unwrap it first.
+        record[propKey] = [...(patch.value as Set<unknown>)];
+      } else if (
+        patch.value !== null &&
+        typeof patch.value === "object" &&
+        !Array.isArray(patch.value)
+      ) {
+        // A container-creation placeholder (plain empty object) from the
+        // same batch as separate valType: "set" member-add patches - don't
+        // clobber data those patches already put here.
+        record[propKey] ??= patch.value;
+      } else {
+        record[propKey] = patch.value;
+      }
     } else if (patch.op === "remove") {
       delete record[propKey];
     }

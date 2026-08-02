@@ -35,55 +35,72 @@
     --space-8: 2rem;
     --space-10: 2.5rem;
 
-    /* Radius scale */
-    --radius-sm: 0.5rem;
-    --radius-md: 0.75rem;
-    --radius-lg: 1.25rem;
+    /* Radius scale - toned down from the previous pill-heavy scale, but
+       still clearly rounded. --radius-full is kept only for genuinely
+       circular elements (icon buttons). */
+    --radius-sm: 0.4rem;
+    --radius-md: 0.55rem;
+    --radius-lg: 0.85rem;
     --radius-full: 999px;
 
-    /* Colors - light (default) */
-    --color-bg: #f4f5f9;
+    /* Colors - light (default). Neutral grays for backgrounds/surfaces
+       (no blue tint); accent hues carry the color instead, one per role
+       so the UI isn't monochrome. */
+    --color-bg: #f5f5f6;
     --color-surface: #ffffff;
-    --color-surface-alt: #f9f9fd;
-    --color-border: #e5e7eb;
-    --color-text: #111827;
-    --color-text-muted: #6b7280;
-    --color-text-subtle: #9ca3af;
-    --color-accent: #4f46e5;
-    --color-accent-hover: #4338ca;
-    --color-accent-text: #4c1d95;
-    --color-chip-bg: #ede9fe;
-    --color-chip-text: #4c1d95;
-    --color-badge-bg: #eef2ff;
-    --color-badge-text: #4338ca;
+    --color-surface-alt: #f7f7f8;
+    --color-border: #e2e2e5;
+    --color-text: #18181b;
+    --color-text-muted: #6b6b72;
+    --color-text-subtle: #96969e;
+    --color-accent: #6d4de6;
+    --color-accent-hover: #5b3ddb;
+    --color-accent-text: #5b3ddb;
+    --color-chip-bg: #fde2f1;
+    --color-chip-text: #be185d;
+    --color-badge-bg: #d7f7ef;
+    --color-badge-text: #0d9488;
+    --color-heading-2: #059669;
+    --color-heading-3: #0284c7;
+    --color-label: #a16207;
     --color-danger: #dc2626;
+    --color-danger-soft-bg: #fee2e2;
+    --color-success: #16a34a;
+    --color-success-hover: #15803d;
 
-    --shadow-panel: 0 25px 60px rgba(15, 23, 42, 0.08);
-    --shadow-button: 0 15px 30px rgba(79, 70, 229, 0.2);
-    --focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+    --shadow-panel: 0 25px 60px rgba(20, 20, 23, 0.08);
+    --shadow-button: 0 15px 30px rgba(109, 77, 230, 0.22);
+    --focus-ring: 0 0 0 3px rgba(109, 77, 230, 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --color-bg: #0f1420;
-        --color-surface: #1a2033;
-        --color-surface-alt: #212840;
-        --color-border: #333c56;
-        --color-text: #eef0f6;
-        --color-text-muted: #9aa3bd;
-        --color-text-subtle: #717c9c;
-        --color-accent: #818cf8;
-        --color-accent-hover: #a5b4fc;
-        --color-accent-text: #c7d2fe;
-        --color-chip-bg: #2c2a5c;
-        --color-chip-text: #c7d2fe;
-        --color-badge-bg: #23255a;
-        --color-badge-text: #c7d2fe;
+        /* Neutral dark gray - not near-black, not navy. */
+        --color-bg: #2a2b30;
+        --color-surface: #35363d;
+        --color-surface-alt: #3b3c44;
+        --color-border: #4b4c55;
+        --color-text: #f0f0f2;
+        --color-text-muted: #a3a3ab;
+        --color-text-subtle: #77777f;
+        --color-accent: #6f56d1;
+        --color-accent-hover: #7d66db;
+        --color-accent-text: #b9a6fb;
+        --color-chip-bg: #3a1930;
+        --color-chip-text: #f3a8da;
+        --color-badge-bg: #123832;
+        --color-badge-text: #5eead4;
+        --color-heading-2: #6ee7b7;
+        --color-heading-3: #7dd3fc;
+        --color-label: #fbbf24;
         --color-danger: #f87171;
+        --color-danger-soft-bg: #47201f;
+        --color-success: #16a34a;
+        --color-success-hover: #22c55e;
 
-        --shadow-panel: 0 25px 60px rgba(0, 0, 0, 0.45);
-        --shadow-button: 0 15px 30px rgba(129, 140, 248, 0.2);
-        --focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.4);
+        --shadow-panel: 0 25px 60px rgba(0, 0, 0, 0.5);
+        --shadow-button: 0 15px 30px rgba(139, 111, 240, 0.25);
+        --focus-ring: 0 0 0 3px rgba(139, 111, 240, 0.45);
     }
 }
 
@@ -117,6 +134,22 @@ h6 {
     line-height: var(--line-height-tight);
     color: var(--color-text);
     margin: 0;
+}
+
+/* Each heading level gets its own accent hue - a visual hint of hierarchy
+   (page title vs. section vs. card/item) that echoes the same colors used
+   for buttons/badges/chips elsewhere. h4-h6 stay neutral until a page
+   actually needs them. */
+h1 {
+    color: var(--color-accent-text);
+}
+
+h2 {
+    color: var(--color-heading-2);
+}
+
+h3 {
+    color: var(--color-heading-3);
 }
 
 button,
@@ -158,6 +191,8 @@ a {
 .app-nav-brand {
     font-weight: 700;
     font-size: var(--font-size-lg);
+    color: var(--color-accent-text);
+    opacity: 0.8;
 }
 
 .app-nav-links {
@@ -179,8 +214,8 @@ a {
 }
 
 .app-nav-links a.active {
-    color: var(--color-accent);
-    border-bottom-color: var(--color-accent);
+    color: var(--color-accent-text);
+    border-bottom-color: var(--color-accent-text);
 }
 
 .app-main {
@@ -259,7 +294,7 @@ a {
     text-transform: uppercase;
     letter-spacing: 0.15em;
     font-size: var(--font-size-xs);
-    color: var(--color-text-subtle);
+    color: var(--color-label);
     margin: 0;
 }
 
@@ -297,7 +332,7 @@ a {
 .badge {
     background: var(--color-badge-bg);
     color: var(--color-badge-text);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
     padding: 0.25rem 1rem;
     font-size: var(--font-size-sm);
     font-weight: 600;
@@ -313,7 +348,7 @@ a {
 .chip {
     background: var(--color-chip-bg);
     color: var(--color-chip-text);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
     padding: 0.3rem 0.85rem;
     font-size: var(--font-size-sm);
     font-weight: 600;
@@ -325,7 +360,7 @@ a {
     background: var(--color-accent);
     color: white;
     border: none;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-md);
     padding: 0.65rem 1.4rem;
     font-weight: 600;
     cursor: pointer;
@@ -344,23 +379,57 @@ a {
 }
 
 .icon-btn {
-    background: var(--color-badge-bg);
-    border: 1px solid var(--color-border);
+    background: var(--color-accent);
+    border: none;
     border-radius: var(--radius-full);
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2.6rem;
+    height: 2.6rem;
     display: grid;
     place-items: center;
     cursor: pointer;
-    color: var(--color-accent-text);
-    font-size: var(--font-size-base);
+    color: white;
+    font-size: 1.15rem;
+    line-height: 1;
     transition:
         background-color 0.15s ease,
-        border-color 0.15s ease;
+        color 0.15s ease,
+        transform 0.1s ease;
+}
+
+.icon-btn svg {
+    width: 1.4rem;
+    height: 1.4rem;
 }
 
 .icon-btn:hover {
-    border-color: var(--color-accent);
+    background: var(--color-accent-hover);
+}
+
+.icon-btn:active {
+    transform: translateY(1px);
+}
+
+/* A visually quieter variant for secondary/destructive actions that
+   shouldn't compete with the primary edit action - transparent until
+   hovered, then tinted with the danger color rather than filled solid. */
+.icon-btn-danger {
+    background: transparent;
+    color: var(--color-text-subtle);
+}
+
+.icon-btn-danger:hover {
+    background: var(--color-danger-soft-bg);
+    color: var(--color-danger);
+}
+
+/* The confirm/"done editing" tick - solid like the default icon-btn, but
+   green rather than the primary accent, since it's an "OK" action. */
+.icon-btn-success {
+    background: var(--color-success);
+}
+
+.icon-btn-success:hover {
+    background: var(--color-success-hover);
 }
 
 button:focus-visible,
@@ -409,9 +478,33 @@ select:focus-visible {
     resize: vertical;
 }
 
+/* Custom-drawn rather than left native: unstyled checkboxes render their
+   unchecked box/border using the browser's own dark-mode heuristics, which
+   can end up low-contrast (or effectively invisible) against a custom dark
+   surface color that the browser has no way to know about. Drawing it
+   ourselves with our own tokens guarantees it's visible in both themes. */
+/* An actual SVG checkmark shown via background-image when :checked, rather
+   than a clip-path shape drawn from scratch - simpler to get right and
+   unambiguous at a glance, in either state. */
 .checkbox {
-    width: 1rem;
-    height: 1rem;
-    margin-top: 0.3rem;
-    accent-color: var(--color-accent);
+    appearance: none;
+    width: 1.3rem;
+    height: 1.3rem;
+    margin-top: 0.2rem;
+    border: 2px solid var(--color-text-subtle);
+    border-radius: 0.3rem;
+    background-color: var(--color-surface);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 75%;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.checkbox:checked {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.5 3.5L13 4.5'/%3E%3C/svg%3E");
 }

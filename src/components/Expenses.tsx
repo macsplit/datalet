@@ -45,6 +45,13 @@ export function Expenses() {
     [expenses],
   );
 
+  const deleteExpense = useCallback(
+    (expense: Expense) => {
+      expenses.delete(expense);
+    },
+    [expenses],
+  );
+
   const expensesSorted = [...expenses].sort((a, b) =>
     a.dateOfPurchase.localeCompare(b.dateOfPurchase),
   );
@@ -78,6 +85,7 @@ export function Expenses() {
               key={expenseKey(expense)}
               expense={expense}
               availableCategories={expenseCategories}
+              onDelete={() => deleteExpense(expense)}
             />
           ))
         )}

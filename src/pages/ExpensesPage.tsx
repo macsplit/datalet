@@ -15,10 +15,6 @@ import { Expenses } from "../components/Expenses";
 export function ExpensesPage() {
   return (
     <div className="page-content">
-      <header className="page-hero">
-        <h1>React Expense Tracker</h1>
-        <p>Organize categories, log purchases. Stored locally in this browser.</p>
-      </header>
       <div className="section-stack">
         <ExpenseCategories />
         <Expenses />

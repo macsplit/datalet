@@ -13,6 +13,8 @@ import type {
   Expense,
   ExpenseCategory,
 } from "../shapes/orm/expenseShapes.typings";
+import { useSettings } from "../hooks/useSettings";
+import { CheckIcon, PencilIcon, TrashIcon } from "./icons";
 
 const paymentStatusLabels: Record<Expense["paymentStatus"], string> = {
   "did:ng:z:Paid": "Paid",
@@ -21,25 +23,22 @@ const paymentStatusLabels: Record<Expense["paymentStatus"], string> = {
   "did:ng:z:Refunded": "Refunded",
 };
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "EUR",
-  minimumFractionDigits: 2,
-});
-
 export function ExpenseCard({
   expense,
   availableCategories,
+  onDelete,
 }: {
   expense: Expense;
   availableCategories: Set<ExpenseCategory>;
+  onDelete: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const { format, symbol } = useSettings();
 
   const purchaseDate = expense.dateOfPurchase
     ? new Date(expense.dateOfPurchase).toLocaleDateString()
     : "Date not set";
-  const totalPriceDisplay = currencyFormatter.format(expense.totalPrice ?? 0);
+  const totalPriceDisplay = format(expense.totalPrice ?? 0);
 
   const categoryKey = (category: ExpenseCategory) =>
     `${category["@graph"]}|${category["@id"]}`;
@@ -63,6 +62,13 @@ export function ExpenseCard({
     [...availableCategories].find((c) => c["@id"] === categoryIri)
       ?.categoryName || "Unnamed";
 
+  const handleDelete = () => {
+    const name = expense.title || "this expense";
+    if (window.confirm(`Delete "${name}"? This can't be undone.`)) {
+      onDelete();
+    }
+  };
+
   return (
     <article className="expense-card">
       <div className="expense-header">
@@ -81,46 +87,26 @@ export function ExpenseCard({
           )}
           <p className="muted small-margin">{purchaseDate}</p>
         </div>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label={isEditing ? "Close editing" : "Edit expense"}
-          onClick={() => setIsEditing((prev) => !prev)}
-        >
-          {isEditing ? (
-            <svg
-              data-slot="icon"
-              fill="none"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
+        <div className="header-actions">
+          <button
+            type="button"
+            className={isEditing ? "icon-btn icon-btn-success" : "icon-btn"}
+            aria-label={isEditing ? "Done editing" : "Edit expense"}
+            onClick={() => setIsEditing((prev) => !prev)}
+          >
+            {isEditing ? <CheckIcon /> : <PencilIcon />}
+          </button>
+          {!isEditing && (
+            <button
+              type="button"
+              className="icon-btn icon-btn-danger"
+              aria-label="Delete expense"
+              onClick={handleDelete}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6 18 18 6M6 6l12 12"
-              ></path>
-            </svg>
-          ) : (
-            <svg
-              data-slot="icon"
-              fill="none"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
-              ></path>
-            </svg>
+              <TrashIcon />
+            </button>
           )}
-        </button>
+        </div>
       </div>
       <div className="info-grid">
         <div className="field-group">
@@ -139,7 +125,7 @@ export function ExpenseCard({
           )}
         </div>
         <div className="field-group">
-          <span className="field-label">Total price (€)</span>
+          <span className="field-label">Total price ({symbol})</span>
           {isEditing ? (
             <input
               type="number"
