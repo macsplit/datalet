@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { useSettings, type Currency } from "../hooks/useSettings";
+import { Link } from "@tanstack/react-router";
 
 const CURRENCY_OPTIONS: { value: Currency; label: string }[] = [
   { value: "did:ng:z:USD", label: "US Dollar ($)" },
@@ -25,6 +26,34 @@ export function SettingsPage() {
         <h1>Settings</h1>
         <p>Preferences for how this app displays your data.</p>
       </header>
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="label-accent">Builder</p>
+            <h2 className="title">Data schemas</h2>
+          </div>
+          <Link className="primary-btn button-link" to="/settings/schemas">
+            Manage schemas
+          </Link>
+        </div>
+        <p className="helper-text">
+          Define reusable record types and the fields stored on each one.
+        </p>
+      </section>
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="label-accent">Builder</p>
+            <h2 className="title">Navigation tabs</h2>
+          </div>
+          <Link className="primary-btn button-link" to="/settings/tabs">
+            Manage tabs
+          </Link>
+        </div>
+        <p className="helper-text">
+          Create, rename, and arrange the pages shown in the app navigation.
+        </p>
+      </section>
       <section className="panel">
         <div className="panel-header">
           <div>

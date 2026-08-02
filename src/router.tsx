@@ -9,14 +9,29 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { useEffect } from "react";
-import { createRootRoute, createRoute, createRouter, Outlet, Link } from "@tanstack/react-router";
-import { ExpensesPage } from "./pages/ExpensesPage";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  Link,
+  useParams,
+} from "@tanstack/react-router";
 import { SettingsPage } from "./pages/SettingsPage";
-import { useSettings } from "./hooks/useSettings";
+import { TabPage } from "./pages/TabPage";
+import { SchemaListPage } from "./pages/SchemaListPage";
+import { SchemaEditorPage } from "./pages/SchemaEditorPage";
+import { TabsManagerPage } from "./pages/TabsManagerPage";
+import { BlocksBuilderPage } from "./pages/BlocksBuilderPage";
+import { SettingsProvider, useSettings } from "./hooks/useSettings";
+import { useTabs } from "./hooks/useTabs";
+import { RuntimeIssueBanner } from "./components/RuntimeSafety";
+import { MetaStoreProvider } from "./hooks/MetaStoreContext";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
   const { appTitle } = useSettings();
+  const { homeTab, userTabs } = useTabs();
 
   // The nav brand reflects this reactively already (plain render), but the
   // browser tab title is outside React's tree - has to be pushed to it
@@ -27,13 +42,24 @@ function RootLayout() {
 
   return (
     <div className="app-shell">
+      <RuntimeIssueBanner />
       <nav className="app-nav">
         <div className="app-nav-inner">
           <span className="app-nav-brand">{appTitle}</span>
           <div className="app-nav-links">
             <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: "active" }}>
-              Expenses
+              {homeTab?.title || "Home"}
             </Link>
+            {userTabs.map((tab) => (
+              <Link
+                key={tab["@id"]}
+                to="/tab/$tabId"
+                params={{ tabId: tab["@id"] }}
+                activeProps={{ className: "active" }}
+              >
+                {tab.title}
+              </Link>
+            ))}
             <Link to="/settings" activeProps={{ className: "active" }}>
               Settings
             </Link>
@@ -47,12 +73,33 @@ function RootLayout() {
   );
 }
 
-const rootRoute = createRootRoute({ component: RootLayout });
+function RootWithProviders() {
+  return (
+    <MetaStoreProvider>
+      <SettingsProvider>
+        <RootLayout />
+      </SettingsProvider>
+    </MetaStoreProvider>
+  );
+}
 
-const expensesRoute = createRoute({
+const rootRoute = createRootRoute({ component: RootWithProviders });
+
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: ExpensesPage,
+  component: TabPage,
+});
+
+function RoutedTabPage() {
+  const { tabId } = useParams({ from: "/tab/$tabId" });
+  return <TabPage tabId={tabId} />;
+}
+
+const tabRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tab/$tabId",
+  component: RoutedTabPage,
 });
 
 const settingsRoute = createRoute({
@@ -61,7 +108,39 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
-const routeTree = rootRoute.addChildren([expensesRoute, settingsRoute]);
+const schemaListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/schemas",
+  component: SchemaListPage,
+});
+
+const schemaEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/schemas/$schemaId",
+  component: SchemaEditorPage,
+});
+
+const tabsManagerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/tabs",
+  component: TabsManagerPage,
+});
+
+const blocksBuilderRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/tabs/$tabId/blocks",
+  component: BlocksBuilderPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  homeRoute,
+  tabRoute,
+  settingsRoute,
+  schemaListRoute,
+  schemaEditorRoute,
+  tabsManagerRoute,
+  blocksBuilderRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

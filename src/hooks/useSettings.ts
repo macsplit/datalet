@@ -8,14 +8,24 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { useEffect } from "react";
+import { createContext, createElement, useContext, useEffect, type ReactNode } from "react";
 import { useShape } from "@ng-org/orm/react";
-import { getObjects } from "@ng-org/orm";
 import { SettingsShapeType } from "../shapes/orm/settingsShapes.shapeTypes";
 import type { Settings } from "../shapes/orm/settingsShapes.typings";
 import usePrivateNuri from "../components/usePrivateNuri";
 
 export type Currency = Settings["currency"];
+
+type SettingsValue = {
+  currency: Currency;
+  setCurrency: (next: Currency) => void;
+  format: (amount: number) => string;
+  symbol: string;
+  appTitle: string;
+  setAppTitle: (next: string) => void;
+};
+
+const SettingsContext = createContext<SettingsValue | undefined>(undefined);
 
 const DEFAULT_CURRENCY: Currency = "did:ng:z:EUR";
 const DEFAULT_APP_TITLE = "Local Knowledge Graph";
@@ -53,46 +63,6 @@ export function currencySymbol(currency: Currency): string {
 }
 
 /**
- * Ensures a default Settings object exists in the private store. Guarded by
- * a module-level promise (rather than a per-component ref) so that multiple
- * components mounting `useSettings()` at once - e.g. a page full of
- * ExpenseCards - can't race and each insert their own default, leaving
- * duplicate Settings objects behind.
- *
- * Deliberately adds to the live `settingsSet` from `useShape` (the same
- * mechanism "add expense"/"add category" already use) rather than the
- * `insertObject` utility. `insertObject` runs the add on its own disposable,
- * unscoped connection - fine for a document nobody else is watching, but
- * here another already-mounted `useShape(SettingsShapeType, ...)` is
- * watching the same shape+scope, and relaying that connection's raw patches
- * over to it confuses the receiving side's object-identity bookkeeping
- * ("you must specify the @graph"). Adding straight to the shared live Set
- * sidesteps that entirely.
- */
-let ensureDefaultSettings: Promise<void> | undefined;
-
-function ensureDefaultSettingsOnce(
-  privateNuri: string,
-  settingsSet: { size: number; add: (obj: unknown) => void },
-): Promise<void> {
-  if (!ensureDefaultSettings) {
-    ensureDefaultSettings = (async () => {
-      const existing = await getObjects(SettingsShapeType, privateNuri);
-      if (existing.size === 0) {
-        settingsSet.add({
-          "@graph": privateNuri,
-          "@id": "",
-          "@type": "did:ng:z:Settings",
-          currency: DEFAULT_CURRENCY,
-          appTitle: DEFAULT_APP_TITLE,
-        });
-      }
-    })();
-  }
-  return ensureDefaultSettings;
-}
-
-/**
  * Reads and writes the app's single Settings object. There is exactly one
  * per private store, created lazily (with the default currency) the first
  * time any component uses this hook. Stored and synced the same way as
@@ -100,12 +70,32 @@ function ensureDefaultSettingsOnce(
  * mechanism - so it persists and propagates across tabs like everything
  * else.
  */
-export function useSettings() {
+export function SettingsProvider({ children }: { children: ReactNode }) {
   const privateNuri = usePrivateNuri();
   const settingsSet = useShape(SettingsShapeType, privateNuri);
 
   useEffect(() => {
-    if (privateNuri) ensureDefaultSettingsOnce(privateNuri, settingsSet);
+    if (!privateNuri) return;
+    let cancelled = false;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (!cancelled && settingsSet.size === 0) {
+          settingsSet.add({
+            "@graph": privateNuri,
+            "@id": "",
+            "@type": "did:ng:z:Settings",
+            currency: DEFAULT_CURRENCY,
+            appTitle: DEFAULT_APP_TITLE,
+          });
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
   }, [privateNuri, settingsSet]);
 
   const settings = settingsSet.first?.();
@@ -120,7 +110,7 @@ export function useSettings() {
     if (settings) settings.appTitle = next;
   };
 
-  return {
+  const value: SettingsValue = {
     currency,
     setCurrency,
     format: (amount: number) => formatCurrency(amount, currency),
@@ -128,4 +118,12 @@ export function useSettings() {
     appTitle,
     setAppTitle,
   };
+
+  return createElement(SettingsContext.Provider, { value }, children);
+}
+
+export function useSettings() {
+  const value = useContext(SettingsContext);
+  if (!value) throw new Error("useSettings must be used inside SettingsProvider.");
+  return value;
 }

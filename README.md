@@ -1,129 +1,157 @@
-# NextGraph React Expense Tracker Example with RDF ORM
+# Local Graph UI Builder
 
-A complete example app demonstrating the **NextGraph RDF/Graph ORM SDK** (`@ng-org/orm`) in React.
+A browser-based builder for defining data schemas and turning them into working
+record-management screens. Schemas, navigation tabs, layouts, blocks, and field
+widgets are stored as graph data and can be changed through the Settings UI.
 
-**This fork does not use NextGraph's hosted wallet/broker.** The upstream app authenticates through an iframe to `nextgraph.eu`/`nextgraph.net`, which requires creating a wallet there. This fork replaces that piece with [`src/utils/localNgEngine.ts`](src/utils/localNgEngine.ts): a small local engine, implementing the same `orm_start_graph`/`graph_orm_update` interface the ORM expects, that persists data to `localStorage` and syncs across tabs of the same browser via `BroadcastChannel`. No wallet, no account, no network connection, no encryption or cross-device sync - everything lives in this browser only. See [`src/utils/ngSession.ts`](src/utils/ngSession.ts) for how the local session is created.
+The application runs entirely in the browser. It has no server component,
+account system, wallet, API keys, or network dependency. Data is stored in the
+current browser profile and synchronized between open tabs with
+`BroadcastChannel`.
 
-This README walks you through the features of the SDK and how to build your own NextGraph-powered application.
+## Requirements
 
-You can find examples for Vue and Svelte frontends and the discrete (Yjs/Automerge) ORM [here](https://docs.nextgraph.org/en/framework/getting-started/).
+- Node.js 22.18 or newer
+- pnpm
 
----
+## Running the application
 
-## Table of Contents
-
-- [NextGraph React Expense Tracker Example with RDF ORM](#nextgraph-react-expense-tracker-example-with-rdf-orm)
-  - [Table of Contents](#table-of-contents)
-  - [Quick Start](#quick-start)
-  - [Project Structure](#project-structure)
-  - [Building Your Own App](#building-your-own-app)
-    - [Step 1: Install Dependencies](#step-1-install-dependencies)
-    - [Step 2: Initialization](#step-2-initialization)
-    - [Step 3: Defining Data Shapes (Schema)](#step-3-defining-data-shapes-schema)
-  - [About NextGraph](#about-nextgraph)
-  - [License](#license)
-
----
-
-## Quick Start
-
-No account or wallet needed. Clone this repo:
+Install dependencies and start the development server:
 
 ```bash
-# Clone the repository
-git clone https://git.nextgraph.org/NextGraph/expense-tracker-graph-react.git
-cd expense-tracker-graph-react
-
-# Install dependencies
 pnpm install
-
-# Run the development server:
 pnpm dev
 ```
 
-- Open the URL displayed in the console. The app loads directly - no redirect, no auth, no iframe.
-- You can open the app in a second tab to see how the data is propagated (via `BroadcastChannel`, live).
-- Data persists in `localStorage`, so it survives reloads but is local to this browser only.
-
----
-
-## Project Structure
-
-```
-src/
-├── components/                # The app's components
-├── shapes/                    # Data model definitions
-│   ├── shex/
-│   │   └── expenseShapes.shex           # SHEX schema (source of truth)
-│   └── orm/
-│       ├── expenseShapes.typings.ts     # Generated TypeScript interfaces
-│       ├── expenseShapes.shapeTypes.ts  # Generated shape type objects
-│       └── expenseShapes.schema.ts      # Generated schema metadata
-└── utils/ngSession.ts         # NextGraph session initialization
-```
-
----
-
-## Building Your Own App
-
-If you want to create your own app, clone this repo or walk through the following steps. This section describes the standard, upstream NextGraph setup (hosted wallet/broker via `@ng-org/web`). **This fork does not use `@ng-org/web`** - see the note at the top of this README and Step 2 below for what it does instead.
-
-### Step 1: Install Dependencies
+Create a production build with:
 
 ```bash
-pnpm add @ng-org/web@latest @ng-org/orm@latest
-# Or npm install / yarn add / ...
+pnpm build
 ```
 
-| Package             | Purpose                                 |
-| ------------------- | --------------------------------------- |
-| `@ng-org/web`       | Core NextGraph SDK for web applications (hosted wallet/broker - not used in this fork) |
-| `@ng-org/orm`       | Core ORM utilities                      |
-| `@ng-org/orm/react` | react framework-specific hooks          |
+## Building an interface
 
-### Step 2: Initialization
+1. Open **Settings → Manage schemas**.
+2. Create a schema and add its fields.
+3. Choose a data type and cardinality for each field.
+4. Open **Settings → Manage tabs**.
+5. Create a navigation tab or manage the Home tab.
+6. Open **Manage blocks** for that tab.
+7. Add layout blocks to arrange the page and data blocks to display records.
+8. Select a schema for each data block and configure its widgets.
+9. Open **View tab** to use the generated record interface.
 
-`@ng-org/orm` only needs an object implementing a couple of methods (`orm_start_graph`/`graph_orm_update`) plus a session with a `session_id`, passed to `initNg()`. Upstream, `@ng-org/web` provides that object over a `postMessage` bridge to a NextGraph-controlled iframe: your app runs inside it, and `@ng-org/web`'s `init()` redirects the browser to authenticate with a wallet if you're not already inside that iframe.
+The Home tab is always available and remains first in the navigation. Custom
+tabs appear after Home and before Settings.
 
-This fork's [`src/utils/ngSession.ts`](src/utils/ngSession.ts) provides the same `init()`/`session`/`sessionPromise` shape, but wires the ORM to [`src/utils/localNgEngine.ts`](src/utils/localNgEngine.ts) instead - a local engine backed by `localStorage` and `BroadcastChannel`. No iframe, no redirect, no wallet. `init()` is called synchronously in [`src/index.tsx`](src/index.tsx) before the first render.
+## Schemas and fields
 
-Either way, once we have a session we can load data. The session contains the info about your private, protected and public store IDs. For the sake of an example, we store the data directly in the private store document.
+A schema describes one record type. Its ordered fields support:
 
-### Step 3: Defining Data Shapes (Schema)
+- Text
+- Number
+- Boolean
+- Enum
+- Required, optional, or multi-value cardinality
 
-NextGraph uses [SHEX (Shape Expressions)](https://shex.io/) to define your data model.
-SHEX is a language to define RDF shapes. RDF (Resource Description Framework) is a way to represent data in a format that makes **application interoperability** easier. Under the hood, NextGraph comes with an RDF graph database. The ORM handles all interaction with the RDF database for you.
+Enum fields can define an editable list of allowed values. Changes to a schema
+produce a revised runtime shape while retaining the stable record type, so
+existing records continue to load after fields or enum options change.
 
-You can find the SHEX definitions in [`src/shapes/shex`](src/shapes/shex) and they are converted to ShapeTypes using the script `pnpm build:orm`.
+## Blocks and widgets
 
-For more information, see the READMEs of [`@ng-org/shex-orm`](https://docs.nextgraph.org/en/reference/shex-orm/) and [`@ng-org/orm`](https://docs.nextgraph.org/en/reference/orm/) reference.
+A tab contains an ordered tree of blocks:
 
-> **Watch Out:** If you modify an object in a way that breaks any of the shape's constraints, e.g. by modifying the `@type`, the object will "disappear" from ORM perspective. The data is not deleted (in RDF all data is stored atomically) but since it does not match the shape anymore, it is not shown in the frontend. You can still modify the data with SPARQL queries.
->
-> The ORM supports nested objects as well. When you delete a nested object from a parent object, **the nested object is not deleted**. Only the link from the parent object to the nested object is removed.
+- **Layout blocks** recursively arrange child blocks in a stack, row, or grid.
+- **Data blocks** connect a schema to its records and rendering configuration.
 
-For more advanced data and subscription management, e.g. transactions or component-independent stores, see the TS docs of `@ng-org/orm` (especially DiscreteOrmSubscription) and the [reference](https://docs.nextgraph.org/en/reference/orm/#overview).
+Data blocks can contain these widgets:
 
-## About NextGraph
+- **Panel title** displays the block heading.
+- **Add button** creates a record with schema-derived defaults.
+- **Field** binds a schema field to a text, number, currency, dropdown,
+  multi-select, or checkbox control.
+- **Edit/delete actions** enables record editing and confirmed deletion.
 
-> **NextGraph** brings about the convergence of P2P and Semantic Web technologies, towards a decentralized, secure and privacy-preserving cloud, based on CRDTs.
->
-> This open source ecosystem provides solutions for end-users (a platform) and software developers (a framework), wishing to use or create **decentralized** apps featuring: **live collaboration** on rich-text documents, peer to peer communication with **end-to-end encryption**, offline-first, **local-first**, portable and interoperable data, total ownership of data and software, security and privacy.
->
-> Centered on repositories containing **semantic data** (RDF), **rich text**, and structured data formats like **JSON**, synced between peers belonging to permissioned groups of users, it offers strong eventual consistency, thanks to the use of **CRDTs**. Documents can be linked together, signed, shared securely, queried using the **SPARQL** language and organized into sites and containers.
->
-> More info: [https://nextgraph.org](https://nextgraph.org)
+New data blocks receive the standard title, add, edit/delete, and field widgets.
+If a schema later gains fields, **Add missing fields** adds widgets for them.
+
+## Storage and synchronization
+
+All application data is held in the current browser profile using
+`localStorage`. It persists across reloads and is synchronized between open
+tabs for the same site.
+
+Data is not remotely backed up, encrypted, or synchronized between devices.
+Clearing the site's browser storage deletes the application data.
+
+Persistence writes are coalesced during rapid edits. Invalid or excessive
+updates, oversized local data, failing subscriptions, malformed block cycles,
+and excessive block depth are stopped by runtime safety limits. Recoverable
+problems appear in an on-screen error banner; render failures show a reload
+screen instead of leaving the page unresponsive.
+
+## Architecture
+
+The app uses React, TanStack Router, an RDF shape ORM, and a browser-local graph
+engine.
+
+```text
+src/
+├── components/
+│   ├── BlockRenderer.tsx       # Recursive graph-defined page renderer
+│   ├── FieldWidget.tsx         # Field display and editing controls
+│   ├── RecordCard.tsx          # Generic record editor
+│   └── RuntimeSafety.tsx       # Error boundary and safety notifications
+├── hooks/
+│   ├── MetaStoreContext.tsx    # Shared metadata subscriptions
+│   ├── useTabs.ts
+│   ├── useBlocks.ts
+│   ├── useWidgets.ts
+│   ├── useSchemas.ts
+│   ├── usePropertyDefs.ts
+│   └── useSettings.ts
+├── pages/
+│   ├── TabPage.tsx
+│   ├── SchemaListPage.tsx
+│   ├── SchemaEditorPage.tsx
+│   ├── TabsManagerPage.tsx
+│   └── BlocksBuilderPage.tsx
+├── shapes/
+│   ├── shex/metaShapes.shex    # Metadata shape definitions
+│   └── orm/metaShapes.*.ts     # Generated ORM artifacts
+└── utils/
+    ├── blockGraph.ts           # Bounded graph traversal
+    ├── dynamicSchema.ts        # Runtime record-shape construction
+    ├── localNgEngine.ts        # Browser persistence and synchronization
+    ├── ngSession.ts            # Browser-local ORM session
+    └── runtimeHealth.ts        # Runtime issue reporting and limits
+```
+
+## Metadata model
+
+The builder stores five metadata types:
+
+- `Tab`: a navigation destination.
+- `Block`: a layout container or schema-backed data view.
+- `Widget`: rendering and editing configuration for a data block.
+- `SchemaDef`: a user-defined record type.
+- `PropertyDef`: an ordered field belonging to a schema.
+
+`buildShapeType()` converts a schema and its fields into a runtime ORM shape.
+Generated records and builder metadata therefore use the same local graph
+storage and live subscription mechanism.
+
+## Regenerating ORM artifacts
+
+After changing `src/shapes/shex/metaShapes.shex`, regenerate the TypeScript ORM
+files with:
+
+```bash
+pnpm build:orm
+```
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE2](LICENSE-APACHE2) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-  at your option.
-
-`SPDX-License-Identifier: Apache-2.0 OR MIT`
-
----
-
-NextGraph received funding through the [NGI Assure Fund](https://nlnet.nl/assure) and the [NGI Zero Commons Fund](https://nlnet.nl/commonsfund/), both funds established by [NLnet](https://nlnet.nl/) Foundation with financial support from the European Commission's [Next Generation Internet](https://ngi.eu/) programme, under the aegis of DG Communications Networks, Content and Technology under grant agreements No 957073 and No 101092990, respectively.
+Licensed under either Apache-2.0 or MIT. See `LICENSE-APACHE2` and
+`LICENSE-MIT`.

@@ -11,7 +11,7 @@
 import { initNg as initNgSignals } from "@ng-org/orm";
 import { localEngine } from "./localNgEngine";
 
-const SESSION_STORAGE_KEY = "expense-tracker:local-session";
+const SESSION_STORAGE_KEY = "meta-ui-builder:local-session";
 
 /**
  * `crypto.randomUUID()` throws outside a secure context (plain HTTP on

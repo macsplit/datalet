@@ -18,11 +18,16 @@ const usePrivateNuri = () => {
   );
 
   useEffect(() => {
-    if (!session)
-      sessionPromise.then((session) =>
-        setPrivateNuri(`did:ng:${session.private_store_id}`),
-      );
-  });
+    let active = true;
+    if (!session) {
+      void sessionPromise.then((resolvedSession) => {
+        if (active) setPrivateNuri(`did:ng:${resolvedSession.private_store_id}`);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return privateNuri;
 };

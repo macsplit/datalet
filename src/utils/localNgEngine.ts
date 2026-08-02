@@ -21,9 +21,11 @@
  * broker, no network connection of any kind.
  */
 
-const STORAGE_KEY = "expense-tracker:ng-local-store";
+import { reportRuntimeIssue, RUNTIME_LIMITS } from "./runtimeHealth";
+
+const STORAGE_KEY = "meta-ui-builder:ng-local-store";
 const TYPE_PREDICATE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const BROADCAST_CHANNEL_NAME = "expense-tracker:ng-local-engine";
+const BROADCAST_CHANNEL_NAME = "meta-ui-builder:ng-local-engine";
 
 type SchemaPredicate = {
   iri: string;
@@ -39,6 +41,7 @@ type Patch = {
   op: "add" | "remove";
   path: string;
   value?: unknown;
+  type?: string;
   valType?: string;
 };
 
@@ -52,19 +55,90 @@ type Subscription = {
 function loadStore(): Store {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Store) : {};
-  } catch {
+    if (raw && raw.length > RUNTIME_LIMITS.storedBytes) {
+      reportRuntimeIssue(
+        `Saved data is ${raw.length.toLocaleString()} bytes; the safety limit is ${RUNTIME_LIMITS.storedBytes.toLocaleString()} bytes. Loading was stopped.`,
+        "Local data safety circuit opened",
+      );
+      return {};
+    }
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Saved browser data does not contain a valid object store.");
+    }
+    return parsed as Store;
+  } catch (error) {
+    reportRuntimeIssue(error, "Saved browser data could not be loaded");
     return {};
   }
 }
 
 let store: Store = loadStore();
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+let persistenceDisabled = false;
 
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+function persistNow() {
+  if (persistenceDisabled) return;
+  if (persistTimer !== undefined) clearTimeout(persistTimer);
+  persistTimer = undefined;
+  try {
+    const serialized = JSON.stringify(store);
+    if (serialized.length > RUNTIME_LIMITS.storedBytes) {
+      persistenceDisabled = true;
+      throw new Error(
+        `Local data reached ${serialized.length.toLocaleString()} bytes. Saving has been paused to keep the page responsive.`,
+      );
+    }
+    localStorage.setItem(STORAGE_KEY, serialized);
+  } catch (error) {
+    persistenceDisabled = true;
+    reportRuntimeIssue(error, "Browser persistence was paused");
+  }
+}
+
+/** Coalesce rapid field edits into one expensive stringify/storage write. */
+function schedulePersist() {
+  if (persistenceDisabled || persistTimer !== undefined) return;
+  persistTimer = setTimeout(persistNow, 120);
 }
 
 const subscriptions = new Map<string, Subscription>();
+const recentlyClosedSubscriptions = new Map<
+  string,
+  { shape: string; expiresAt: number }
+>();
+
+function retireSubscription(subscriptionId: string) {
+  const now = Date.now();
+  for (const [closedId, entry] of recentlyClosedSubscriptions) {
+    if (entry.expiresAt < now) recentlyClosedSubscriptions.delete(closedId);
+  }
+  const subscription = subscriptions.get(subscriptionId);
+  if (subscription) {
+    recentlyClosedSubscriptions.set(subscriptionId, {
+      shape: subscription.shapeType.shape,
+      // ORM edits are microtask-batched and its own close is delayed. Keep
+      // just enough identity to accept a legitimate final commit.
+      expiresAt: now + 2_000,
+    });
+    if (recentlyClosedSubscriptions.size > 256) {
+      const oldestId = recentlyClosedSubscriptions.keys().next().value;
+      if (oldestId) recentlyClosedSubscriptions.delete(oldestId);
+    }
+  }
+  subscriptions.delete(subscriptionId);
+}
+
+function recentlyClosedShape(subscriptionId: string): string | undefined {
+  const entry = recentlyClosedSubscriptions.get(subscriptionId);
+  if (!entry) return undefined;
+  if (entry.expiresAt < Date.now()) {
+    recentlyClosedSubscriptions.delete(subscriptionId);
+    return undefined;
+  }
+  return entry.shape;
+}
 
 const channel =
   typeof BroadcastChannel !== "undefined"
@@ -72,13 +146,37 @@ const channel =
     : undefined;
 
 function onChannelMessage(event: MessageEvent) {
-  const { patches, shape } = event.data as { patches: Patch[]; shape?: string };
-  applyPatchesToStore(patches);
-  persist();
+  const payload = event.data as { patches?: unknown; shape?: string } | null;
+  if (!payload || !validPatchBatch(payload.patches, "cross-tab update")) return;
+  if (typeof payload.shape !== "string") {
+    reportRuntimeIssue(
+      "Ignored a cross-tab update with no shape identity.",
+      "Cross-tab synchronization safety circuit opened",
+      "warning",
+    );
+    return;
+  }
+  const { patches, shape } = payload as { patches: Patch[]; shape?: string };
+  try {
+    applyPatchesToStore(patches);
+  } catch (error) {
+    reportRuntimeIssue(error, "A cross-tab data update was stopped");
+    return;
+  }
+  schedulePersist();
   broadcastToLocalSubscriptions(patches, undefined, shape);
 }
 
 channel?.addEventListener("message", onChannelMessage);
+
+function onVisibilityChange() {
+  if (document.visibilityState === "hidden") persistNow();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", persistNow);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+}
 
 /**
  * Vite's dev-mode HMR replaces this module's code in place while keeping the
@@ -93,8 +191,12 @@ channel?.addEventListener("message", onChannelMessage);
  */
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    if (persistTimer !== undefined) clearTimeout(persistTimer);
+    persistNow();
     channel?.removeEventListener("message", onChannelMessage);
     channel?.close();
+    window.removeEventListener("pagehide", persistNow);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
   });
 }
 
@@ -154,7 +256,11 @@ function applyPatchesToStore(patches: Patch[]) {
 
     const record = (store[subjectId] ??= { "@id": subjectId, "@graph": "" } as OrmRecord);
 
-    if (patch.valType === "set") {
+    // Current alien-deepsignals patches use `type`; older ORM/backend
+    // payloads used `valType`. Accept both so multi-value properties are
+    // merged member-by-member instead of each addition replacing the set.
+    const isSetPatch = patch.type === "set" || patch.valType === "set";
+    if (isSetPatch) {
       const current = Array.isArray(record[propKey]) ? (record[propKey] as unknown[]) : [];
       const raw = patch.value;
       const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
@@ -169,12 +275,11 @@ function applyPatchesToStore(patches: Patch[]) {
       record[propKey] = current;
     } else if (patch.op === "add") {
       if (patch.value instanceof Set) {
-        // Properties the schema declares max cardinality 1 for (e.g. @type
-        // here, since ExpenseCategoryShape's "EXTRA a" only widens what's
-        // *allowed*, not the cardinality) get patched as a single scalar
-        // assignment carrying the whole Set object, rather than one
-        // valType: "set" patch per member the way multi-valued properties
-        // do. A raw Set silently serializes to "{}" via JSON.stringify,
+        // Properties the schema declares max cardinality 1 (such as @type)
+        // get patched as a single scalar
+        // assignment carrying the whole Set object, rather than one set
+        // patch per member the way multi-valued properties do. A raw Set
+        // silently serializes to "{}" via JSON.stringify,
         // silently losing its contents on persist - unwrap it first.
         record[propKey] = [...(patch.value as Set<unknown>)];
       } else if (
@@ -183,7 +288,7 @@ function applyPatchesToStore(patches: Patch[]) {
         !Array.isArray(patch.value)
       ) {
         // A container-creation placeholder (plain empty object) from the
-        // same batch as separate valType: "set" member-add patches - don't
+        // same batch as separate set member-add patches - don't
         // clobber data those patches already put here.
         record[propKey] ??= patch.value;
       } else {
@@ -193,6 +298,50 @@ function applyPatchesToStore(patches: Patch[]) {
       delete record[propKey];
     }
   }
+}
+
+function validPatchBatch(value: unknown, source: string): value is Patch[] {
+  if (!Array.isArray(value)) {
+    reportRuntimeIssue(`Ignored an invalid ${source}.`, "Data update safety circuit opened");
+    return false;
+  }
+  if (value.length > RUNTIME_LIMITS.patchBatch) {
+    reportRuntimeIssue(
+      `Ignored ${value.length.toLocaleString()} patches from one ${source}; the limit is ${RUNTIME_LIMITS.patchBatch.toLocaleString()}.`,
+      "Data update safety circuit opened",
+    );
+    return false;
+  }
+  const valid = value.every(
+    (patch) =>
+      patch !== null &&
+      typeof patch === "object" &&
+      ((patch as Patch).op === "add" || (patch as Patch).op === "remove") &&
+      typeof (patch as Patch).path === "string" &&
+      (patch as Patch).path.length <= 16_384,
+  );
+  if (!valid) {
+    reportRuntimeIssue(`Ignored a malformed ${source}.`, "Data update safety circuit opened");
+  }
+  return valid;
+}
+
+function patchMatchesScope(patch: Patch, sub: Subscription): boolean {
+  if (!patch.path.startsWith("/")) return false;
+  const key = decodePathSegment(patch.path.slice(1).split("/", 1)[0]);
+  const record = store[key];
+  if (record) {
+    return graphMatches(record["@graph"], sub.graphs) && subjectMatches(record["@id"], sub.subjects);
+  }
+
+  // Whole-record removal patches no longer have a store entry. ORM keys use
+  // graph|subject, so recover their scope without delivering them globally.
+  const separator = key.lastIndexOf("|");
+  if (separator === -1) return true;
+  return (
+    graphMatches(key.slice(0, separator), sub.graphs) &&
+    subjectMatches(key.slice(separator + 1), sub.subjects)
+  );
 }
 
 /**
@@ -208,8 +357,39 @@ function broadcastToLocalSubscriptions(
   for (const [subscriptionId, sub] of subscriptions) {
     if (subscriptionId === excludeSubscriptionId) continue;
     if (shapeFilter && sub.shapeType.shape !== shapeFilter) continue;
-    sub.callback({ V0: { GraphOrmUpdate: patches } });
+    const scopedPatches = patches.filter((patch) => patchMatchesScope(patch, sub));
+    if (scopedPatches.length > 0) {
+      try {
+        sub.callback({ V0: { GraphOrmUpdate: scopedPatches } });
+      } catch (error) {
+        retireSubscription(subscriptionId);
+        reportRuntimeIssue(
+          error,
+          "A failing live-data subscription was disconnected",
+        );
+      }
+    }
   }
+}
+
+/** Find live shapes that own the records touched by a late/stale update. */
+function inferActiveShapes(patches: Patch[]): Set<string> {
+  const shapes = new Set<string>();
+  for (const sub of subscriptions.values()) {
+    const matches = patches.some((patch) => {
+      if (!patch.path.startsWith("/")) return false;
+      const key = decodePathSegment(patch.path.slice(1).split("/", 1)[0]);
+      const record = store[key];
+      return (
+        record !== undefined &&
+        graphMatches(record["@graph"], sub.graphs) &&
+        subjectMatches(record["@id"], sub.subjects) &&
+        typeMatches(record, sub.shapeType)
+      );
+    });
+    if (matches) shapes.add(sub.shapeType.shape);
+  }
+  return shapes;
 }
 
 /**
@@ -258,11 +438,20 @@ function orm_start_graph(
   );
 
   scheduleAfterEffectsFlush(() => {
-    callback({ V0: { GraphOrmInitial: [initialPayload, subscriptionId] } });
+    if (!subscriptions.has(subscriptionId)) return;
+    try {
+      callback({ V0: { GraphOrmInitial: [initialPayload, subscriptionId] } });
+    } catch (error) {
+      retireSubscription(subscriptionId);
+      reportRuntimeIssue(
+        error,
+        "A failing live-data subscription was disconnected",
+      );
+    }
   });
 
   return () => {
-    subscriptions.delete(subscriptionId);
+    retireSubscription(subscriptionId);
   };
 }
 
@@ -276,11 +465,35 @@ async function graph_orm_update(
   patches: Patch[],
   _sessionId: unknown,
 ): Promise<void> {
-  applyPatchesToStore(patches);
-  persist();
-  const originShape = subscriptions.get(subscriptionId)?.shapeType.shape;
-  broadcastToLocalSubscriptions(patches, subscriptionId, originShape);
-  channel?.postMessage({ patches, shape: originShape });
+  if (!validPatchBatch(patches, "local update")) return;
+  const activeOriginShape = subscriptions.get(subscriptionId)?.shapeType.shape;
+  const inferredBefore = activeOriginShape ? new Set<string>() : inferActiveShapes(patches);
+  try {
+    applyPatchesToStore(patches);
+  } catch (error) {
+    reportRuntimeIssue(error, "A local data update was stopped");
+    return;
+  }
+  schedulePersist();
+
+  const originShapes = new Set<string>();
+  if (activeOriginShape) {
+    originShapes.add(activeOriginShape);
+  } else {
+    const closedShape = recentlyClosedShape(subscriptionId);
+    if (closedShape) originShapes.add(closedShape);
+    for (const shape of inferredBefore) originShapes.add(shape);
+    for (const shape of inferActiveShapes(patches)) originShapes.add(shape);
+  }
+
+  for (const originShape of originShapes) {
+    broadcastToLocalSubscriptions(patches, subscriptionId, originShape);
+    try {
+      channel?.postMessage({ patches, shape: originShape });
+    } catch (error) {
+      reportRuntimeIssue(error, "Cross-tab synchronization was paused", "warning");
+    }
+  }
 }
 
 /** The local engine's "ng" surface, structurally compatible with what `@ng-org/orm` calls. */

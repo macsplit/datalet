@@ -1,0 +1,67 @@
+PREFIX ex: <did:ng:z:>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+ex:TabShape {
+  a [ex:Tab] ;
+  ex:title xsd:string
+    // rdfs:comment "The tab's display name" ;
+  ex:order xsd:integer
+    // rdfs:comment "Sort order among tabs" ;
+}
+
+ex:BlockShape {
+  a [ex:Block] ;
+  ex:blockType [ex:layout ex:data]
+    // rdfs:comment "Whether this block lays out child blocks or displays a data collection" ;
+  ex:order xsd:integer
+    // rdfs:comment "Sort order among sibling blocks" ;
+  ex:title xsd:string ?
+    // rdfs:comment "Optional heading shown for this block" ;
+  ex:layoutMode [ex:stack ex:row ex:grid] ?
+    // rdfs:comment "How child blocks are arranged (layout blocks only)" ;
+  ex:schemaId IRI ?
+    // rdfs:comment "The SchemaDef this block displays records of (data blocks only)" ;
+  ex:parentTabId IRI ?
+    // rdfs:comment "The Tab this block lives in directly (top-level blocks only)" ;
+  ex:parentBlockId IRI ?
+    // rdfs:comment "The layout Block this block is nested inside (nested blocks only)" ;
+}
+
+ex:WidgetShape {
+  a [ex:Widget] ;
+  ex:parentBlockId IRI
+    // rdfs:comment "The data Block this widget belongs to" ;
+  ex:order xsd:integer
+    // rdfs:comment "Sort order among sibling widgets" ;
+  ex:widgetType [ex:title ex:addButton ex:editDeleteActions ex:field]
+    // rdfs:comment "What kind of widget this is" ;
+  ex:label xsd:string ?
+    // rdfs:comment "Optional display label override" ;
+  ex:propertyName xsd:string ?
+    // rdfs:comment "The bound PropertyDef's name (field widgets only)" ;
+  ex:fieldType [ex:text ex:number ex:currency ex:dropdown ex:multiSelect ex:checkbox] ?
+    // rdfs:comment "How to render the bound field (field widgets only)" ;
+}
+
+ex:SchemaDefShape {
+  a [ex:SchemaDef] ;
+  ex:name xsd:string
+    // rdfs:comment "The user-defined data type's name" ;
+}
+
+ex:PropertyDefShape {
+  a [ex:PropertyDef] ;
+  ex:schemaId IRI
+    // rdfs:comment "The SchemaDef this property belongs to" ;
+  ex:name xsd:string
+    // rdfs:comment "The property's name" ;
+  ex:order xsd:integer
+    // rdfs:comment "Sort order among sibling properties" ;
+  ex:dataType [ex:text ex:number ex:boolean ex:enum]
+    // rdfs:comment "The property's underlying data type" ;
+  ex:cardinality [ex:one ex:optional ex:many]
+    // rdfs:comment "Whether the property is required, optional, or a multi-value set" ;
+  ex:enumOptions xsd:string *
+    // rdfs:comment "Allowed values when dataType is enum" ;
+}
