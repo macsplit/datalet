@@ -8,42 +8,56 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import {
-  ng,
-  init as initNgWeb,
-  type Session as NextGraphSession,
-} from "@ng-org/web";
 import { initNg as initNgSignals } from "@ng-org/orm";
+import { localEngine } from "./localNgEngine";
 
-/** The session with the NextGraph engine or undefined if not loaded. */
-export let session: NextGraphSession | undefined;
+const SESSION_STORAGE_KEY = "expense-tracker:local-session";
 
-let resolveSessionPromise: (
-  value: NextGraphSession | PromiseLike<NextGraphSession>,
-) => void;
-let rejectSessionPromise: (reason?: any) => void;
+/** A local stand-in for NextGraph's `Session` type. No wallet involved. */
+export type LocalSession = {
+  session_id: string;
+  private_store_id: string;
+  protected_store_id: string;
+  public_store_id: string;
+  [key: string]: unknown;
+};
 
-/** Resolves to the current NextGraph session. */
-export let sessionPromise: Promise<NextGraphSession> = new Promise(
-  (resolve, reject) => {
-    resolveSessionPromise = resolve;
-    rejectSessionPromise = reject;
-  },
-);
+function loadOrCreateSession(): LocalSession {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as LocalSession;
+  } catch {
+    // Ignore corrupt storage and create a fresh session below.
+  }
+  const newSession: LocalSession = {
+    session_id: crypto.randomUUID(),
+    private_store_id: crypto.randomUUID(),
+    protected_store_id: crypto.randomUUID(),
+    public_store_id: crypto.randomUUID(),
+  };
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
+  return newSession;
+}
 
-/** Call as early in your app as possible so that the page is redirected to auth. */
-export async function init() {
-  await initNgWeb(
-    async (event: any) => {
-      session = event.session;
-      session!.ng ??= ng;
-      resolveSessionPromise(session!);
+/** The current local session, or undefined until `init()` has run. */
+export let session: LocalSession | undefined;
 
-      initNgSignals(ng, session!);
-    },
-    true,
-    [],
-  ).catch((error) => {
-    rejectSessionPromise(error);
-  });
+let resolveSessionPromise: (value: LocalSession) => void;
+
+/** Resolves to the current local session. */
+export const sessionPromise: Promise<LocalSession> = new Promise((resolve) => {
+  resolveSessionPromise = resolve;
+});
+
+/**
+ * Sets up the local session and wires it into the ORM. Unlike the hosted
+ * NextGraph setup, this is synchronous and never navigates away from the
+ * page - there is no wallet to authenticate with.
+ */
+export function init() {
+  session = loadOrCreateSession();
+  // The ORM's public types expect `@ng-org/web`'s NG/Session shapes; our
+  // local engine and session satisfy the same structural contract.
+  initNgSignals(localEngine as any, session as any);
+  resolveSessionPromise(session);
 }

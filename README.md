@@ -1,6 +1,8 @@
 # NextGraph React Expense Tracker Example with RDF ORM
 
-A complete example app demonstrating the **NextGraph RDF/Graph ORM SDK** in React. Changes are immediately persisted and synced with other devices. All data is encrypted.
+A complete example app demonstrating the **NextGraph RDF/Graph ORM SDK** (`@ng-org/orm`) in React.
+
+**This fork does not use NextGraph's hosted wallet/broker.** The upstream app authenticates through an iframe to `nextgraph.eu`/`nextgraph.net`, which requires creating a wallet there. This fork replaces that piece with [`src/utils/localNgEngine.ts`](src/utils/localNgEngine.ts): a small local engine, implementing the same `orm_start_graph`/`graph_orm_update` interface the ORM expects, that persists data to `localStorage` and syncs across tabs of the same browser via `BroadcastChannel`. No wallet, no account, no network connection, no encryption or cross-device sync - everything lives in this browser only. See [`src/utils/ngSession.ts`](src/utils/ngSession.ts) for how the local session is created.
 
 This README walks you through the features of the SDK and how to build your own NextGraph-powered application.
 
@@ -25,9 +27,7 @@ You can find examples for Vue and Svelte frontends and the discrete (Yjs/Automer
 
 ## Quick Start
 
-Create a wallet at https://nextgraph.eu and log in once with your password.
-
-Clone this repo:
+No account or wallet needed. Clone this repo:
 
 ```bash
 # Clone the repository
@@ -41,12 +41,9 @@ pnpm install
 pnpm dev
 ```
 
-> In Chrome, there are new restrictions for a public website including an iframe to localhost. And that's what we do here in third party mode, when you are developing your app with vite on localhost.
-> The first time you will load the page, a popup will appear, asking you: "nextgraph.eu wants to Look for and connect to any device on your local network". You should click on "Allow". If you get a gray screen, click on the recycle icon that is on the right side of the blue thin banner. Then you should be all good. If not, you have to go to `chrome://flags/#local-network-access-check` and select Disabled. This dev env issue has no impact on your production app deployed on your own domain, specially if you host your app with TLS.
-
-- Open the URL displayed in the console. You'll be redirected to NextGraph to authenticate with your wallet, then your app loads inside NextGraph's secure iframe.
-- You can open the app in a second tab to see how the data is propagated.
-- **Note:** If the data hasn't loaded yet, the set appears empty.
+- Open the URL displayed in the console. The app loads directly - no redirect, no auth, no iframe.
+- You can open the app in a second tab to see how the data is propagated (via `BroadcastChannel`, live).
+- Data persists in `localStorage`, so it survives reloads but is local to this browser only.
 
 ---
 
@@ -69,7 +66,7 @@ src/
 
 ## Building Your Own App
 
-If you want to create your own app, clone this repo or walk through the following steps.
+If you want to create your own app, clone this repo or walk through the following steps. This section describes the standard, upstream NextGraph setup (hosted wallet/broker via `@ng-org/web`). **This fork does not use `@ng-org/web`** - see the note at the top of this README and Step 2 below for what it does instead.
 
 ### Step 1: Install Dependencies
 
@@ -80,17 +77,17 @@ pnpm add @ng-org/web@latest @ng-org/orm@latest
 
 | Package             | Purpose                                 |
 | ------------------- | --------------------------------------- |
-| `@ng-org/web`       | Core NextGraph SDK for web applications |
+| `@ng-org/web`       | Core NextGraph SDK for web applications (hosted wallet/broker - not used in this fork) |
 | `@ng-org/orm`       | Core ORM utilities                      |
 | `@ng-org/orm/react` | react framework-specific hooks          |
 
 ### Step 2: Initialization
 
-Your app will run inside a NextGraph-controlled iframe. To make things easier for you, we created a utility file that handles initialization, see [`src/utils/ngSession.ts`](src/utils/ngSession.ts).
+`@ng-org/orm` only needs an object implementing a couple of methods (`orm_start_graph`/`graph_orm_update`) plus a session with a `session_id`, passed to `initNg()`. Upstream, `@ng-org/web` provides that object over a `postMessage` bridge to a NextGraph-controlled iframe: your app runs inside it, and `@ng-org/web`'s `init()` redirects the browser to authenticate with a wallet if you're not already inside that iframe.
 
-The file exports an `init()` function. When it is called outside of an iframe, it will redirected you to authenticate with your wallet. **That's why you should call it as early as possible**, to prevent shortly rendered pages directly followed by the redirect. In this app, we call it in [`index.html`](./index.html).
+This fork's [`src/utils/ngSession.ts`](src/utils/ngSession.ts) provides the same `init()`/`session`/`sessionPromise` shape, but wires the ORM to [`src/utils/localNgEngine.ts`](src/utils/localNgEngine.ts) instead - a local engine backed by `localStorage` and `BroadcastChannel`. No iframe, no redirect, no wallet. `init()` is called synchronously in [`src/index.tsx`](src/index.tsx) before the first render.
 
-Now we have a session and want to load data. The session contains the info about your private, protected and public store IDs. For the sake of an example, we store the data directly in the private store document.
+Either way, once we have a session we can load data. The session contains the info about your private, protected and public store IDs. For the sake of an example, we store the data directly in the private store document.
 
 ### Step 3: Defining Data Shapes (Schema)
 

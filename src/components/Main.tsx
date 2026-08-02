@@ -17,7 +17,7 @@ export function ReactExpenseTracker() {
       <div className="expense-app-content">
         <header className="expense-hero">
           <h1>React Expense Tracker</h1>
-          <p>Organize categories, log purchases. Encrypted and local-first.</p>
+          <p>Organize categories, log purchases. Stored locally in this browser.</p>
         </header>
         <div className="section-stack">
           <ExpenseCategories />
