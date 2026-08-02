@@ -1,0 +1,27 @@
+/*
+ * Page-specific styles for the About page - a single small quirk
+ * (the left-accented fact list) built entirely from global tokens.
+ */
+
+.about-fact-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: var(--space-4);
+}
+
+.about-fact-list li {
+    padding-left: var(--space-4);
+    border-left: 3px solid var(--color-accent);
+    color: var(--color-text-muted);
+    line-height: var(--line-height-base);
+}
+
+.about-fact-list code {
+    background: var(--color-badge-bg);
+    color: var(--color-badge-text);
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.3rem;
+    font-size: 0.9em;
+}
