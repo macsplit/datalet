@@ -1,0 +1,184 @@
+// Copyright (c) 2026 Laurin Weger, Par le Peuple, NextGraph.org developers
+// All rights reserved.
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE2 or http://www.apache.org/licenses/LICENSE-2.0>
+// or the MIT license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+/**
+ * Neo4j is the durable system of record (remote-sync-architecture.md
+ * §6.3-6.4): the materializer (materializer.ts) replays each vault's
+ * accepted-patches stream into here in order, and /sync/snapshot reads
+ * records back from here rather than from Redis, so a vault's durability
+ * doesn't depend on Redis's stream-trimming/eviction policy.
+ *
+ * Storage is keyed by (graph, subjectId) - the same pair Redis's store hash
+ * uses (vault:<id>:store, HSET'd by subjectId - see vaultStore.ts). This
+ * matters because subjectId (the first path segment of a patch, i.e. what
+ * patchTarget() returns) is *not* the same string as the record's own
+ * "@id" field in general: this app's ORM addresses records by a
+ * graph-qualified path segment while a record's "@id" field is its bare,
+ * unqualified NextGraph document id - the two just happen to look similar
+ * for path segments with no graph-qualification. An earlier version of
+ * this file keyed Neo4j nodes by record["@id"] instead of subjectId, which
+ * silently produced a second, untyped orphan node on every update after a
+ * record's first write (readRecord looked up by subjectId, upsertRecord
+ * wrote under record["@id"] - two different keys for the same record).
+ * Found via a direct Neo4j inspection during step-3 regression testing,
+ * where the app's own generated ids (unlike hand-written test ids) made
+ * subjectId and "@id" actually differ.
+ */
+
+import type { Session } from "neo4j-driver";
+import { neo4jSession } from "./client.js";
+import type { OrmRecord, Store } from "../patchApply.js";
+
+// Internal Neo4j property names, reserved so a user-defined schema property
+// happening to share one of these names can't collide with this module's
+// own bookkeeping - stripped defensively out of $props in toNeo4jProps()
+// even though no shape in this app currently names a field this way.
+const RESERVED_PROPS = new Set(["id", "graph", "recordId", "recordGraph", "type", "deletedAtHlc"]);
+
+/**
+ * Cypher has no parameterized labels, so a dynamic per-type label has to be
+ * spliced into the query text. Safe here only because this strips the
+ * input to a whitelisted [A-Za-z0-9_] identifier first - never splice a
+ * value into Cypher text without an equivalent whitelist.
+ */
+function sanitizeLabel(typeIri: string | undefined): string {
+  if (!typeIri) return "Type";
+  const lastSegment = typeIri.split(/[/:#]/).filter(Boolean).pop() ?? typeIri;
+  const cleaned = lastSegment.replace(/[^A-Za-z0-9_]/g, "").slice(0, 100);
+  return cleaned.length > 0 ? `Type_${cleaned}` : "Type";
+}
+
+/**
+ * Container-creation placeholders (an empty plain object standing in for a
+ * not-yet-populated set field - see patchApply.ts's applyPatchesToStore)
+ * are the only non-primitive, non-array value this app's records ever end
+ * up holding. Neo4j node properties must be primitives or arrays of
+ * primitives, so any survivor is normalized to an empty array (an empty
+ * set), matching applyBatch.lua's isContainerPlaceholder handling of the
+ * same case.
+ */
+function isPlaceholderObject(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * `id`/`graph` here are the Neo4j lookup identity (graph = vaultId,
+ * id = subjectId). The record's own "@id"/"@graph" field values are kept
+ * as separate `recordId`/`recordGraph` data properties so they round-trip
+ * correctly even when they differ from the lookup identity.
+ */
+function toNeo4jProps(graph: string, subjectId: string, record: OrmRecord): Record<string, unknown> {
+  const props: Record<string, unknown> = {
+    graph,
+    id: subjectId,
+    recordId: record["@id"],
+    recordGraph: record["@graph"],
+    type: record["@type"] ?? null,
+  };
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "@id" || key === "@graph" || key === "@type") continue;
+    if (RESERVED_PROPS.has(key)) continue;
+    props[key] = isPlaceholderObject(value) ? [] : value;
+  }
+  return props;
+}
+
+function fromNeo4jProps(props: Record<string, unknown>): OrmRecord {
+  const { recordId, recordGraph, type, id: _id, graph: _graph, deletedAtHlc: _deletedAtHlc, ...rest } = props;
+  const record = { "@id": recordId, "@graph": recordGraph, ...rest } as OrmRecord;
+  if (type !== null && type !== undefined) record["@type"] = type;
+  return record;
+}
+
+/**
+ * Full-replace upsert: callers pass the complete post-patch record (see
+ * materializer.ts, which reads-modify-writes via the same
+ * applyPatchesToStore used for the Redis-backed materialized view), so
+ * `SET r = $props` (not `+=`) is used deliberately - it drops any Neo4j
+ * property no longer present in the record, which is how a property
+ * removal patch is reflected here.
+ */
+export async function upsertRecord(
+  graph: string,
+  subjectId: string,
+  record: OrmRecord,
+  session?: Session,
+): Promise<void> {
+  const s = session ?? neo4jSession();
+  const label = sanitizeLabel(record["@type"] as string | undefined);
+  try {
+    await s.run(
+      `MERGE (r:Record {graph: $graph, id: $id})
+       SET r = $props
+       SET r:\`${label}\`
+       REMOVE r:Deleted`,
+      { graph, id: subjectId, props: toNeo4jProps(graph, subjectId, record) },
+    );
+  } finally {
+    if (!session) await s.close();
+  }
+}
+
+/**
+ * Soft delete: keeps the node (and its last-known properties) rather than
+ * removing it, per remote-sync-architecture.md §6.4's tombstone-retention
+ * design - a node that's simply missing can't be distinguished from one
+ * that never existed, which matters for future retention-window purging.
+ */
+export async function tombstoneRecord(
+  graph: string,
+  subjectId: string,
+  deletedAtHlc: string,
+  session?: Session,
+): Promise<void> {
+  const s = session ?? neo4jSession();
+  try {
+    await s.run(
+      `MERGE (r:Record {graph: $graph, id: $id})
+       SET r.deletedAtHlc = $deletedAtHlc
+       SET r:Deleted`,
+      { graph, id: subjectId, deletedAtHlc },
+    );
+  } finally {
+    if (!session) await s.close();
+  }
+}
+
+/** Current record for one subject, including tombstoned ones (callers decide what to do with a tombstone). */
+export async function readRecord(
+  graph: string,
+  subjectId: string,
+  session?: Session,
+): Promise<OrmRecord | undefined> {
+  const s = session ?? neo4jSession();
+  try {
+    const result = await s.run("MATCH (r:Record {graph: $graph, id: $id}) RETURN r", { graph, id: subjectId });
+    if (result.records.length === 0) return undefined;
+    return fromNeo4jProps(result.records[0].get("r").properties);
+  } finally {
+    if (!session) await s.close();
+  }
+}
+
+/** Every non-tombstoned record in a vault - the durable source for /sync/snapshot, keyed by subjectId like Redis's store hash. */
+export async function readVaultRecords(graph: string): Promise<Store> {
+  const session = neo4jSession();
+  try {
+    const result = await session.run("MATCH (r:Record {graph: $graph}) WHERE NOT r:Deleted RETURN r", { graph });
+    const store: Store = {};
+    for (const row of result.records) {
+      const props = row.get("r").properties as Record<string, unknown>;
+      store[props.id as string] = fromNeo4jProps(props);
+    }
+    return store;
+  } finally {
+    await session.close();
+  }
+}

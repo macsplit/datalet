@@ -9,19 +9,32 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { useEffect, useState } from "react";
-import { session, sessionPromise } from "../utils/ngSession";
+import { session, sessionPromise, type LocalSession } from "../utils/ngSession";
+import { getVaultConfig } from "../utils/remoteSyncEngine";
 
-/** Return the NURI of the private store. */
+/**
+ * When a sync vault is paired (Settings > Remote sync), the app's active
+ * graph becomes the vault's id instead of this device's random private
+ * store id, so records land in the graph the sync server and every other
+ * paired device share. Pairing/unpairing reloads the page (see
+ * SyncSettings.tsx), so this only needs to resolve once per app load, not
+ * react to vault config changes mid-session.
+ */
+function activeGraph(currentSession: LocalSession | undefined): string | undefined {
+  const vault = getVaultConfig();
+  if (vault) return `did:ng:${vault.vaultId}`;
+  return currentSession && `did:ng:${currentSession.private_store_id}`;
+}
+
+/** Return the NURI of the store this device's data currently lives in. */
 const usePrivateNuri = () => {
-  const [privateNuri, setPrivateNuri] = useState(
-    session && `did:ng:${session.private_store_id}`,
-  );
+  const [privateNuri, setPrivateNuri] = useState(activeGraph(session));
 
   useEffect(() => {
     let active = true;
     if (!session) {
       void sessionPromise.then((resolvedSession) => {
-        if (active) setPrivateNuri(`did:ng:${resolvedSession.private_store_id}`);
+        if (active) setPrivateNuri(activeGraph(resolvedSession));
       });
     }
     return () => {

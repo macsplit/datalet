@@ -1,0 +1,318 @@
+// Copyright (c) 2026 Laurin Weger, Par le Peuple, NextGraph.org developers
+// All rights reserved.
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE2 or http://www.apache.org/licenses/LICENSE-2.0>
+// or the MIT license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+/**
+ * Continuous background sync against the server implemented in `server/`.
+ * A no-op unless a sync vault has been paired (see the Settings page) — the
+ * app is fully local-only until then, exactly as it was before this module
+ * existed. See docs/remote-sync-architecture.md for the design this
+ * implements.
+ */
+
+import {
+  applyRemoteSyncPatches,
+  onLocalPatch,
+  replaceGraphAndReload,
+  type Patch,
+  type Store,
+} from "./localNgEngine";
+import { reportRuntimeIssue } from "./runtimeHealth";
+
+const CONFIG_KEY = "meta-ui-builder:sync-vault";
+const CURSOR_PREFIX = "meta-ui-builder:sync-cursor:";
+const OUTBOX_PREFIX = "meta-ui-builder:sync-outbox:";
+const HLC_KEY = "meta-ui-builder:sync-hlc";
+const APPLIED_BATCH_RING = 512;
+
+export type VaultConfig = { vaultId: string; vaultToken: string; nodeId: string };
+
+type OutboxEntry = { batchId: string; hlc: string; shape: string; patches: Patch[] };
+
+function readJson<T>(key: string): T | undefined {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+export function getVaultConfig(): VaultConfig | undefined {
+  return readJson<VaultConfig>(CONFIG_KEY);
+}
+
+function generateNodeId(): string {
+  if (typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // Insecure context — fall through to the manual UUID build below.
+    }
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Pair this browser with a vault (freshly created or an existing one) and start syncing. */
+export function setVaultConfig(vaultId: string, vaultToken: string) {
+  const config: VaultConfig = { vaultId, vaultToken, nodeId: generateNodeId() };
+  writeJson(CONFIG_KEY, config);
+  startSync();
+  return config;
+}
+
+export function clearVaultConfig() {
+  const config = getVaultConfig();
+  stopSync();
+  localStorage.removeItem(CONFIG_KEY);
+  if (config) {
+    localStorage.removeItem(CURSOR_PREFIX + config.vaultId);
+    localStorage.removeItem(OUTBOX_PREFIX + config.vaultId);
+  }
+}
+
+function nextHlc(nodeId: string): string {
+  const previous = readJson<{ lastMs: number; counter: number }>(HLC_KEY) ?? { lastMs: 0, counter: 0 };
+  const now = Date.now();
+  const next =
+    now > previous.lastMs ? { lastMs: now, counter: 0 } : { lastMs: previous.lastMs, counter: previous.counter + 1 };
+  writeJson(HLC_KEY, next);
+  // Fixed-width fields make this lexicographically sortable, which is what
+  // the server relies on to compare HLCs with a plain string >= (see
+  // server/src/vaultStore.ts). The nodeId suffix breaks ties between two
+  // nodes that mint a patch in the same millisecond at the same counter.
+  return `${String(next.lastMs).padStart(15, "0")}-${String(next.counter).padStart(6, "0")}-${nodeId}`;
+}
+
+function loadOutbox(vaultId: string): OutboxEntry[] {
+  return readJson<OutboxEntry[]>(OUTBOX_PREFIX + vaultId) ?? [];
+}
+
+function saveOutbox(vaultId: string, entries: OutboxEntry[]) {
+  writeJson(OUTBOX_PREFIX + vaultId, entries);
+}
+
+function cursorKey(vaultId: string) {
+  return CURSOR_PREFIX + vaultId;
+}
+
+function getCursor(vaultId: string): number {
+  return Number(localStorage.getItem(cursorKey(vaultId)) ?? 0);
+}
+
+function setCursor(vaultId: string, seq: number) {
+  localStorage.setItem(cursorKey(vaultId), String(seq));
+}
+
+let unsubscribeLocalPatches: (() => void) | undefined;
+let eventSource: EventSource | undefined;
+let flushing = false;
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let flushBackoffMs = 1_000;
+const MAX_FLUSH_BACKOFF_MS = 30_000;
+
+const appliedBatchIds: string[] = [];
+const appliedBatchIdSet = new Set<string>();
+
+function rememberApplied(batchId: string) {
+  if (appliedBatchIdSet.has(batchId)) return;
+  appliedBatchIdSet.add(batchId);
+  appliedBatchIds.push(batchId);
+  if (appliedBatchIds.length > APPLIED_BATCH_RING) {
+    const evicted = appliedBatchIds.shift();
+    if (evicted) appliedBatchIdSet.delete(evicted);
+  }
+}
+
+async function flushOutbox(config: VaultConfig) {
+  if (flushing) return;
+  flushing = true;
+  try {
+    let queue = loadOutbox(config.vaultId);
+    while (queue.length > 0) {
+      const entry = queue[0];
+      let response: Response;
+      try {
+        response = await fetch(`/sync/patches?vault=${encodeURIComponent(config.vaultId)}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.vaultToken}`,
+          },
+          body: JSON.stringify({
+            nodeId: config.nodeId,
+            batchId: entry.batchId,
+            hlc: entry.hlc,
+            shape: entry.shape,
+            patches: entry.patches,
+          }),
+        });
+      } catch {
+        break; // offline or unreachable — stop, retry on the next scheduled flush
+      }
+
+      if (response.status === 401) {
+        reportRuntimeIssue(
+          "This device's sync vault token was rejected by the server.",
+          "Remote sync paused",
+          "error",
+        );
+        return;
+      }
+
+      // A 409 (superseded by a newer edit — ordinary last-write-wins
+      // fallout) and a 2xx (applied) both resolve this entry; only a
+      // network failure or server error should be retried.
+      if (response.ok || response.status === 409) {
+        rememberApplied(entry.batchId);
+        queue = queue.slice(1);
+        saveOutbox(config.vaultId, queue);
+        flushBackoffMs = 1_000;
+        continue;
+      }
+      break;
+    }
+  } finally {
+    flushing = false;
+  }
+  if (loadOutbox(config.vaultId).length > 0) scheduleFlush(config, flushBackoffMs);
+}
+
+function scheduleFlush(config: VaultConfig, delayMs = 0) {
+  if (flushTimer !== undefined) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = undefined;
+    flushBackoffMs = Math.min(flushBackoffMs * 2, MAX_FLUSH_BACKOFF_MS);
+    void flushOutbox(config);
+  }, delayMs);
+}
+
+async function resyncFromSnapshot(config: VaultConfig) {
+  try {
+    const response = await fetch(`/sync/snapshot?vault=${encodeURIComponent(config.vaultId)}`, {
+      headers: { Authorization: `Bearer ${config.vaultToken}` },
+    });
+    if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
+    const snapshot = (await response.json()) as { seq: number; records: Store };
+    setCursor(config.vaultId, snapshot.seq);
+    // Reloads the page — see replaceGraphAndReload's doc comment for why.
+    // The graph identity embedded in records is "did:ng:<vaultId>" (see
+    // usePrivateNuri.ts), not the bare vaultId used to address the API.
+    replaceGraphAndReload(`did:ng:${config.vaultId}`, snapshot.records);
+  } catch (error) {
+    reportRuntimeIssue(error, "Remote sync snapshot resync failed", "warning");
+    scheduleReconnect(config);
+  }
+}
+
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleReconnect(config: VaultConfig, delayMs = 5_000) {
+  if (reconnectTimer !== undefined) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    connectStream(config);
+  }, delayMs);
+}
+
+function connectStream(config: VaultConfig) {
+  eventSource?.close();
+  const since = getCursor(config.vaultId);
+  const url =
+    `/sync/stream?vault=${encodeURIComponent(config.vaultId)}` +
+    `&since=${since}&token=${encodeURIComponent(config.vaultToken)}`;
+  const source = new EventSource(url);
+  eventSource = source;
+
+  source.addEventListener("patches", (event) => {
+    const message = event as MessageEvent<string>;
+    try {
+      const entry = JSON.parse(message.data) as {
+        seq: number;
+        batchId: string;
+        nodeId: string;
+        shape: string;
+        patches: Patch[];
+      };
+      if (entry.nodeId !== config.nodeId && !appliedBatchIdSet.has(entry.batchId)) {
+        applyRemoteSyncPatches(entry.patches, entry.shape);
+      }
+      rememberApplied(entry.batchId);
+      setCursor(config.vaultId, entry.seq);
+    } catch (error) {
+      reportRuntimeIssue(error, "A remote sync update was stopped");
+    }
+  });
+
+  source.addEventListener("resync", () => {
+    source.close();
+    void resyncFromSnapshot(config);
+  });
+  // EventSource retries the connection natively with backoff; nothing else
+  // to do here on a transient error.
+}
+
+function enqueueOutbound(config: VaultConfig, patches: Patch[], shape: string) {
+  const entry: OutboxEntry = {
+    batchId: crypto.randomUUID(),
+    hlc: nextHlc(config.nodeId),
+    shape,
+    patches,
+  };
+  const queue = loadOutbox(config.vaultId);
+  queue.push(entry);
+  saveOutbox(config.vaultId, queue);
+  scheduleFlush(config);
+}
+
+let started = false;
+
+/** Start (or restart) continuous sync if a vault is configured. Safe to call more than once. */
+export function startSync() {
+  const config = getVaultConfig();
+  if (!config) return;
+  if (started) stopSync();
+  started = true;
+
+  unsubscribeLocalPatches = onLocalPatch((patches, shape) => {
+    enqueueOutbound(config, patches, shape);
+  });
+  connectStream(config);
+  if (loadOutbox(config.vaultId).length > 0) scheduleFlush(config);
+
+  window.addEventListener("online", onOnline);
+}
+
+function onOnline() {
+  const config = getVaultConfig();
+  if (!config) return;
+  flushBackoffMs = 1_000;
+  scheduleFlush(config, 0);
+  connectStream(config);
+}
+
+export function stopSync() {
+  started = false;
+  unsubscribeLocalPatches?.();
+  unsubscribeLocalPatches = undefined;
+  eventSource?.close();
+  eventSource = undefined;
+  if (flushTimer !== undefined) clearTimeout(flushTimer);
+  flushTimer = undefined;
+  if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+  reconnectTimer = undefined;
+  window.removeEventListener("online", onOnline);
+}

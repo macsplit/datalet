@@ -34,10 +34,10 @@ type SchemaPredicate = {
 type Schema = Record<string, { iri: string; predicates: SchemaPredicate[] }>;
 type ShapeType = { schema: Schema; shape: string };
 
-type OrmRecord = Record<string, unknown> & { "@id": string; "@graph": string };
-type Store = Record<string, OrmRecord>;
+export type OrmRecord = Record<string, unknown> & { "@id": string; "@graph": string };
+export type Store = Record<string, OrmRecord>;
 
-type Patch = {
+export type Patch = {
   op: "add" | "remove";
   path: string;
   value?: unknown;
@@ -103,6 +103,19 @@ function schedulePersist() {
   persistTimer = setTimeout(persistNow, 120);
 }
 
+type LocalPatchListener = (patches: Patch[], shape: string) => void;
+const localPatchListeners = new Set<LocalPatchListener>();
+
+/**
+ * Notified with every locally-applied patch batch, once per affected shape.
+ * src/utils/remoteSyncEngine.ts hooks in here to forward local edits to the
+ * sync server without this module needing to know sync exists.
+ */
+export function onLocalPatch(listener: LocalPatchListener): () => void {
+  localPatchListeners.add(listener);
+  return () => localPatchListeners.delete(listener);
+}
+
 const subscriptions = new Map<string, Subscription>();
 const recentlyClosedSubscriptions = new Map<
   string,
@@ -145,6 +158,29 @@ const channel =
     ? new BroadcastChannel(BROADCAST_CHANNEL_NAME)
     : undefined;
 
+/**
+ * Apply patches that originated outside this store's own call path (another
+ * tab via BroadcastChannel, or the remote sync server) and notify local
+ * subscriptions, exactly as a local edit would.
+ */
+function applyExternalPatches(patches: Patch[], shape: string, relayToTabs: boolean) {
+  try {
+    applyPatchesToStore(patches);
+  } catch (error) {
+    reportRuntimeIssue(error, "An external data update was stopped");
+    return;
+  }
+  schedulePersist();
+  broadcastToLocalSubscriptions(patches, undefined, shape);
+  if (relayToTabs) {
+    try {
+      channel?.postMessage({ patches, shape });
+    } catch (error) {
+      reportRuntimeIssue(error, "Cross-tab synchronization was paused", "warning");
+    }
+  }
+}
+
 function onChannelMessage(event: MessageEvent) {
   const payload = event.data as { patches?: unknown; shape?: string } | null;
   if (!payload || !validPatchBatch(payload.patches, "cross-tab update")) return;
@@ -156,15 +192,41 @@ function onChannelMessage(event: MessageEvent) {
     );
     return;
   }
-  const { patches, shape } = payload as { patches: Patch[]; shape?: string };
-  try {
-    applyPatchesToStore(patches);
-  } catch (error) {
-    reportRuntimeIssue(error, "A cross-tab data update was stopped");
-    return;
+  // Don't relay back onto the channel: BroadcastChannel already fans this
+  // message out to every other tab directly, so re-posting would just echo.
+  applyExternalPatches(payload.patches as Patch[], payload.shape, false);
+}
+
+/**
+ * Apply a patch batch received from the remote sync server
+ * (src/utils/remoteSyncEngine.ts) to the local store, notify local
+ * subscriptions, and relay it to other open tabs of this browser — a remote
+ * update only reaches one tab's EventSource connection, so it has to be
+ * forwarded locally the same way a same-tab edit already is.
+ */
+export function applyRemoteSyncPatches(patches: Patch[], shape: string): boolean {
+  if (!validPatchBatch(patches, "remote sync update")) return false;
+  applyExternalPatches(patches, shape, true);
+  return true;
+}
+
+/**
+ * Wholesale-replace one graph's records with a server snapshot and reload.
+ * Used when a client's resume cursor has fallen outside the sync server's
+ * retained patch log. A reload is simpler and more robust than re-targeting
+ * every open subscription from a flat snapshot payload, which carries record
+ * data but not shape identity — after reload, each subscription's normal
+ * startup path recomputes its own matching records from the updated store.
+ */
+export function replaceGraphAndReload(graph: string, records: Store) {
+  for (const key of Object.keys(store)) {
+    if (store[key]?.["@graph"] === graph && !(key in records)) delete store[key];
   }
-  schedulePersist();
-  broadcastToLocalSubscriptions(patches, undefined, shape);
+  for (const [key, record] of Object.entries(records)) {
+    store[key] = record;
+  }
+  persistNow();
+  window.location.reload();
 }
 
 channel?.addEventListener("message", onChannelMessage);
@@ -493,6 +555,7 @@ async function graph_orm_update(
     } catch (error) {
       reportRuntimeIssue(error, "Cross-tab synchronization was paused", "warning");
     }
+    for (const listener of localPatchListeners) listener(patches, originShape);
   }
 }
 

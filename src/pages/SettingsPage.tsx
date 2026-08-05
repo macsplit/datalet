@@ -10,6 +10,7 @@
 
 import { useSettings, type Currency } from "../hooks/useSettings";
 import { Link } from "@tanstack/react-router";
+import { SyncSettings } from "../components/SyncSettings";
 
 const CURRENCY_OPTIONS: { value: Currency; label: string }[] = [
   { value: "did:ng:z:USD", label: "US Dollar ($)" },
@@ -102,6 +103,7 @@ export function SettingsPage() {
           are not converted.
         </p>
       </section>
+      <SyncSettings />
     </div>
   );
 }
