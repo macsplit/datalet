@@ -35,7 +35,7 @@ Built and verified in the previous session.
   reproduces with zero sync code involved. Self-heals on navigation; the
   app's existing runtime-safety banner already catches it gracefully.
 
-## Step 2 — Redis Streams for sequencing + fanout: IN PROGRESS
+## Step 2 — Redis Streams for sequencing + fanout: DONE
 
 Goal (per the architecture doc's build order): move vault state off a
 single process's memory and onto Redis, so multiple stateless `sync-server`

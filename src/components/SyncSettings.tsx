@@ -35,11 +35,27 @@ export function SyncSettings() {
     setError(undefined);
     try {
       const response = await fetch("/sync/vaults", { method: "POST" });
-      if (!response.ok) throw new Error(`Server responded with status ${response.status}`);
+      if (!response.ok) {
+        // A 404 here almost always means there's no sync-server process
+        // answering at all (the dev-only Vite proxy has nothing to forward
+        // to, or a production deploy's reverse proxy has no upstream) -
+        // say that plainly rather than surfacing a bare status code, since
+        // "404" alone doesn't point anyone at the actual fix.
+        throw new Error(
+          response.status === 404
+            ? "No sync server responded at /sync/vaults (got 404). If you're running locally, start it " +
+              "with `pnpm dev:server` (see secrets.md) - `pnpm dev` alone only serves the app, not sync."
+            : `Sync server responded with status ${response.status}.`,
+        );
+      }
       const created = (await response.json()) as { vaultId: string; vaultToken: string };
       applyAndReload(created.vaultId, created.vaultToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reach the sync server.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not reach the sync server - check that it's running (see secrets.md).",
+      );
       setCreating(false);
     }
   }
