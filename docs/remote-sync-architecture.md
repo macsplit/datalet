@@ -426,16 +426,33 @@ per-user records. Concretely:
 - `POST /sync/vaults` returns `{ vaultId, vaultToken }` once, at creation.
   The token is shown to the user to copy/scan onto each additional device
   (§8.4's pairing UI) — it is never recoverable from the server after
-  creation, only rotatable (issue a new one, invalidate the old).
-- Every `/sync/stream`, `/sync/patches`, and `/sync/snapshot` call requires
-  `Authorization: Bearer <vaultToken>` scoped to the `vault` in the query/
-  body; the server rejects mismatches with 401 before touching Redis/Neo4j.
-- Store tokens server-side as a salted hash (not plaintext) in Neo4j
-  (`:Vault {id, tokenHash, createdAt}`), verified with a constant-time
-  compare — cheap to do correctly, and avoids a Neo4j dump/backup leaking
-  live tokens.
-- Without at least this, any client that discovers the server URL could
-  read or write any vault.
+  creation, only rotatable: **`POST /sync/vaults/rotate` (bearer-
+  authenticated with the *current* token) issues a fresh one and
+  invalidates the old immediately** — the "Rotate token" action in
+  Settings (`SyncSettings.tsx`). Any other device still holding the old
+  token gets 401s until it's manually given the new one — inherent to a
+  shared-secret scheme with no per-device identity, not a bug.
+- Every `/sync/stream`, `/sync/patches`, `/sync/snapshot`, and
+  `/sync/vaults/rotate` call requires `Authorization: Bearer <vaultToken>`
+  scoped to the `vault` in the query/body; the server rejects mismatches
+  with 401 before touching Redis/Neo4j.
+- Tokens are stored server-side as a SHA-256 hash (not plaintext) in
+  Redis's per-vault `meta` hash (`vaultStore.ts`), verified with a
+  constant-time compare. No separate per-token salt: the token itself is
+  192 bits of `randomBytes`, so an unsalted hash carries the same
+  practical guarantee a salt exists to provide for low-entropy secrets
+  like passwords — a precomputed rainbow table over a 192-bit space isn't
+  a real attack. (Storage location deviates from an earlier draft of this
+  section, which said Neo4j — vault meta/tokens live in Redis only; see
+  `remote-sync-progress.md`'s step-3 notes for why that's an accepted,
+  explicit scoping decision rather than an oversight.)
+- `POST /sync/vaults` is rate-limited per client IP (`VAULT_CREATE_RATE_LIMIT`,
+  default 10/hour) — the one endpoint with no auth at all (it *creates* the
+  credential), so it's the one open abuse/storage-exhaustion vector a
+  bearer token can't close. See `remote-sync-deployment.md` §3 for the
+  reverse-proxy assumption this relies on (`X-Forwarded-For`).
+- Without at least the bearer-token check, any client that discovers the
+  server URL could read or write any vault.
 - TLS: terminate at the reverse proxy (Caddy gets this for free via
   auto-HTTPS with a real domain; self-signed/internal-CA for LAN-only
   deployments). Sync payloads currently include full record contents in

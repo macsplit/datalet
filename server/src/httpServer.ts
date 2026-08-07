@@ -14,12 +14,15 @@ import {
   checkVaultToken,
   createVault,
   entriesSince,
+  rotateVaultToken,
   snapshot,
   subscribeLive,
   vaultExists,
   type LogEntry,
 } from "./vaultStore.js";
 import { serveStatic } from "./staticServer.js";
+import { checkRateLimit } from "./redis/rateLimit.js";
+import { VAULT_CREATE_RATE_LIMIT, VAULT_CREATE_RATE_WINDOW_SECONDS } from "./redis/config.js";
 import type { Patch } from "./patchApply.js";
 
 const MAX_BODY_BYTES = 2_000_000;
@@ -74,6 +77,18 @@ function bearerToken(req: IncomingMessage): string | undefined {
   return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
 }
 
+/**
+ * Trusts X-Forwarded-For for rate-limit identity - see redis/config.ts's
+ * doc comment on VAULT_CREATE_RATE_LIMIT for the reverse-proxy assumption
+ * this relies on.
+ */
+function clientIp(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (first) return first.split(",")[0].trim();
+  return req.socket.remoteAddress ?? "unknown";
+}
+
 export function createSyncServer(staticDir: string) {
   return createServer(async (req, res) => {
     setCors(res, req);
@@ -92,7 +107,33 @@ export function createSyncServer(staticDir: string) {
       }
 
       if (url.pathname === "/sync/vaults" && req.method === "POST") {
+        const ip = clientIp(req);
+        const withinLimit = await checkRateLimit(
+          `rate:vault-create:${ip}`,
+          VAULT_CREATE_RATE_LIMIT,
+          VAULT_CREATE_RATE_WINDOW_SECONDS,
+        );
+        if (!withinLimit) {
+          sendJson(res, 429, { error: "too many vaults created from this address - try again later" });
+          return;
+        }
         sendJson(res, 200, await createVault());
+        return;
+      }
+
+      if (url.pathname === "/sync/vaults/rotate" && req.method === "POST") {
+        const vaultId = url.searchParams.get("vault") ?? "";
+        if (!(await vaultExists(vaultId))) {
+          sendJson(res, 404, { reason: "unknown vault" });
+          return;
+        }
+        const token = bearerToken(req);
+        if (!token || !(await checkVaultToken(vaultId, token))) {
+          sendJson(res, 401, { reason: "invalid token" });
+          return;
+        }
+        const vaultToken = await rotateVaultToken(vaultId);
+        sendJson(res, 200, { vaultId, vaultToken });
         return;
       }
 

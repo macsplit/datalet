@@ -69,6 +69,20 @@ export async function createVault(): Promise<{ vaultId: string; vaultToken: stri
   return { vaultId, vaultToken };
 }
 
+/**
+ * Issues a fresh token and immediately invalidates the old one (§9's
+ * "only rotatable" promise for a leaked/compromised token). The old token
+ * stops working the instant this returns - any other device still holding
+ * it will get 401s until it's manually given the new one, which is
+ * inherent to a shared-secret scheme with no per-device identity.
+ */
+export async function rotateVaultToken(vaultId: string): Promise<string> {
+  const vaultToken = randomBytes(24).toString("base64url");
+  const tokenHash = createHash("sha256").update(vaultToken).digest("hex");
+  await redis().hset(metaKey(vaultId), { token: tokenHash, rotatedAt: Date.now() });
+  return vaultToken;
+}
+
 /** All known vault IDs, for the materializer's vault-discovery loop. */
 export async function listVaultIds(): Promise<string[]> {
   return redis().smembers(VAULTS_INDEX_KEY);

@@ -75,6 +75,29 @@ export function setVaultConfig(vaultId: string, vaultToken: string) {
   return config;
 }
 
+/**
+ * Requests a fresh token for the currently configured vault, invalidating
+ * the old one server-side immediately (server/src/vaultStore.ts's
+ * rotateVaultToken). Persists it and reconnects the live stream with the
+ * new token; callers still need a full reload if they want the token
+ * displayed anywhere in the UI to reflect the new value (see
+ * SyncSettings.tsx, which reloads after calling this - same pattern as
+ * create/join/leave).
+ */
+export async function rotateVaultToken(): Promise<string> {
+  const config = getVaultConfig();
+  if (!config) throw new Error("no vault is configured");
+  const response = await fetch(`/sync/vaults/rotate?vault=${encodeURIComponent(config.vaultId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${config.vaultToken}` },
+  });
+  if (!response.ok) throw new Error(`rotate failed with status ${response.status}`);
+  const { vaultToken } = (await response.json()) as { vaultToken: string };
+  writeJson(CONFIG_KEY, { ...config, vaultToken });
+  if (started) connectStream({ ...config, vaultToken });
+  return vaultToken;
+}
+
 export function clearVaultConfig() {
   const config = getVaultConfig();
   stopSync();

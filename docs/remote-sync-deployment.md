@@ -381,11 +381,20 @@ not disk/host loss.
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `REDIS_URL` | sync-server | e.g. `redis://127.0.0.1:6379` |
-| `NEO4J_URL` | sync-server | Bolt URL, e.g. `bolt://127.0.0.1:7687` |
-| `NEO4J_USER` / `NEO4J_PASSWORD` | sync-server | Neo4j credentials |
+| `REDIS_URL` | sync-server, materializer | e.g. `redis://127.0.0.1:6379` |
+| `NEO4J_URL` | sync-server, materializer | Bolt URL, e.g. `bolt://127.0.0.1:7687` |
+| `NEO4J_USER` / `NEO4J_PASSWORD` | sync-server, materializer | Neo4j credentials |
 | `PORT` | sync-server | HTTP port to listen on |
-| `VAULT_TOKEN_SECRET` | sync-server | server-side key used to sign/verify vault tokens (see architecture doc §3, §9) — generate with `openssl rand -hex 32`, treat as a real secret |
+| `VAULT_CREATE_RATE_LIMIT` / `VAULT_CREATE_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/vaults` abuse limit (default 10 per hour per client IP — see architecture doc §9); trusts `X-Forwarded-For`, so only meaningful behind a reverse proxy that sets it truthfully |
+| `TOMBSTONE_RETENTION_MS` / `TOMBSTONE_SWEEP_INTERVAL_MS` | materializer | how long a deleted record's tombstone is kept before purging, and how often the sweep runs (architecture doc §5) |
+
+Vault tokens themselves need no server-side secret to configure: each is a
+random opaque bearer value generated at vault-creation time, stored only
+as a salted-in-practice-by-high-entropy SHA-256 hash per vault in Redis
+(`vaultStore.ts`) — there's no server-wide signing key, so there's nothing
+here to generate or rotate at the deployment level. A leaked *vault*
+token is rotated per-vault instead, via `POST /sync/vaults/rotate` (§9),
+exposed in the app as the "Rotate token" button in Settings.
 
 Follow the repo's existing convention (`secrets.md`) for documenting where
 these values live locally without committing the values themselves.

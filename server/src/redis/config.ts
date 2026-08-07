@@ -21,3 +21,15 @@ export const STREAM_MAXLEN = 5_000;
 // without reapplying; after it expires a genuine retry would be reapplied
 // (safe: patch application is itself idempotent per-field via HLC).
 export const BATCH_DEDUP_TTL_SECONDS = 24 * 60 * 60;
+
+// POST /sync/vaults has no other gate (no accounts - anyone who can reach
+// the server can create a vault), so it's rate-limited per client IP as
+// basic abuse/storage-exhaustion mitigation (remote-sync-architecture.md
+// §9). Identified via X-Forwarded-For (see httpServer.ts's clientIp) -
+// this assumes a reverse proxy sits in front and sets that header
+// truthfully, which the deployment doc already requires for TLS
+// termination; if this server is ever exposed directly with no proxy in
+// front, X-Forwarded-For becomes attacker-supplied and this limit is
+// trivially bypassable.
+export const VAULT_CREATE_RATE_LIMIT = Number(process.env.VAULT_CREATE_RATE_LIMIT ?? 10);
+export const VAULT_CREATE_RATE_WINDOW_SECONDS = Number(process.env.VAULT_CREATE_RATE_WINDOW_SECONDS ?? 60 * 60);

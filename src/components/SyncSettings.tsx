@@ -9,7 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { useState } from "react";
-import { clearVaultConfig, getVaultConfig, setVaultConfig } from "../utils/remoteSyncEngine";
+import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
 
 /**
  * Pairing/unpairing switches which graph the whole app reads from
@@ -29,6 +29,8 @@ export function SyncSettings() {
   const [joinVaultId, setJoinVaultId] = useState("");
   const [joinToken, setJoinToken] = useState("");
   const [copied, setCopied] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [rotateError, setRotateError] = useState<string | undefined>();
 
   async function handleCreate() {
     setCreating(true);
@@ -63,6 +65,28 @@ export function SyncSettings() {
   function handleJoin() {
     if (!joinVaultId.trim() || !joinToken.trim()) return;
     applyAndReload(joinVaultId.trim(), joinToken.trim());
+  }
+
+  async function handleRotate() {
+    if (
+      !window.confirm(
+        "Generate a new pairing token? The old token stops working immediately - every other " +
+          "device paired to this vault will need the new token entered before it can sync again.",
+      )
+    ) {
+      return;
+    }
+    setRotating(true);
+    setRotateError(undefined);
+    try {
+      await rotateVaultToken();
+      window.location.reload();
+    } catch (err) {
+      setRotateError(
+        err instanceof Error ? err.message : "Could not rotate the token - check that the sync server is running.",
+      );
+      setRotating(false);
+    }
   }
 
   function handleLeave() {
@@ -132,9 +156,15 @@ export function SyncSettings() {
             {copied ? "Copied." : "Anyone with this token can read and write this vault — share it only with your own devices."}
           </p>
         </div>
-        <button type="button" className="secondary-btn danger-text" onClick={handleLeave}>
-          Leave vault
-        </button>
+        {rotateError && <p className="helper-text danger-text">{rotateError}</p>}
+        <div className="layout-row">
+          <button type="button" className="secondary-btn" onClick={handleRotate} disabled={rotating}>
+            {rotating ? "Rotating…" : "Rotate token"}
+          </button>
+          <button type="button" className="secondary-btn danger-text" onClick={handleLeave}>
+            Leave vault
+          </button>
+        </div>
       </section>
     );
   }

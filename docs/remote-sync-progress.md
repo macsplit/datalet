@@ -650,6 +650,107 @@ fixed there, not in `httpServer.ts`, which was already correct).
 
 ### Not yet done
 
-Security hardening beyond the bearer token (build-order item after step 6
-in §10) is the one remaining unstarted item from the original build order.
-Everything else in §10 is now done.
+~~Security hardening beyond the bearer token~~ — addressed below.
+
+## Step 7 — Vault-pairing security hardening beyond the bearer token: DONE
+
+Goal: close the last build-order item. Picked the two concrete gaps
+against §9's own stated design, confirmed by reading the code rather than
+assumed: token rotation was explicitly promised ("only rotatable") but no
+endpoint existed, and `POST /sync/vaults` had zero rate limiting despite
+being the one endpoint with no auth at all (it's what *creates* the
+credential everything else checks).
+
+### Token rotation/revocation
+
+- `vaultStore.ts`'s new `rotateVaultToken(vaultId)` generates a fresh
+  `randomBytes(24)` token, overwrites the vault's stored hash + a new
+  `rotatedAt` field — the old token is invalid the instant this returns,
+  no grace period.
+- New route `POST /sync/vaults/rotate?vault=<id>`, bearer-authenticated
+  with the *current* token (same `checkVaultToken` check as every other
+  endpoint) — you can't rotate a vault's token without already having it,
+  by design; this is recovery from "I leaked my token and want to cut it
+  off," not a password-reset flow.
+- Client: `remoteSyncEngine.ts`'s new `rotateVaultToken()` calls it,
+  persists the new token into the same `localStorage` config, and
+  reconnects the live SSE stream with it (the old stream's `?token=` query
+  param is now stale). `SyncSettings.tsx` adds a "Rotate token" button in
+  the Connected view, with a confirm dialog spelling out that other paired
+  devices need the new token manually — then reloads the page (same
+  pattern already used by create/join/leave), so the displayed token field
+  picks up the new value with no new display-state plumbing needed.
+
+### Rate limiting on vault creation
+
+- New `redis/rateLimit.ts`: a plain fixed-window counter (`INCR` + `EXPIRE`
+  on first increment) — deliberately not Lua-atomic like `applyBatch.lua`,
+  since this guards abuse mitigation, not a correctness-critical
+  accept/reject decision, so the small boundary-window race is an
+  acceptable tradeoff for the simpler primitive.
+- Wired into `POST /sync/vaults` in `httpServer.ts`: keyed by client IP
+  (`clientIp()`, trusting `X-Forwarded-For`'s first entry, falling back to
+  the raw socket address — see the doc comment on why this assumes a
+  reverse proxy sits in front, matching the deployment doc's existing TLS-
+  termination requirement), default 10 vaults/hour, both limit and window
+  env-overridable (`VAULT_CREATE_RATE_LIMIT`, `VAULT_CREATE_RATE_WINDOW_SECONDS`).
+  Over the limit gets a 429 with a plain-text reason.
+
+### Doc fix found along the way
+
+`remote-sync-deployment.md`'s configuration-reference table listed a
+`VAULT_TOKEN_SECRET` env var ("server-side key used to sign/verify vault
+tokens") that **no code anywhere reads** — confirmed via a repo-wide grep.
+The actual design never needed a server-wide signing secret: each vault
+token is its own random opaque value, hashed and stored per-vault. Likely
+a leftover from an earlier draft of the scheme that was superseded before
+implementation. Removed the stale entry, documented the two new env vars,
+and corrected §9's "stored in Neo4j" claim to match reality (vault
+meta/tokens live in Redis only, an explicit decision already recorded in
+this file's step-3 notes — the architecture doc just hadn't been updated
+to match).
+
+### Verified
+
+Against the real running server (`pnpm dev:server`, no materializer needed
+- this work doesn't touch Neo4j):
+
+- Rotate with the current valid token: 200, returns a new token.
+- The old token is rejected (401) on the very next request after rotation.
+- The new token works immediately.
+- Rotating again with the now-stale old token: 401 (can't rotate without
+  the current token).
+- Rotating with the correct new token: 200 (rotation itself isn't
+  single-use).
+- Rotate on an unknown vault: 404. Rotate with no `Authorization` header
+  at all: 401.
+- Rate limit: 10 consecutive `POST /sync/vaults` calls from the same IP
+  succeeded (200), the 11th and all after it got 429 — exactly matching
+  the configured default. Cleaned up the test counter key afterward so it
+  doesn't affect real usage from this machine.
+- `tsc --noEmit` clean on both `server/tsconfig.json` and the client's
+  root `tsconfig.json` (this step touches both sides).
+
+### Files touched this step
+
+- `server/src/redis/rateLimit.ts` — new.
+- `server/src/redis/config.ts` — new `VAULT_CREATE_RATE_LIMIT`,
+  `VAULT_CREATE_RATE_WINDOW_SECONDS`.
+- `server/src/vaultStore.ts` — new `rotateVaultToken`.
+- `server/src/httpServer.ts` — rate limit on `POST /sync/vaults`; new
+  `POST /sync/vaults/rotate` route; new `clientIp()` helper.
+- `src/utils/remoteSyncEngine.ts` — new `rotateVaultToken()`.
+- `src/components/SyncSettings.tsx` — "Rotate token" button + confirm
+  dialog + error state, in the Connected view.
+- `docs/remote-sync-architecture.md` §9 — documents both mechanisms;
+  corrects the stale "stored in Neo4j"/signing-secret claims.
+- `docs/remote-sync-deployment.md` §3 — removes the unused
+  `VAULT_TOKEN_SECRET` entry, documents the new env vars.
+
+### Not yet done
+
+This closes every item in §10's original build order. Nothing scoped and
+outstanding remains in this doc; further hardening (multiple scoped
+tokens per vault, per-record permissions, encryption at rest) is
+explicitly out of scope per §9's own "explicitly not doing" list, not a
+gap.
