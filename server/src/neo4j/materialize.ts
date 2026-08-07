@@ -167,6 +167,35 @@ export async function readRecord(
   }
 }
 
+/**
+ * Permanently deletes every tombstone older than the retention cutoff
+ * (remote-sync-architecture.md §5) and returns the subjectIds purged, so
+ * the caller (vaultStore.ts's sweepVaultTombstones) can also drop the
+ * matching entries from Redis's tombstone hash - after this, a stale patch
+ * predating the deletion is no longer distinguishable from an ordinary
+ * fresh write and will be accepted again. `cutoffHlc` is a 15-digit,
+ * zero-padded millisecond string (matching the leading segment of the hlc
+ * format minted by nextHlc() in remoteSyncEngine.ts): deletedAtHlc's own
+ * leading digits make a plain string `<` comparison correct here, same
+ * trick already used for HLC comparisons in applyBatch.lua.
+ */
+export async function purgeExpiredTombstones(graph: string, cutoffHlc: string): Promise<string[]> {
+  const session = neo4jSession();
+  try {
+    const result = await session.run(
+      `MATCH (r:Record:Deleted {graph: $graph})
+       WHERE r.deletedAtHlc < $cutoffHlc
+       WITH r, r.id AS id
+       DETACH DELETE r
+       RETURN id`,
+      { graph, cutoffHlc },
+    );
+    return result.records.map((row) => row.get("id") as string);
+  } finally {
+    await session.close();
+  }
+}
+
 /** Every non-tombstoned record in a vault - the durable source for /sync/snapshot, keyed by subjectId like Redis's store hash. */
 export async function readVaultRecords(graph: string): Promise<Store> {
   const session = neo4jSession();

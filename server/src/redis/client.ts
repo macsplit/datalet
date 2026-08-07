@@ -30,6 +30,7 @@ declare module "ioredis" {
       hlcKey: string,
       streamKey: string,
       batchKey: string,
+      tombstoneKey: string,
       nodeId: string,
       hlc: string,
       shape: string,
@@ -47,7 +48,7 @@ let sharedClient: Redis | undefined;
 export function redis(): Redis {
   if (!sharedClient) {
     sharedClient = new Redis(REDIS_URL);
-    sharedClient.defineCommand("applyBatch", { numberOfKeys: 5, lua: APPLY_BATCH_LUA });
+    sharedClient.defineCommand("applyBatch", { numberOfKeys: 6, lua: APPLY_BATCH_LUA });
   }
   return sharedClient;
 }

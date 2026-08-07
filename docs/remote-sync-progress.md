@@ -399,3 +399,161 @@ architecture doc's build order (steps 4+, though HLC/LWW conflict
 resolution itself has been in place since step 1). Also worth another
 look eventually, unrelated to sync: the pre-existing ORM subscription race
 noted above.
+
+## Step 4 — Tombstone-aware rejection at the ingest layer: DONE
+
+Goal: close a real gap in step 4's other half. HLC/LWW itself was already
+correct (step 1), and the materializer already wrote `:Deleted` tombstones
+to Neo4j (step 3) — but §5 also requires that a whole-record delete be
+*remembered by the ingest tier* and checked before applying any later
+patch to that subject, specifically so a stale add/field-patch replayed by
+a node that was offline across the delete can't resurrect it. Auditing
+`applyBatch.lua` after step 3 showed this half was never built: a
+whole-record `remove` did a plain `HDEL` on Redis's store hash with no
+memory that the subject had ever existed. A node that deletes a record,
+then a second node that's been offline since before the delete reconnects
+and replays a stale queued edit to the same subject — the Lua script saw
+`loadRecord(subjectId) == false` and treated it as a **fresh creation**,
+accepted it, and the materializer then dutifully replayed that acceptance
+into Neo4j via `MERGE ... REMOVE r:Deleted` — silently undeleting the
+record. This is exactly the split-brain-on-delete scenario tombstones
+exist to prevent, found by auditing the code rather than by a bug report.
+
+### Fix
+
+Added a sixth Redis key, `tombstoneKey` (`vault:<id>:tombstones`, a hash of
+`subjectId -> deletedAtHlc`), threaded through
+`redis/applyBatch.lua`/`redis/client.ts`/`vaultStore.ts`. In the script's
+accept-decision loop, before any of the existing accept logic runs for a
+patch, look up the subject's tombstone: if one exists and the batch's
+`hlc` doesn't strictly exceed `deletedAtHlc`, the patch is dropped
+(rejected) regardless of its type — structural re-add, field edit, or set
+merge all get the same treatment, since all of them would otherwise
+resurrect stale state. A batch whose `hlc` *does* exceed the tombstone's
+`deletedAtHlc` is a legitimately newer operation (e.g. deliberately
+recreating the same id later) — it proceeds normally through the existing
+accept logic and clears the tombstone. Within a single batch, a later
+whole-record remove for the same subject overwrites an earlier "clear"
+decision back to a fresh `deletedAtHlc`, so in-batch ordering still
+resolves the same way store mutations already do. A batch rejected purely
+by tombstone gets a distinct rejection reason
+(`"subject was deleted after this edit was made"`) rather than being
+folded into the existing field-LWW rejection message. No changes were
+needed to `materialize.ts`/`materializer.ts`: since the resurrection is now
+blocked before the patch is ever accepted onto the stream, the
+materializer — which only ever replays what Redis already accepted — never
+sees it.
+
+### Verified
+
+Standalone against a live Redis via `redis-cli --eval` (matching the
+verification approach used for the Lua script in step 2), not yet re-run
+through the full HTTP+materializer+Neo4j stack (no `NEO4J_PASSWORD` set in
+this environment at the time) — a reasonable scope boundary here since
+this change touches only the accept layer and nothing in the
+materializer/Neo4j path changed at all.
+
+- Create → delete → stale field-edit replay (hlc from before the delete):
+  rejected, reason `"subject was deleted after this edit was made"`, store
+  unchanged.
+- Create → delete → stale structural re-add replay (same pre-delete hlc):
+  also rejected — confirms the block isn't limited to field-level patches.
+- Create → delete → genuinely newer recreate (hlc after the delete):
+  accepted, tombstone cleared, record reappears with the new batch's
+  values.
+- Recreated record accepts a further ordinary edit afterward with no
+  lingering tombstone effect.
+- Regression: idempotent retry (same `batchId`), ordinary per-field LWW
+  rejection (older hlc, no tombstone involved), and set-member commutative
+  merge (add "c" to an existing `["a","b"]` tag set) all reproduced their
+  pre-existing, unchanged behavior — the tombstone check adds a new
+  rejection path without disturbing the others.
+- `tsc -p server/tsconfig.json --noEmit` and `build:server` both clean.
+
+### Files touched this step
+
+- `server/src/redis/applyBatch.lua` — tombstone check/write/clear logic.
+- `server/src/redis/client.ts` — `applyBatch` command signature gained
+  `tombstoneKey`, `numberOfKeys` 5 → 6.
+- `server/src/vaultStore.ts` — new `tombstoneKey()`, passed into
+  `applyBatch()`.
+
+### Not yet done
+
+~~The Redis tombstone hash itself has no retention/expiry yet either~~ —
+addressed below. Load/soak testing (build-order step 6) and security
+hardening beyond the bearer token remain untouched.
+
+## Step 4b — Tombstone retention/purging: DONE
+
+Goal: close the gap flagged directly above — both tombstone stores (Neo4j's
+`:Deleted` nodes, Redis's `vault:<id>:tombstones` hash) grew by one entry
+per record ever deleted, forever. Purge tombstones once they're older than
+a retention window, per §5's "e.g. 30 days" — past that window a node
+still holding a pre-delete stale edit is no longer a plausible scenario the
+system needs to protect against, so the tombstone has done its job and can
+be reclaimed.
+
+### Design
+
+New `server/src/config.ts` holds the two settings both stores' purging
+shares: `TOMBSTONE_RETENTION_MS` (default 30 days) and
+`TOMBSTONE_SWEEP_INTERVAL_MS` (default 1 hour), both env-overridable.
+
+- `neo4j/materialize.ts`'s new `purgeExpiredTombstones(graph, cutoffHlc)`
+  runs one Cypher query per vault: match every `:Record:Deleted` node in
+  that graph whose `deletedAtHlc` is older than the cutoff and
+  `DETACH DELETE` it, returning the purged subjectIds. The cutoff is
+  computed the same way `nextHlc()` (`remoteSyncEngine.ts`) mints the
+  leading segment of an hlc — `Date.now() - retentionMs`, zero-padded to 15
+  digits — so a plain string `<` comparison against `deletedAtHlc` is
+  correct, the same trick `applyBatch.lua` already relies on for HLC
+  ordering.
+- `vaultStore.ts`'s new `sweepVaultTombstones(vaultId)` calls that, then
+  `HDEL`s the same subjectIds out of Redis's tombstone hash — the two
+  stores are kept in sync by construction (Neo4j decides what's expired;
+  Redis just mirrors the decision) rather than each computing its own
+  cutoff independently and potentially disagreeing.
+- `materializer.ts`'s `startMaterializer()` gained a second `setInterval`
+  (alongside the existing vault-discovery poll) that sweeps every known
+  vault every `TOMBSTONE_SWEEP_INTERVAL_MS`, with the same per-vault fault
+  isolation as `discoverAndWatch` — one vault's sweep failing is logged and
+  skipped, not fatal to the loop.
+- Safety check on the "already recreated" case: `upsertRecord`'s
+  `SET r = $props` is a full property replace (see its doc comment from
+  step 3), so any recreate after a delete already wipes `deletedAtHlc` and
+  removes the `:Deleted` label *before* a sweep could ever see it — a
+  purge can never race a legitimate recreation into deleting a live node,
+  since by the time a node is genuinely live again it no longer matches
+  `purgeExpiredTombstones`'s `MATCH (r:Record:Deleted ...)` pattern at all.
+
+### Verified
+
+Redis-side mechanics only (`HDEL` removing exactly the purged subjectIds
+and leaving others untouched) — confirmed directly via `redis-cli`. The
+Neo4j-side `purgeExpiredTombstones` query itself was **not** run against a
+live database this session (no `NEO4J_PASSWORD` available in this
+environment, same limitation noted for step 4's tombstone-rejection work
+above) — `tsc -p server/tsconfig.json --noEmit` passes, and the query
+follows the exact same `MATCH (r:Record... {graph, id}) ...` shape already
+proven correct and live-verified for `tombstoneRecord`/`readVaultRecords`
+in step 3, with `DETACH DELETE` in place of a property `SET`. Worth an
+explicit live pass (create → delete → fast-forward `TOMBSTONE_RETENTION_MS`
+to something small via env override → confirm the node and its tombstone
+both disappear from Neo4j and Redis) the next time this environment has
+Neo4j credentials available.
+
+### Files touched this step
+
+- `server/src/config.ts` — new (`TOMBSTONE_RETENTION_MS`,
+  `TOMBSTONE_SWEEP_INTERVAL_MS`).
+- `server/src/neo4j/materialize.ts` — new `purgeExpiredTombstones`.
+- `server/src/vaultStore.ts` — new `sweepVaultTombstones`.
+- `server/src/materializer.ts` — periodic sweep wired into
+  `startMaterializer()`.
+
+### Not yet done
+
+The live Neo4j-side purge query itself is unverified in this environment
+(see above). Load/soak testing (build-order step 6) and security hardening
+beyond the bearer token remain untouched.

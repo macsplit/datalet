@@ -6,11 +6,12 @@
 -- server/src/vaultStore.ts's (now-removed) in-memory applyBatch — keep the
 -- two in sync if either changes.
 --
--- KEYS[1] seqKey     (string, INCR'd per accepted batch)
--- KEYS[2] storeKey    (hash: subjectId -> JSON record)
--- KEYS[3] hlcKey      (hash: "subjectId propKey" -> hlc string)
--- KEYS[4] streamKey   (stream: entry id "<seq>-0")
--- KEYS[5] batchKey     (string: batchId's assigned seq, for idempotency)
+-- KEYS[1] seqKey       (string, INCR'd per accepted batch)
+-- KEYS[2] storeKey      (hash: subjectId -> JSON record)
+-- KEYS[3] hlcKey        (hash: "subjectId propKey" -> hlc string)
+-- KEYS[4] streamKey     (stream: entry id "<seq>-0")
+-- KEYS[5] batchKey       (string: batchId's assigned seq, for idempotency)
+-- KEYS[6] tombstoneKey   (hash: subjectId -> deletedAtHlc, for a whole-record remove)
 --
 -- ARGV[1] nodeId
 -- ARGV[2] hlc
@@ -22,7 +23,8 @@
 --
 -- Returns {accepted (0/1), seq, reason}
 
-local seqKey, storeKey, hlcKey, streamKey, batchKey = KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5]
+local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey =
+  KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
 local nodeId, hlc, shape, patchesJson, batchTtl, streamMaxLen, batchId =
   ARGV[1], ARGV[2], ARGV[3], ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7]
 
@@ -103,40 +105,67 @@ end
 local accepted = {}
 local touchedOrder = {}
 local touchedSet = {}
+-- Seeded from any tombstone this batch's hlc supersedes (deletedAtHlc <
+-- hlc); committed in the final loop below. A later whole-record remove for
+-- the same subject in this same batch overwrites this back to a fresh
+-- deletedAtHlc in the apply loop, so within-batch ordering still resolves
+-- correctly.
+local tombstoneState = {}
+local anyTombstoneRejected = false
 
 for i = 1, #patches do
   local patch = patches[i]
   local subjectId, propKey = target(patch)
   if subjectId ~= nil then
-    local take = false
-    if isSetPatch(patch) then
-      take = true
-    elseif patch.op == 'add' and (propKey == nil or STRUCTURAL[propKey]) then
-      -- Root/identity creation is write-once: drop a duplicate replay of a
-      -- subject two racing nodes both tried to create (see the doc comment
-      -- on STRUCTURAL_PROPS in the step-1 in-memory version this replaces).
-      if loadRecord(subjectId) == false then take = true end
-    elseif propKey == nil then
-      take = true -- whole-record remove, unconditional for now
+    -- A whole-record remove is remembered as a tombstone (deletedAtHlc) so a
+    -- stale add/field-patch replayed later by a node that was offline
+    -- across the delete can't resurrect the record (remote-sync-
+    -- architecture.md §5) -- reject anything whose batch hlc doesn't
+    -- strictly exceed the deletion's hlc. A strictly newer batch touching a
+    -- tombstoned subject is a legitimate later write (e.g. deliberate
+    -- recreation of the same id), so it proceeds normally and clears the
+    -- tombstone below.
+    local deletedHlc = redis.call('HGET', tombstoneKey, subjectId)
+    local tombstoned = deletedHlc ~= false and hlc <= deletedHlc
+    if tombstoned then
+      anyTombstoneRejected = true
     else
-      local hkey = subjectId .. ' ' .. propKey
-      local prevHlc = redis.call('HGET', hlcKey, hkey)
-      if prevHlc == false or prevHlc < hlc then
-        redis.call('HSET', hlcKey, hkey, hlc)
+      local take = false
+      if isSetPatch(patch) then
         take = true
+      elseif patch.op == 'add' and (propKey == nil or STRUCTURAL[propKey]) then
+        -- Root/identity creation is write-once: drop a duplicate replay of a
+        -- subject two racing nodes both tried to create (see the doc comment
+        -- on STRUCTURAL_PROPS in the step-1 in-memory version this replaces).
+        if loadRecord(subjectId) == false then take = true end
+      elseif propKey == nil then
+        take = true -- whole-record remove, unconditional for now
+      else
+        local hkey = subjectId .. ' ' .. propKey
+        local prevHlc = redis.call('HGET', hlcKey, hkey)
+        if prevHlc == false or prevHlc < hlc then
+          redis.call('HSET', hlcKey, hkey, hlc)
+          take = true
+        end
       end
-    end
-    if take then
-      table.insert(accepted, patch)
-      if not touchedSet[subjectId] then
-        touchedSet[subjectId] = true
-        table.insert(touchedOrder, subjectId)
+      if take then
+        table.insert(accepted, patch)
+        if not touchedSet[subjectId] then
+          touchedSet[subjectId] = true
+          table.insert(touchedOrder, subjectId)
+        end
+        if deletedHlc ~= false then
+          tombstoneState[subjectId] = 'clear'
+        end
       end
     end
   end
 end
 
 if #accepted == 0 then
+  if anyTombstoneRejected then
+    return { 0, currentSeq(), 'subject was deleted after this edit was made' }
+  end
   return { 0, currentSeq(), 'superseded by a newer edit to the same field' }
 end
 
@@ -159,8 +188,10 @@ for i = 1, #accepted do
       if loadRecord(subjectId) == false then
         storeCache[subjectId] = { ['@id'] = subjectId, ['@graph'] = '' }
       end
+      tombstoneState[subjectId] = 'clear'
     elseif patch.op == 'remove' then
       storeCache[subjectId] = false
+      tombstoneState[subjectId] = hlc
     end
   else
     local record = loadRecord(subjectId)
@@ -213,6 +244,12 @@ for i = 1, #touchedOrder do
     redis.call('HDEL', storeKey, subjectId)
   else
     redis.call('HSET', storeKey, subjectId, cjson.encode(record))
+  end
+  local tstate = tombstoneState[subjectId]
+  if tstate == 'clear' then
+    redis.call('HDEL', tombstoneKey, subjectId)
+  elseif tstate ~= nil then
+    redis.call('HSET', tombstoneKey, subjectId, tstate)
   end
 end
 

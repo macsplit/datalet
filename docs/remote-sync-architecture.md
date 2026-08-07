@@ -547,3 +547,53 @@ to revisit this: approaching the ~5-10MB `localStorage` quota in practice,
 or noticeable UI jank from full-store re-renders/serialization on typical
 vaults. Until then, this section is a placeholder for when that happens,
 not a task to schedule.
+
+## 12. Future direction: rendered diagrams via d2topng (not started)
+
+Flagged while wrapping up build-order step 4, not on the critical path —
+recorded here so it isn't lost. A proposal for once the remaining
+build-order items (tombstone retention, step 6's load/soak test) are
+done, not a task to schedule now.
+
+### The idea
+
+Once this doc's design has settled down (fewer diagram-invalidating
+changes), redraw the ASCII diagram in §6 and add a couple more — the
+consumer-group crash-recovery sequence from step 3 (§6.3) and the
+tombstone accept/reject decision flow added in step 4 (§5) are the two
+most likely to benefit — as [D2](https://d2lang.com) source, rendered to
+PNG and embedded in the markdown instead of hand-drawn ASCII art.
+
+### How it would work
+
+[d2topng](https://github.com/macsplit/d2topng) (deployed at
+`https://d2topng.onrender.com`) is a small HTTP service purpose-built for
+this: `POST /render[?scale=N]` with raw D2 source as the request body
+returns a PNG (`image/png`) on success, or an HTTP 400 with D2's own
+diagnostic text on a syntax error; `Authorization: Bearer <token>` is only
+required if the deployment has `D2TOPNG_API_TOKEN` set (unconfirmed for
+the public instance above — check before relying on it being open).
+Concretely:
+
+- Diagram sources live as `.d2` files, e.g.
+  `docs/diagrams/server-architecture.d2`.
+- A small script (`curl -H "Authorization: Bearer $D2TOPNG_TOKEN"
+  --data-binary @docs/diagrams/foo.d2 https://d2topng.onrender.com/render
+  -o docs/diagrams/foo.png`, or the Node equivalent) regenerates the PNG
+  from source on demand.
+- The generated **PNGs are committed alongside their `.d2` source**, not
+  fetched live when a doc is viewed — this is a free-tier, third-party
+  hosted service with no SLA and a plausible cold-start delay; docs must
+  keep rendering correctly if that instance is ever slow, down, or gone.
+  Regenerate locally when the `.d2` source changes; don't wire this into
+  CI as a build-blocking step, since that would make doc builds depend on
+  an external free service staying up.
+- Markdown embed is then just `` ![server architecture](diagrams/server-architecture.png) ``
+  in place of the current fenced ASCII block.
+
+### Why later, not now
+
+Low risk compared to §11, but genuinely not urgent: the architecture is
+still shifting build-order step to build-order step, and redrawing
+diagrams before that settles means redrawing them again shortly after.
+Revisit once the build order in §10 is fully checked off.

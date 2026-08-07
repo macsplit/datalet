@@ -24,11 +24,12 @@
  */
 
 import { newBlockingConnection, redis } from "./redis/client.js";
-import { listVaultIds, parseLogEntry, streamKey, type LogEntry } from "./vaultStore.js";
+import { listVaultIds, parseLogEntry, streamKey, sweepVaultTombstones, type LogEntry } from "./vaultStore.js";
 import { applyPatchesToStore, patchTarget, type Store } from "./patchApply.js";
 import { ensureNeo4jSchema } from "./neo4j/client.js";
 import { readRecord, tombstoneRecord, upsertRecord } from "./neo4j/materialize.js";
 import { MATERIALIZER_GROUP, VAULT_DISCOVERY_INTERVAL_MS } from "./neo4j/config.js";
+import { TOMBSTONE_SWEEP_INTERVAL_MS } from "./config.js";
 
 // Stable across restarts (unlike process.pid) - a consumer group only
 // redelivers a crashed consumer's still-pending entries to a *later read
@@ -144,10 +145,31 @@ async function discoverAndWatch(): Promise<void> {
   }
 }
 
+/**
+ * Purges tombstones (both Neo4j's and Redis's) past their retention window
+ * (remote-sync-architecture.md §5) across every known vault. One vault's
+ * failure is logged and skipped rather than aborting the rest, matching
+ * discoverAndWatch's per-vault fault isolation below.
+ */
+async function sweepAllTombstones(): Promise<void> {
+  const vaultIds = await listVaultIds();
+  for (const vaultId of vaultIds) {
+    try {
+      const purged = await sweepVaultTombstones(vaultId);
+      if (purged > 0) console.log(`materializer: purged ${purged} expired tombstone(s) in vault ${vaultId}`);
+    } catch (error) {
+      console.error(`materializer: tombstone sweep failed for vault ${vaultId}`, error);
+    }
+  }
+}
+
 export async function startMaterializer(): Promise<void> {
   await ensureNeo4jSchema();
   await discoverAndWatch();
   setInterval(() => {
     discoverAndWatch().catch((error) => console.error("materializer: vault discovery failed", error));
   }, VAULT_DISCOVERY_INTERVAL_MS);
+  setInterval(() => {
+    sweepAllTombstones().catch((error) => console.error("materializer: tombstone sweep failed", error));
+  }, TOMBSTONE_SWEEP_INTERVAL_MS);
 }

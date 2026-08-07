@@ -23,7 +23,8 @@ import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypt
 import { redis } from "./redis/client.js";
 import { watchVaultStream } from "./redis/streamWatcher.js";
 import { BATCH_DEDUP_TTL_SECONDS, STREAM_MAXLEN } from "./redis/config.js";
-import { readVaultRecords } from "./neo4j/materialize.js";
+import { purgeExpiredTombstones, readVaultRecords } from "./neo4j/materialize.js";
+import { TOMBSTONE_RETENTION_MS } from "./config.js";
 import type { Patch, Store } from "./patchApply.js";
 
 const VAULTS_INDEX_KEY = "vaults:index";
@@ -55,6 +56,7 @@ const storeKey = (vaultId: string) => `vault:${vaultId}:store`;
 const hlcKey = (vaultId: string) => `vault:${vaultId}:hlc`;
 export const streamKey = (vaultId: string) => `vault:${vaultId}:stream`;
 const batchKey = (vaultId: string, batchId: string) => `vault:${vaultId}:batch:${batchId}`;
+const tombstoneKey = (vaultId: string) => `vault:${vaultId}:tombstones`;
 
 export async function createVault(): Promise<{ vaultId: string; vaultToken: string }> {
   const vaultId = randomUUID();
@@ -91,6 +93,7 @@ export async function applyBatch(vaultId: string, input: PatchBatchInput): Promi
     hlcKey(vaultId),
     streamKey(vaultId),
     batchKey(vaultId, input.batchId),
+    tombstoneKey(vaultId),
     input.nodeId,
     input.hlc,
     input.shape,
@@ -137,6 +140,23 @@ export async function entriesSince(vaultId: string, since: number): Promise<LogE
     if (since < earliestSeq - 1) return undefined; // gap: trimmed past the client's cursor
   }
   return raw.map(parseLogEntry).filter((entry): entry is LogEntry => entry !== undefined);
+}
+
+/**
+ * Purges tombstones older than TOMBSTONE_RETENTION_MS from both durable
+ * stores (Neo4j's :Deleted nodes, this vault's Redis tombstone hash), so
+ * neither grows unbounded with one entry per record ever deleted. Called
+ * periodically by the materializer (materializer.ts) - see
+ * remote-sync-architecture.md §5. Returns the number of tombstones purged,
+ * for logging.
+ */
+export async function sweepVaultTombstones(vaultId: string): Promise<number> {
+  const cutoffHlc = String(Date.now() - TOMBSTONE_RETENTION_MS).padStart(15, "0");
+  const purgedIds = await purgeExpiredTombstones(vaultId, cutoffHlc);
+  if (purgedIds.length > 0) {
+    await redis().hdel(tombstoneKey(vaultId), ...purgedIds);
+  }
+  return purgedIds.length;
 }
 
 /**
