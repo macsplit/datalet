@@ -26,12 +26,19 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-/** Report a recoverable failure to the visible runtime-health banner. */
+/**
+ * Report a recoverable failure to the visible runtime-health banner.
+ * Returns the issue's id (deterministic from severity+context+message) so
+ * a caller that reports a *transient* condition, like a dropped sync
+ * connection, can dismiss the exact same issue later via
+ * dismissRuntimeIssue once the condition clears, without duplicating this
+ * key format itself.
+ */
 export function reportRuntimeIssue(
   error: unknown,
   context: string,
   severity: RuntimeIssueSeverity = "error",
-) {
+): string {
   const message = errorMessage(error);
   const key = `${severity}|${context}|${message}`;
   const existing = issues.find((issue) => issue.id === key);
@@ -42,6 +49,7 @@ export function reportRuntimeIssue(
   issues = [issue, ...issues.filter((candidate) => candidate.id !== key)].slice(0, 5);
   console.error(`[${context}] ${message}`, error);
   emit();
+  return key;
 }
 
 export function dismissRuntimeIssue(id: string) {

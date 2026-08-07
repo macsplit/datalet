@@ -23,7 +23,7 @@ import {
   type Patch,
   type Store,
 } from "./localNgEngine";
-import { reportRuntimeIssue } from "./runtimeHealth";
+import { dismissRuntimeIssue, reportRuntimeIssue } from "./runtimeHealth";
 
 const CONFIG_KEY = "meta-ui-builder:sync-vault";
 const CURSOR_PREFIX = "meta-ui-builder:sync-cursor:";
@@ -148,6 +148,30 @@ let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let flushBackoffMs = 1_000;
 const MAX_FLUSH_BACKOFF_MS = 30_000;
 
+// EventSource retries natively (typically every few seconds) after any
+// drop, so a bare "error" event fires on ordinary transient blips too -
+// warning the user on every one of those would be noise, not signal. Only
+// surface a banner if the connection hasn't recovered within this window;
+// clear it the moment "open" fires again. This is a separate, deliberately
+// silent path from resyncFromSnapshot's failure reporting below - a lost
+// connection isn't itself an error condition on its own (edits still queue
+// locally and flush once reconnected), it only becomes worth surfacing if
+// it persists.
+const SYNC_DOWN_WARNING_DELAY_MS = 15_000;
+let syncDownTimer: ReturnType<typeof setTimeout> | undefined;
+let syncDownWarningId: string | undefined;
+
+function clearSyncDownWarning() {
+  if (syncDownTimer !== undefined) {
+    clearTimeout(syncDownTimer);
+    syncDownTimer = undefined;
+  }
+  if (syncDownWarningId !== undefined) {
+    dismissRuntimeIssue(syncDownWarningId);
+    syncDownWarningId = undefined;
+  }
+}
+
 const appliedBatchIds: string[] = [];
 const appliedBatchIdSet = new Set<string>();
 
@@ -253,12 +277,26 @@ function scheduleReconnect(config: VaultConfig, delayMs = 5_000) {
 
 function connectStream(config: VaultConfig) {
   eventSource?.close();
+  clearSyncDownWarning();
   const since = getCursor(config.vaultId);
   const url =
     `/sync/stream?vault=${encodeURIComponent(config.vaultId)}` +
     `&since=${since}&token=${encodeURIComponent(config.vaultToken)}`;
   const source = new EventSource(url);
   eventSource = source;
+
+  source.addEventListener("open", clearSyncDownWarning);
+  source.addEventListener("error", () => {
+    if (syncDownTimer !== undefined || syncDownWarningId !== undefined) return;
+    syncDownTimer = setTimeout(() => {
+      syncDownTimer = undefined;
+      syncDownWarningId = reportRuntimeIssue(
+        "Changes made on this device are still being saved locally and will sync automatically once the connection returns.",
+        "Remote sync connection lost",
+        "warning",
+      );
+    }, SYNC_DOWN_WARNING_DELAY_MS);
+  });
 
   source.addEventListener("patches", (event) => {
     const message = event as MessageEvent<string>;
@@ -333,6 +371,7 @@ export function stopSync() {
   unsubscribeLocalPatches = undefined;
   eventSource?.close();
   eventSource = undefined;
+  clearSyncDownWarning();
   if (flushTimer !== undefined) clearTimeout(flushTimer);
   flushTimer = undefined;
   if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);

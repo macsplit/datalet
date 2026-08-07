@@ -754,3 +754,231 @@ outstanding remains in this doc; further hardening (multiple scoped
 tokens per vault, per-record permissions, encryption at rest) is
 explicitly out of scope per §9's own "explicitly not doing" list, not a
 gap.
+
+## Step 8 — Visible warning when the sync connection is lost: DONE
+
+Goal: close a gap flagged (but not acted on) earlier in this doc — if the
+sync-server becomes unreachable after a device has already paired,
+`EventSource` just retries silently forever with no indication to the
+user that anything is wrong. Locally queued edits are still safe (the
+outbox already persists and flushes on reconnect), but the user has no
+way to know sync has stopped without opening dev tools.
+
+### Design
+
+- `runtimeHealth.ts`'s existing `reportRuntimeIssue`/`dismissRuntimeIssue`
+  (already wired to a global banner, `RuntimeIssueBanner` in
+  `RuntimeSafety.tsx`, used elsewhere for the ORM subscription race and
+  the app's error boundary) is reused rather than building a second
+  notification mechanism. `reportRuntimeIssue` now returns its computed
+  issue id so a caller reporting a *transient* condition can dismiss the
+  exact same issue later without duplicating the id-format logic.
+- `remoteSyncEngine.ts`'s `connectStream()` listens for `EventSource`'s
+  `error` event, but doesn't warn immediately — a bare `error` fires on
+  every ordinary transient reconnect blip too (`EventSource` retries
+  natively every few seconds), and warning on each of those would be
+  noise. Instead: start a 15s timer on the first `error`; if `open` fires
+  again before it elapses, clear the timer silently; if it elapses first,
+  report the issue. `open` (or leaving the vault via `stopSync`) clears
+  any active warning the same way.
+
+### A real finding while testing this: Vite's dev proxy swallows upstream connection death
+
+First attempt at browser verification (kill the sync-server, wait, expect
+the banner) failed every time — the banner never appeared even after 30s.
+Root-caused by testing three ways instead of assuming the new code was
+wrong:
+
+1. A raw Node `http.request` connected **directly** to the sync-server
+   (bypassing Vite) got `response error 'aborted'` within ~1s of the
+   process dying — the browser-level primitives this feature depends on
+   work correctly.
+2. The failing browser test was going through `pnpm dev`'s Vite dev
+   server, which proxies `/sync/*` to the sync-server
+   (`vite.config.ts`, added in an earlier session's dev-workflow fix).
+   Network-level tracing (`page.on("requestfailed")`) showed **zero**
+   failure events reaching the browser when the upstream died through
+   that proxy — the client-facing connection just hung, open and silent,
+   forever.
+3. Rebuilding the client (`vite build`) and pointing the browser directly
+   at the sync-server's own static-file serving (`STATIC_DIR=./dist`,
+   matching the single-process production topology, no proxy hop)
+   reproduced the fix working exactly as designed: banner appeared at
+   15057ms (the 15s threshold), cleared 3014ms after the server came back
+   with no reload needed.
+
+So this is a genuine gap in the **Vite dev-proxy path specifically**
+(likely Vite's underlying proxy not propagating an upstream socket error
+to the client response for a long-lived streaming connection), not a bug
+in this feature or in production topology. Not fixed here - fixing it
+would mean digging into Vite's proxy `configure` hook to explicitly
+forward upstream error/close events, which is dev-workflow tooling, not
+app or sync-server code, and wasn't asked for. Worth knowing: **testing
+sync-server outages via `pnpm dev` + `pnpm dev:server` will not show this
+banner** even though it works correctly in production (single process) or
+potentially behind Caddy (untested here, but Caddy is a more mature proxy
+implementation than Vite's dev-only one and plausibly doesn't share this
+gap) — use a built `dist/` served directly by the sync-server (as done
+here) to test this class of behavior going forward.
+
+### Verified
+
+- Direct `http.request` diagnostic: connection-death signal fires
+  correctly within ~1s at the raw Node HTTP level.
+- Full browser pass (Playwright, built client served directly by the
+  sync-server, no Vite proxy): pair a vault, kill the sync-server, banner
+  appears after ~15s with the expected text; restart the sync-server,
+  banner clears within ~3s automatically, no reload required.
+- `tsc --noEmit` clean on the client's root `tsconfig.json`.
+
+### Files touched this step
+
+- `src/utils/runtimeHealth.ts` — `reportRuntimeIssue` now returns its
+  issue id.
+- `src/utils/remoteSyncEngine.ts` — debounced connection-lost detection
+  and warning in `connectStream()`; cleanup in `stopSync()`.
+
+### Not yet done
+
+The Vite dev-proxy gap described above (cosmetic to local dev testing
+only, not a production issue) is unfixed. Whether Caddy has the same gap
+in the horizontally-scaled deployment path is unverified.
+
+## Step 9 — Deeper soak testing: hard-kill: DONE (found and fixed a real durability gap)
+
+Goal: close the two gaps step 6 explicitly flagged as not covered —
+`kill -9` instead of a graceful `systemctl restart`, and sustained load
+rather than a single burst. Hard-kill testing surfaced a real, previously
+undocumented durability gap significant enough to stop and report before
+continuing to the sustained-load half.
+
+### Finding: Redis has no AOF, and a hard kill can silently lose already-accepted writes
+
+Checked Redis's actual running config before testing (`redis-cli CONFIG
+GET appendfsync`/`appendonly`) rather than trusting the step-2 progress
+log's claim that `appendonly yes` was set — it wasn't:
+`/etc/redis/redis.conf` line 1405 reads `appendonly no`. Persistence is
+RDB-snapshot-only, on the Redis defaults (`save 3600 1 300 100 60 10000`
+— i.e. no snapshot at all for a short burst that doesn't cross 100+
+changed keys within 5 minutes or 10,000 within 1 minute). Whether this is
+config drift (an earlier session's `CONFIG SET appendonly yes` was never
+followed by `CONFIG REWRITE`, so a later `systemctl restart redis-server`
+- and this session did several - silently reverted it back to the file's
+`no`) or the step-2 claim was simply never actually verified against the
+file is unclear; either way, this box's Redis has not had AOF durability
+at any point this session's restarts were tested against.
+
+**Reproduced twice, with precise timing, against a live sync-server +
+materializer:**
+
+- **Run 1** (300 writes; a few extra seconds elapsed before the kill
+  landed, due to an initial `pgrep -f` match ambiguity that needed a
+  manual retry): all 300 were accepted (HTTP 200). By the time Redis was
+  hard-killed (`kill -9`, not `systemctl restart`), that extra delay had
+  given the materializer enough time to fully drain the stream — all 300 confirmed durably in Neo4j afterward
+  (`MATCH (r:Record {graph: $vaultId}) RETURN count(r)` → 300). Record
+  *data* survived. But: **the vault's own meta entry (Redis-only:
+  `vaultId` → `tokenHash`, `vaults:index` membership) did not** - gone
+  entirely after the restart, confirmed via `KEYS vault:<id>:*` (empty)
+  and `SISMEMBER vaults:index <id>` (0). `/sync/snapshot` for that vault
+  now returns 404 "unknown vault" **permanently** - there is no recovery
+  path; `vaultToken` was only ever a hash, and that hash is gone too. The
+  vault's data still technically exists in Neo4j, orphaned, with no way
+  to reach it through the API again.
+- **Run 2** (400 writes, kill fired ~22ms after the last response, using a
+  pre-resolved Redis pid to remove the `pgrep` round trip from the hot
+  path): all 400 accepted (HTTP 200) - and **zero** survived anywhere.
+  Not in Redis (same total vault loss as run 1), and this time not in
+  Neo4j either (`MATCH (r:Record {graph: $vaultId}) RETURN count(r)` →
+  0) - the materializer never got a chance to consume any of the 400
+  stream entries before the kill.
+
+### Why this matters beyond "Redis lost some data"
+
+The client's outbox (`remoteSyncEngine.ts`'s `flushOutbox`) treats an
+HTTP 200 from `POST /sync/patches` as delivery confirmation and drops the
+entry from its local retry queue right after
+(`response.ok || response.status === 409` → dequeue). Run 2 shows that's
+currently **not a safe assumption**: a write can be told "accepted" and
+then permanently vanish with the client never finding out, because
+nothing durable actually happened yet at the moment of that 200 - it was
+sitting only in Redis's in-memory Stream + store hash, unmaterialized,
+with no AOF backing it. This directly undercuts the "at least once
+delivery" framing in `remote-sync-architecture.md` §5's idempotency
+section, which assumes a 200 means the write is safely queued for
+replay, not that it might still evaporate.
+
+Separately, run 1 shows an *independent* second gap even when record data
+does survive: vault meta (identity + token) has always lived Redis-only
+by explicit design (step 3's snapshot doc comment - "full recovery from a
+*total* Redis data loss (including vault meta/tokens, which still live
+only in Redis) is out of scope here"), but that decision was scoped
+against *total* data loss, not against an ordinary crash between RDB
+snapshots under otherwise-normal operation. A vault can now go completely
+and permanently unreachable from a single unlucky `kill -9`, `OOM kill`,
+or power loss, independent of whether its underlying records happen to
+survive.
+
+### Fix applied and re-verified: `appendonly yes`, persisted for real this time
+
+Reported to the user before changing anything, since flipping Redis's
+persistence mode is an infrastructure decision, not a pure code change.
+Approved: enable AOF now; leave the separate vault-meta-durability design
+question (should vault meta also live in Neo4j, not Redis-only?) as a
+flagged, not-yet-decided item rather than folding it into this fix.
+
+- `redis-cli CONFIG SET appendonly yes` followed by `CONFIG REWRITE` (the
+  step this session's Redis was evidently missing before - `CONFIG SET`
+  alone doesn't survive a restart, which is exactly how this drifted back
+  to `no` despite step 2's original claim). Confirmed persisted:
+  `/etc/redis/redis.conf` now reads `appendonly yes`, and a `systemctl
+  restart redis-server` afterward preserved `DBSIZE` exactly (1184 before
+  and after) with `CONFIG GET appendonly` still reporting `yes` post-
+  restart - it's actually in the file this time, not just the running
+  config.
+- **Re-ran the exact same hard-kill scenario that lost everything in run
+  2** (400 writes, `kill -9` fired ~20ms after the last accepted
+  response): this time, after Redis restarted, `HLEN`/`XLEN` on the
+  vault's store/stream both read 400, `vault:<id>:meta` existed, and
+  `GET /sync/snapshot` returned all 400 records with a 200 - full
+  recovery, both the vault's identity and every record.
+
+### Not yet decided
+
+The vault-meta-durability design question from above (Redis-only vs. also
+mirrored into Neo4j) remains open - AOF narrows Redis's own loss window
+to about a second, but doesn't change *what* lives only in Redis. Not
+acted on here per the user's explicit choice to scope this fix to AOF
+only.
+
+### Sustained load (3 minutes, 10 writes/s, 50 idle SSE connections)
+
+Deliberately compressed relative to a real production soak (which would
+run hours/days) given practical time limits — still a meaningfully
+different shape of test than step 6's single burst: steady, continuous
+load with periodic sampling, not one spike.
+
+- 1,790 writes sent over 3 minutes at a steady 10/s, alongside 50 held-
+  open idle SSE connections. **Zero errors, zero rejections** - every
+  single write accepted.
+- All 1,790 eventually confirmed materialized in Neo4j
+  (`/sync/snapshot` record count matched accepted count exactly).
+- Memory sampled every 15s for both the sync-server and materializer
+  processes (`VmRSS` via `/proc/<pid>/status`) and for Redis
+  (`used_memory`): both Node processes grew from a ~86-90MB baseline to
+  ~103MB (sync-server) / ~118MB (materializer) over the first ~90-100
+  seconds, then **visibly plateaued** for the remaining ~80-90 seconds of
+  the run (e.g. materializer: 118164 kB → 118256 kB → 118196 kB → 118644
+  kB → 118776 kB → 118600 kB across the last six 15s samples - noise, not
+  a trend). Consistent with ordinary V8 heap growth settling under new
+  load, not an unbounded leak - though 3 minutes is still short enough
+  that a slow leak could be hiding under the noise floor; a real multi-
+  hour run would be needed to fully rule that out. Redis memory grew
+  linearly and predictably with the actual data volume stored (2.5MB →
+  3.7MB for ~1,790 two-field records) - expected, not a leak.
+
+### Not yet done
+
+A true multi-hour (or longer) endurance run, which would be needed to
+confidently rule out a slow memory leak the way this compressed 3-minute
+run can't. Nothing else scoped to step 9 remains.
