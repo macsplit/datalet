@@ -212,35 +212,22 @@ different treatment:
 
 ## 6. Server architecture
 
-```
-                     ┌─────────────────────────────────────────┐
-                     │      reverse proxy (Caddy/nginx)         │
-                     │   TLS, SSE-safe (buffering off), LB      │
-                     └───────────────┬───────────────────────────┘
-                                      │
-                 ┌────────────────────┼────────────────────┐
-                 ▼                    ▼                    ▼
-          ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-          │ sync-server  │      │ sync-server  │      │ sync-server  │   (stateless,
-          │  instance 1  │      │  instance 2  │      │  instance N  │    scale out)
-          │ - serves /   │      │              │      │              │
-          │ - SSE stream │      │              │      │              │
-          │ - POST /sync │      │              │      │              │
-          └──────┬───────┘      └──────┬───────┘      └──────┬───────┘
-                 │                     │                     │
-                 └──────────┬──────────┴──────────┬──────────┘
-                            ▼                     ▼
-                     ┌─────────────┐       ┌───────────────┐
-                     │    Redis     │       │  materializer  │  (one logical
-                     │ Streams +    │──────▶│  writer(s)     │   writer per vault,
-                     │ pub/sub +    │consume│  consumer group│   horizontally
-                     │ dedupe/cache │       └───────┬────────┘   shardable)
-                     └─────────────┘               ▼
-                                              ┌───────────┐
-                                              │   Neo4j    │  durable store
-                                              │ (graph db) │  + snapshot source
-                                              └───────────┘
-```
+![Server architecture](diagrams/topology.png)
+
+- **Reverse proxy** (Caddy/nginx): TLS termination, load balancing across
+  instances, SSE-safe (response buffering off — see step 2's `flushHeaders`
+  finding in `remote-sync-progress.md` for why this matters for SSE
+  specifically).
+- **sync-server instances**: stateless, scale out freely. Each one serves
+  the built client, the SSE stream, and `POST /sync/patches` — any
+  instance can serve any vault.
+- **Redis**: Streams (the ordered patch log + fanout mechanism), plus
+  request dedupe/idempotency keys and the short-lived materialized-view
+  cache. Not the durable store.
+- **materializer**: one logical writer per vault (a Redis Streams
+  consumer group), horizontally shardable across multiple worker
+  processes if write volume ever needs it.
+- **Neo4j**: the durable store and `/sync/snapshot`'s source.
 
 ### 6.1 Ingest tier (the "sync-server" processes)
 
