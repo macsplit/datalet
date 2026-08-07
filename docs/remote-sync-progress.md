@@ -982,3 +982,45 @@ load with periodic sampling, not one spike.
 A true multi-hour (or longer) endurance run, which would be needed to
 confidently rule out a slow memory leak the way this compressed 3-minute
 run can't. Nothing else scoped to step 9 remains.
+
+## Step 10 — Polished reference doc with diagrams: DONE
+
+Goal: implement §12's plan (deferred until the build order settled — it
+has). Write a clean, plain-language reference doc summarizing the whole
+system as it stands, distinct in purpose from this file (narrative build
+log) and `remote-sync-architecture.md` (design reasoning) — for someone
+who wants "what is this and how does it work" without reading either of
+those in full.
+
+- New `docs/remote-sync.md`: what it does, components, write/read paths,
+  conflict resolution, data model, endpoint table, then — per explicit
+  instruction — **edge cases**, **non-functional requirements**, and
+  **development process** kept as separate sections rather than woven
+  through the architecture description.
+- Two diagrams, D2 source + rendered PNG committed together in
+  `docs/diagrams/`: `topology.d2`/`.png` (the system diagram, replacing
+  §6's ASCII art for this doc) and `write-path.d2`/`.png` (a sequence
+  diagram of the accept → fanout → materialize flow). Rendered via the
+  user's d2topng deployment - confirmed the public instance *does*
+  require its bearer token (§12's architecture-doc text had flagged this
+  as unconfirmed).
+- `secrets.md` documents the `D2TOPNG_API_TOKEN` requirement (value not
+  committed, same convention as `NEO4J_PASSWORD`) and the regeneration
+  command, for whenever a `.d2` source file changes.
+- `remote-sync-architecture.md` §12 updated from "not started" to "DONE".
+
+### Files touched this step
+
+- `docs/remote-sync.md` — new.
+- `docs/diagrams/{topology,write-path}.{d2,png}` — new.
+- `docs/remote-sync-architecture.md` §12 — marked done, corrected the
+  "unconfirmed" auth note now that it's been tested.
+- `secrets.md` — new "Diagram regeneration" section.
+
+### Not yet done
+
+Nothing scoped to this step remains — this closes every item raised
+across this session that had an owner and a "not started"/"not yet done"
+marker, except the two explicitly-still-open residual items already
+called out above (vault-meta durability design question; a true
+multi-hour endurance run).

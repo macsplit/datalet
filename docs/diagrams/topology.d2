@@ -1,0 +1,22 @@
+direction: right
+
+client: "Client\n(browser)"
+proxy: "Reverse proxy\n(Caddy)\nTLS, SSE-safe"
+sync1: "sync-server\ninstance 1"
+sync2: "sync-server\ninstance N"
+redis: "Redis\nstreams + store + tombstones" {
+  shape: cylinder
+}
+materializer: "materializer\n(consumer group)"
+neo4j: "Neo4j\ndurable system of record" {
+  shape: cylinder
+}
+
+client -> proxy
+proxy -> sync1
+proxy -> sync2
+sync1 -> redis
+sync2 -> redis
+redis -> materializer: "consumes stream"
+materializer -> neo4j: "upserts / tombstones"
+sync1 -> neo4j: "/sync/snapshot reads"

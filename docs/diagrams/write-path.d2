@@ -1,0 +1,10 @@
+shape: sequence_diagram
+
+Client -> Server: "POST /sync/patches (Bearer token)"
+Server -> Redis: "run applyBatch.lua"
+Redis -> Redis: "accept/reject: structural\nwrite-once, HLC last-write-wins,\nset merge, tombstone check"
+Redis -> Server: "accepted + seq"
+Server -> Client: "200 { accepted, seq }"
+Redis -> "Other client": "live fanout (SSE)"
+Materializer -> Redis: "XREADGROUP (consumer group)"
+Materializer -> Neo4j: "upsert / tombstone"
