@@ -2,7 +2,10 @@
 # Starts the full local dev stack: the sync-server + materializer (backing
 # /sync/* - see server/ and docs/remote-sync-architecture.md) alongside the
 # Vite client. Requires Redis and Neo4j already running (see secrets.md)
-# and NEO4J_PASSWORD exported in your shell.
+# and NEO4J_PASSWORD exported in your shell. A handful of other env vars
+# (rate-limit and tombstone-retention tuning - see secrets.md's "Optional
+# tuning env vars" table) are optional and pass through automatically if
+# exported before this script runs; nothing here needs to change for them.
 set -e
 
 if [ -z "$NEO4J_PASSWORD" ]; then
