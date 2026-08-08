@@ -34,6 +34,11 @@ const APPLIED_BATCH_RING = 512;
 export type VaultConfig = { vaultId: string; vaultToken: string; nodeId: string };
 
 type OutboxEntry = { batchId: string; hlc: string; shape: string; patches: Patch[] };
+type PatchResponse = {
+  acceptedCount?: number;
+  submittedCount?: number;
+  reason?: string;
+};
 
 function readJson<T>(key: string): T | undefined {
   try {
@@ -222,10 +227,28 @@ async function flushOutbox(config: VaultConfig) {
         return;
       }
 
-      // A 409 (superseded by a newer edit — ordinary last-write-wins
-      // fallout) and a 2xx (applied) both resolve this entry; only a
-      // network failure or server error should be retried.
+      // Rejections are terminal under field-level LWW, but no longer silent:
+      // the response counts cover both an all-rejected 409 and patches dropped
+      // from an otherwise accepted batch.
       if (response.ok || response.status === 409) {
+        const result = await response.json().catch(() => ({})) as PatchResponse;
+        const submittedCount = Number.isFinite(result.submittedCount)
+          ? Math.max(0, Number(result.submittedCount))
+          : entry.patches.length;
+        const acceptedCount = response.status === 409
+          ? 0
+          : Number.isFinite(result.acceptedCount)
+            ? Math.max(0, Number(result.acceptedCount))
+            : submittedCount;
+        const droppedCount = Math.max(0, submittedCount - acceptedCount);
+        if (droppedCount > 0) {
+          const reason = result.reason || "superseded by a newer remote value";
+          reportRuntimeIssue(
+            `${droppedCount} of ${submittedCount} local ${submittedCount === 1 ? "change was" : "changes were"} not applied: ${reason}.`,
+            "Remote sync discarded changes",
+            "warning",
+          );
+        }
         rememberApplied(entry.batchId);
         queue = queue.slice(1);
         saveOutbox(config.vaultId, queue);

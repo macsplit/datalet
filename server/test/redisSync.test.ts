@@ -89,6 +89,29 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
   assert.equal(stale.accepted, false);
   assert.match(stale.reason, /superseded/);
 
+  const partial = await applyBatch(vaultId, {
+    ...initial,
+    batchId: "batch-partial",
+    hlc: "000000000001500-000000-node-b",
+    patches: [
+      { op: "add", path: `/${subject}/@id`, value: "duplicate-identity" },
+      { op: "add", path: `/${subject}/subtitle`, value: "accepted field" },
+    ],
+  });
+  assert.equal(partial.accepted, true);
+  assert.equal(partial.acceptedCount, 1);
+  assert.equal(partial.submittedCount, 2);
+  assert.match(partial.reason ?? "", /superseded/);
+  assert.deepEqual(await applyBatch(vaultId, {
+    ...initial,
+    batchId: "batch-partial",
+    hlc: "000000000001500-000000-node-b",
+    patches: [
+      { op: "add", path: `/${subject}/@id`, value: "duplicate-identity" },
+      { op: "add", path: `/${subject}/subtitle`, value: "accepted field" },
+    ],
+  }), partial);
+
   const deleted = await applyBatch(vaultId, {
     ...initial,
     batchId: "batch-delete",
@@ -121,7 +144,7 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
   assert.ok(replay);
   assert.deepEqual(
     replay.map((entry) => entry.batchId),
-    ["batch-initial", "batch-delete", "batch-fresh-revival"],
+    ["batch-initial", "batch-partial", "batch-delete", "batch-fresh-revival"],
   );
 
   const durableSubject = "durable-subject";

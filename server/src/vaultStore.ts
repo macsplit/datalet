@@ -53,8 +53,8 @@ export type LogEntry = {
 };
 
 export type ApplyResult =
-  | { accepted: true; seq: number }
-  | { accepted: false; seq: number; reason: string };
+  | { accepted: true; seq: number; acceptedCount: number; submittedCount: number; reason?: string }
+  | { accepted: false; seq: number; acceptedCount: number; submittedCount: number; reason: string };
 
 const metaKey = (vaultId: string) => `vault:${vaultId}:meta`;
 const seqKey = (vaultId: string) => `vault:${vaultId}:seq`;
@@ -187,7 +187,7 @@ export async function mirrorVaultMetadataToNeo4j(): Promise<number> {
 }
 
 export async function applyBatch(vaultId: string, input: PatchBatchInput): Promise<ApplyResult> {
-  const [accepted, seq, reason] = await redis().applyBatch(
+  const [accepted, seq, reason, acceptedCount, submittedCount] = await redis().applyBatch(
     seqKey(vaultId),
     storeKey(vaultId),
     hlcKey(vaultId),
@@ -203,8 +203,20 @@ export async function applyBatch(vaultId: string, input: PatchBatchInput): Promi
     input.batchId,
   );
   return accepted === 1
-    ? { accepted: true, seq }
-    : { accepted: false, seq, reason: reason || "rejected" };
+    ? {
+        accepted: true,
+        seq,
+        acceptedCount,
+        submittedCount,
+        ...(reason ? { reason } : {}),
+      }
+    : {
+        accepted: false,
+        seq,
+        acceptedCount,
+        submittedCount,
+        reason: reason || "rejected",
+      };
 }
 
 /**

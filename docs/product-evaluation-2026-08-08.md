@@ -111,9 +111,9 @@ need broader regression coverage.
 ## Smaller things worth knowing
 
 - Conflict resolution is field-level LWW with no history, no undo, and
-  no merge UI. A losing write returns 409 and is silently discarded
-  client-side (`src/utils/remoteSyncEngine.ts:227`) — correct per the
-  design, invisible to the user.
+  no merge UI. Fully and partially superseded writes now raise a visible
+  warning with the server's reason and dropped-patch count; the winning value
+  still converges through SSE without a second rollback path.
 - Recovery from a stale cursor is wholesale graph replacement plus a
   forced page reload (`replaceGraphAndReload`). Unpushed edits survive
   in the outbox, but it is disruptive.
@@ -144,9 +144,9 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-next likely application-layer gaps are visible conflict losses,
-non-destructive stale-cursor recovery, file fields, and undo/history for
-editing mistakes. The ordered plan for the rest is `product-gaps-plan.md`.
+next likely application-layer gaps are non-destructive stale-cursor recovery,
+file fields, and undo/history for editing mistakes. The ordered plan for the
+rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

@@ -21,7 +21,7 @@
 -- ARGV[6] stream MAXLEN (approximate trim)
 -- ARGV[7] batchId
 --
--- Returns {accepted (0/1), seq, reason}
+-- Returns {accepted (0/1), seq, reason, accepted patch count, submitted patch count}
 
 local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey =
   KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
@@ -33,26 +33,31 @@ local function currentSeq()
   return tonumber(s) or 0
 end
 
-local existingSeq = redis.call('GET', batchKey)
-if existingSeq then
-  return { 1, tonumber(existingSeq), '' }
+local existingResult = redis.call('GET', batchKey)
+if existingResult then
+  local decodedOk, decoded = pcall(cjson.decode, existingResult)
+  if decodedOk and type(decoded) == 'table' then
+    return { 1, decoded.seq, decoded.reason or '', decoded.acceptedCount, decoded.submittedCount }
+  end
+  -- Compatibility with idempotency entries written before counts existed.
+  return { 1, tonumber(existingResult), '', 0, 0 }
 end
 
 local ok, patches = pcall(cjson.decode, patchesJson)
 if not ok or type(patches) ~= 'table' then
-  return { 0, currentSeq(), 'malformed patch batch' }
+  return { 0, currentSeq(), 'malformed patch batch', 0, 0 }
 end
 
 local MAX_BATCH = 5000
 local MAX_PATH = 16384
 if #patches > MAX_BATCH then
-  return { 0, currentSeq(), 'batch too large' }
+  return { 0, currentSeq(), 'batch too large', 0, #patches }
 end
 for i = 1, #patches do
   local p = patches[i]
   if type(p) ~= 'table' or (p.op ~= 'add' and p.op ~= 'remove')
       or type(p.path) ~= 'string' or #p.path > MAX_PATH then
-    return { 0, currentSeq(), 'malformed patch in batch' }
+    return { 0, currentSeq(), 'malformed patch in batch', 0, #patches }
   end
 end
 
@@ -112,6 +117,8 @@ local touchedSet = {}
 -- correctly.
 local tombstoneState = {}
 local anyTombstoneRejected = false
+local anySupersededRejected = false
+local anyMalformedTarget = false
 
 for i = 1, #patches do
   local patch = patches[i]
@@ -157,16 +164,34 @@ for i = 1, #patches do
         if deletedHlc ~= false then
           tombstoneState[subjectId] = 'clear'
         end
+      else
+        anySupersededRejected = true
       end
     end
+  else
+    anyMalformedTarget = true
   end
 end
 
 if #accepted == 0 then
   if anyTombstoneRejected then
-    return { 0, currentSeq(), 'subject was deleted after this edit was made' }
+    return { 0, currentSeq(), 'subject was deleted after this edit was made', 0, #patches }
   end
-  return { 0, currentSeq(), 'superseded by a newer edit to the same field' }
+  if anyMalformedTarget then
+    return { 0, currentSeq(), 'malformed patch target', 0, #patches }
+  end
+  return { 0, currentSeq(), 'superseded by a newer edit to the same field', 0, #patches }
+end
+
+local partialReason = ''
+if #accepted < #patches then
+  if anyTombstoneRejected then
+    partialReason = 'subject was deleted after this edit was made'
+  elseif anyMalformedTarget then
+    partialReason = 'malformed patch target'
+  elseif anySupersededRejected then
+    partialReason = 'superseded by a newer edit to the same field'
+  end
 end
 
 -- A JSON value's emptiness makes {} and [] indistinguishable after
@@ -263,6 +288,11 @@ local entry = {
   patches = accepted,
 }
 redis.call('XADD', streamKey, 'MAXLEN', '~', streamMaxLen, seq .. '-0', 'data', cjson.encode(entry))
-redis.call('SET', batchKey, seq, 'EX', batchTtl)
+redis.call('SET', batchKey, cjson.encode({
+  seq = seq,
+  reason = partialReason,
+  acceptedCount = #accepted,
+  submittedCount = #patches,
+}), 'EX', batchTtl)
 
-return { 1, seq, '' }
+return { 1, seq, partialReason, #accepted, #patches }

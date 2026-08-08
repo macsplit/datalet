@@ -22,7 +22,7 @@ declare module "ioredis" {
     /**
      * Atomically accept/reject and apply one patch batch. See
      * redis/applyBatch.lua for the full contract. Returns
-     * [accepted (0 or 1), seq, reason].
+     * [accepted (0 or 1), seq, reason, accepted count, submitted count].
      */
     applyBatch(
       seqKey: string,
@@ -38,7 +38,13 @@ declare module "ioredis" {
       batchTtlSeconds: string,
       streamMaxLen: string,
       batchId: string,
-    ): Result<[accepted: number, seq: number, reason: string], Context>;
+    ): Result<[
+      accepted: number,
+      seq: number,
+      reason: string,
+      acceptedCount: number,
+      submittedCount: number,
+    ], Context>;
   }
 }
 

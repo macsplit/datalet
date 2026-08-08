@@ -152,12 +152,11 @@ only the short-lived ticket returned by `/sync/stream-ticket`.
 - **Two offline nodes create the same record independently** — the
   second create is deduped (write-once identity), not double-applied.
 - **Two nodes edit the same field concurrently** — HLC decides the
-  winner; the losing batch gets `409` with a "superseded" reason. Note that
-  the *server* explains itself but the *client* does not: `remoteSyncEngine.ts`
-  treats the 409 as resolved and discards it without telling the user, and a
-  batch where only some patches lose returns `200` carrying no indication at
-  all. Correct convergence, invisible outcome — see step 5 of
-  `product-gaps-plan.md`.
+  winner; the losing batch gets `409` with a "superseded" reason. The server
+  also reports accepted/submitted counts for a batch where only some patches
+  lose. The client resolves either outcome without retrying it and raises a
+  visible warning containing the dropped count and reason; the winning value
+  still arrives through SSE.
 - **A node replays a stale edit to an already-deleted record** — rejected
   at the point of acceptance (a Redis-side tombstone check), so it can't
   resurrect the record. A genuinely *newer* write to that same subject

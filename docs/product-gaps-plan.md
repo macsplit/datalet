@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–4 and 9a — reader tools, expanded fields, offline shell, stale-edit fix |
-| **Next** | Step 5 — make discarded sync writes visible |
+| **Done** | Steps 1–5 and 9a — reader tools, fields, offline shell, honest sync conflicts, stale-edit fix |
+| **Next** | Step 6 — non-destructive stale-cursor recovery |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -226,7 +226,16 @@ the app boots and previously created records render.
 
 ---
 
-## 5. Make discarded writes visible
+## 5. Make discarded writes visible — DONE
+
+Shipped across the Redis Lua reply, typed Redis client, HTTP response, and
+browser outbox. Accepted and submitted patch counts now survive idempotent
+retries; a 409 or a partially accepted 200 raises a visible warning with the
+dropped count and server reason. The winning SSE update remains the sole
+convergence path—there is deliberately no competing rollback. Live integration
+coverage checks partial acceptance and its replayed result when Redis/Neo4j are
+available; Playwright stubs both full and partial rejection responses and
+asserts the warning text.
 
 **Why here.** Depends on nothing above, but it needs a small server change, so
 it opens the sync-tier half of the plan. The evaluation flags the 409 path as
