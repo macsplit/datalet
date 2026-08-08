@@ -4,10 +4,11 @@ A browser-based builder for defining data schemas and turning them into working
 record-management screens. Schemas, navigation tabs, layouts, blocks, and field
 widgets are stored as graph data and can be changed through the Settings UI.
 
-The application runs entirely in the browser. It has no server component,
-account system, wallet, API keys, or network dependency. Data is stored in the
-current browser profile and synchronized between open tabs with
-`BroadcastChannel`.
+The application is local-only by default: it needs no account, wallet, API
+key, or server to store and use data in the current browser profile. Open tabs
+for the same site synchronize through `BroadcastChannel`. An optional sync
+server can pair a private vault across devices; leaving sync unconfigured
+keeps the application entirely browser-local.
 
 ## Requirements
 
@@ -28,6 +29,12 @@ Create a production build with:
 ```bash
 pnpm build
 ```
+
+To run the optional cross-device sync stack, install Redis and Neo4j, export
+`NEO4J_PASSWORD`, and use `./run.sh`. See
+[`docs/remote-sync.md`](docs/remote-sync.md) for the current architecture and
+[`docs/remote-sync-deployment.md`](docs/remote-sync-deployment.md) for
+deployment options.
 
 ## Building an interface
 
@@ -52,6 +59,7 @@ A schema describes one record type. Its ordered fields support:
 - Number
 - Boolean
 - Enum
+- Reference to a record in another schema
 - Required, optional, or multi-value cardinality
 
 Enum fields can define an editable list of allowed values. Changes to a schema
@@ -65,12 +73,15 @@ A tab contains an ordered tree of blocks:
 - **Layout blocks** recursively arrange child blocks in a stack, row, or grid.
 - **Data blocks** connect a schema to its records and rendering configuration.
 
+Data blocks can filter records by a configured field/value and sort by record
+id or any schema field in ascending or descending order.
+
 Data blocks can contain these widgets:
 
 - **Panel title** displays the block heading.
 - **Add button** creates a record with schema-derived defaults.
 - **Field** binds a schema field to a text, number, currency, dropdown,
-  multi-select, or checkbox control.
+  multi-select, checkbox, or record-reference control.
 - **Edit/delete actions** enables record editing and confirmed deletion.
 
 New data blocks receive the standard title, add, edit/delete, and field widgets.
@@ -80,16 +91,32 @@ If a schema later gains fields, **Add missing fields** adds widgets for them.
 
 All application data is held in the current browser profile using
 `localStorage`. It persists across reloads and is synchronized between open
-tabs for the same site.
+tabs for the same site. Records are stored under separate keys, so an ordinary
+edit persists only the touched records rather than serializing the whole
+store.
 
-Data is not remotely backed up, encrypted, or synchronized between devices.
-Clearing the site's browser storage deletes the application data.
+When optional remote sync is configured, the same data and builder metadata
+are copied to a paired vault across devices. Synced data is not end-to-end
+encrypted: the server can read it. Clearing browser storage still deletes the
+local copy; an unpaired browser has no remote recovery source.
+
+Pairing switches the app to the vault graph but does not automatically migrate
+records from the previous unpaired graph. To seed a new vault with existing
+local data, export a backup before pairing and import it after pairing.
 
 Persistence writes are coalesced during rapid edits. Invalid or excessive
 updates, oversized local data, failing subscriptions, malformed block cycles,
 and excessive block depth are stopped by runtime safety limits. Recoverable
 problems appear in an on-screen error banner; render failures show a reload
 screen instead of leaving the page unresponsive.
+
+Run the regression suites with `pnpm test`. Client storage/bootstrap coverage
+uses Playwright; server conflict and Redis integration coverage uses Node's
+test runner.
+
+Settings also provides JSON export/import for the active graph. Backups include
+user records and the schemas, tabs, blocks, widgets, and settings needed to
+render them in a fresh browser profile.
 
 ## Architecture
 
@@ -125,7 +152,10 @@ src/
     ├── dynamicSchema.ts        # Runtime record-shape construction
     ├── localNgEngine.ts        # Browser persistence and synchronization
     ├── ngSession.ts            # Browser-local ORM session
+    ├── remoteSyncEngine.ts     # Optional vault sync and offline outbox
     └── runtimeHealth.ts        # Runtime issue reporting and limits
+server/
+└── src/                        # HTTP/SSE ingest, Redis, Neo4j materializer
 ```
 
 ## Metadata model

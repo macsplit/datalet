@@ -1,7 +1,9 @@
 # Remote Sync Layer — Reproducible Debian Deployment
 
-Status: proposal, companion to `remote-sync-architecture.md`. No code exists
-yet — this documents the target deployment so it can be built to match.
+Status: reference deployment for the implemented `server/` sync tier. The
+Docker Compose, Dockerfile, proxy, and systemd snippets below are templates;
+the repository does not currently contain a ready-made `deploy/` directory,
+so create those files from the snippets or adapt them to the target host.
 
 Target: Debian 12 ("bookworm") or 13 ("trixie"), amd64/arm64. Two supported
 paths are documented: **Docker Compose** (recommended — fewer moving parts
@@ -91,6 +93,25 @@ services:
       timeout: 3s
       retries: 5
 
+  materializer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.sync-server
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      ROLE: "materializer"
+      REDIS_URL: "redis://redis:6379"
+      NEO4J_URL: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      NODE_ENV: "production"
+    networks: [backend]
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -125,6 +146,9 @@ Notes:
   across instances — this is the "any instance can serve any vault" design
   from the architecture doc paying off operationally (no sticky sessions to
   configure).
+- `materializer` runs the same image with `ROLE=materializer`. Keep at least
+  one instance running: it consumes accepted Redis Stream entries into Neo4j,
+  which is what makes snapshots and durable recovery advance.
 - Neo4j Community, single instance: no built-in HA/clustering. That's an
   accepted trade for a reproducible single-server OSS setup (see
   architecture doc §6.4/§7); back it up on a schedule (§1.6 below) and if
@@ -159,11 +183,10 @@ EXPOSE 3000
 CMD ["node", "server-dist/index.js"]
 ```
 
-This assumes the sync server is added to this same repo (e.g. a `server/`
-directory building to `server-dist/`) rather than a separate project, so
-the deployable stays "one build, one image" per the requirement that the
-same process serves both the static UI and the sync endpoint. Adjust the
-build script names once that server code exists.
+The implemented sync server lives in this repository's `server/` directory
+and builds to `server-dist/`. The same process serves both `dist/` and the
+sync endpoints, keeping the deployable to one application image plus Redis,
+Neo4j, and the reverse proxy.
 
 ### 1.4 `Caddyfile`
 
@@ -341,6 +364,39 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now localgraph-sync
 ```
 
+Run the materializer as a second unit using the same artifact and environment.
+`/etc/systemd/system/localgraph-materializer.service`:
+
+```ini
+[Unit]
+Description=localgraph Redis-to-Neo4j materializer
+After=network.target redis-server.service neo4j.service
+Wants=redis-server.service neo4j.service
+
+[Service]
+Type=simple
+User=syncsrv
+Group=syncsrv
+WorkingDirectory=/opt/localgraph
+EnvironmentFile=/opt/localgraph/.env
+Environment=ROLE=materializer
+ExecStart=/usr/bin/node server-dist/index.js
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/localgraph
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now localgraph-materializer
+```
+
 ### 2.4 Reverse proxy (nginx alternative to Caddy)
 
 If not using Caddy, nginx needs explicit SSE-safe settings (Caddy does not
@@ -390,8 +446,8 @@ not disk/host loss.
 
 Vault tokens themselves need no server-side secret to configure: each is a
 random opaque bearer value generated at vault-creation time, stored only
-as a salted-in-practice-by-high-entropy SHA-256 hash per vault in Redis
-(`vaultStore.ts`) — there's no server-wide signing key, so there's nothing
+as a salted-in-practice-by-high-entropy SHA-256 hash per vault in Redis and
+Neo4j (`vaultStore.ts`) — there's no server-wide signing key, so there's nothing
 here to generate or rotate at the deployment level. A leaked *vault*
 token is rotated per-vault instead, via `POST /sync/vaults/rotate` (§9),
 exposed in the app as the "Rotate token" button in Settings.
@@ -408,11 +464,19 @@ curl -s https://sync.example.org/sync/health
 curl -s -X POST https://sync.example.org/sync/vaults
 # → {"vaultId":"...", "vaultToken":"..."}
 
-curl -N -H "Authorization: Bearer <token>" \
-  "https://sync.example.org/sync/stream?vault=<id>&since=0"
+STREAM_TICKET=$(curl -s -X POST \
+  -H "Authorization: Bearer <token>" \
+  "https://sync.example.org/sync/stream-ticket?vault=<id>" | jq -r .ticket)
+curl -N \
+  "https://sync.example.org/sync/stream?vault=<id>&since=0&ticket=${STREAM_TICKET}"
 # → holds the connection open, ": ping" comments every ~20s (architecture
 #   doc §7); confirms SSE isn't being buffered/killed by the proxy in front
 ```
 
 If the `curl -N` stream doesn't show ping comments arriving continuously,
 suspect proxy buffering first (§1.4 / §2.4) before suspecting the server.
+
+The ticket can still appear in access logs, but it is stream-only and expires
+after one hour. Configure the public proxy to redact query strings on
+`/sync/stream` where possible; unlike the original design, the long-lived
+vault bearer token never appears in that URL.

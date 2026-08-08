@@ -13,6 +13,9 @@ both.
   offline — this doesn't change.
 - Pairing a **sync vault** (an id + a secret token, created once) makes a
   browser also push/pull patches to a shared server.
+- Pairing switches the active graph; it does not automatically migrate an
+  existing unpaired graph. Export before pairing and import afterward to seed
+  a new vault with existing local data.
 - Multiple devices paired to the same vault converge to the same state.
 - No user accounts, no login — a vault's token is the only credential.
 
@@ -85,10 +88,12 @@ both.
 | `POST /sync/vaults/rotate?vault=` | issue a new token, invalidate the old one |
 | `POST /sync/patches?vault=` | submit a patch batch |
 | `GET /sync/snapshot?vault=` | full current state, from Neo4j |
-| `GET /sync/stream?vault=&since=` | live + replayed patches, SSE |
+| `POST /sync/stream-ticket?vault=` | exchange bearer auth for a one-hour stream-only ticket |
+| `GET /sync/stream?vault=&since=&ticket=` | live + replayed patches, SSE |
 
-All endpoints except `/sync/health` and vault creation require
-`Authorization: Bearer <vaultToken>`.
+All endpoints except `/sync/health` and vault creation are protected. HTTP
+requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint accepts
+only the short-lived ticket returned by `/sync/stream-ticket`.
 
 ---
 
@@ -100,10 +105,9 @@ All endpoints except `/sync/health` and vault creation require
   on its own.
 - Redis persistence: AOF (`appendonly yes`, `appendfsync everysec`) — up
   to ~1s of very recent writes can be lost in a hard crash, not more.
-- A vault's *identity* (its token hash) currently lives in Redis only —
-  losing it makes the vault permanently unreachable even if its record
-  data survived in Neo4j. Known residual risk, not yet addressed (see
-  Edge cases).
+- Vault identity and token hashes are mirrored into Neo4j. If Redis loses a
+  vault's metadata, the next authenticated request reconstructs the Redis
+  entry and vault index from Neo4j before serving the request.
 
 **Security**
 
@@ -111,6 +115,12 @@ All endpoints except `/sync/health` and vault creation require
   hash of it is stored server-side (never the plaintext), compared in
   constant time.
 - Token rotation available (`/sync/vaults/rotate`) for a leaked token.
+- Stream tickets are bound to the token generation, so rotation also rejects
+  old tickets when a stream connects or reconnects (an already-open SSE socket
+  remains open until it disconnects).
+- The browser never puts the long-lived vault token in the SSE URL. It uses
+  bearer auth once to obtain a short-lived, stream-only ticket, limiting the
+  credential exposed to ordinary proxy URL logging.
 - Vault creation is rate-limited per client IP (abuse/DoS mitigation —
   it's the one endpoint with no auth, since it's what issues the
   credential).

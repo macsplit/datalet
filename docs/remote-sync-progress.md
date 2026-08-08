@@ -541,7 +541,7 @@ in step 3, with `DETACH DELETE` in place of a property `SET`. Worth an
 explicit live pass (create → delete → fast-forward `TOMBSTONE_RETENTION_MS`
 to something small via env override → confirm the node and its tombstone
 both disappear from Neo4j and Redis) the next time this environment has
-Neo4j credentials available.
+Neo4j credentials available. **Resolved in Step 11 below.**
 
 ### Files touched this step
 
@@ -556,6 +556,8 @@ Neo4j credentials available.
 
 The live Neo4j-side purge query itself is unverified in this environment
 (see above). Security hardening beyond the bearer token remains untouched.
+Both statements are historical here and resolved by later steps, including
+Step 11 below.
 
 ## Step 6 — Load/soak test: DONE
 
@@ -842,7 +844,9 @@ here) to test this class of behavior going forward.
 
 The Vite dev-proxy gap described above (cosmetic to local dev testing
 only, not a production issue) is unfixed. Whether Caddy has the same gap
-in the horizontally-scaled deployment path is unverified.
+in the horizontally-scaled deployment path is unverified. **The Caddy path
+was verified in Step 11 below; the Vite-only behavior remains a development
+proxy limitation.**
 
 ## Step 9 — Deeper soak testing: hard-kill: DONE (found and fixed a real durability gap)
 
@@ -948,8 +952,8 @@ flagged, not-yet-decided item rather than folding it into this fix.
 The vault-meta-durability design question from above (Redis-only vs. also
 mirrored into Neo4j) remains open - AOF narrows Redis's own loss window
 to about a second, but doesn't change *what* lives only in Redis. Not
-acted on here per the user's explicit choice to scope this fix to AOF
-only.
+acted on in this step per the user's explicit choice to scope this fix to AOF
+only. **Resolved with Neo4j mirroring and Redis reconstruction in Step 11.**
 
 ### Sustained load (3 minutes, 10 writes/s, 50 idle SSE connections)
 
@@ -981,11 +985,13 @@ load with periodic sampling, not one spike.
 
 A true multi-hour (or longer) endurance run, which would be needed to
 confidently rule out a slow memory leak the way this compressed 3-minute
-run can't. Nothing else scoped to step 9 remains.
+run can't. Nothing else scoped to step 9 remains. **A two-hour run was started
+in Step 11, then deliberately curtailed at the user's request; heavy endurance
+testing remains deferred.**
 
 ## Step 10 — Polished reference doc with diagrams: DONE
 
-Goal: implement §12's plan (deferred until the build order settled — it
+Goal: implement §11's plan (deferred until the build order settled — it
 has). Write a clean, plain-language reference doc summarizing the whole
 system as it stands, distinct in purpose from this file (narrative build
 log) and `remote-sync-architecture.md` (design reasoning) — for someone
@@ -1002,18 +1008,18 @@ those in full.
   §6's ASCII art for this doc) and `write-path.d2`/`.png` (a sequence
   diagram of the accept → fanout → materialize flow). Rendered via the
   user's d2topng deployment - confirmed the public instance *does*
-  require its bearer token (§12's architecture-doc text had flagged this
+  require its bearer token (§11's architecture-doc text had flagged this
   as unconfirmed).
 - `secrets.md` documents the `D2TOPNG_API_TOKEN` requirement (value not
   committed, same convention as `NEO4J_PASSWORD`) and the regeneration
   command, for whenever a `.d2` source file changes.
-- `remote-sync-architecture.md` §12 updated from "not started" to "DONE".
+- `remote-sync-architecture.md` §11 updated from "not started" to "DONE".
 
 ### Files touched this step
 
 - `docs/remote-sync.md` — new.
 - `docs/diagrams/{topology,write-path}.{d2,png}` — new.
-- `docs/remote-sync-architecture.md` §12 — marked done, corrected the
+- `docs/remote-sync-architecture.md` §11 — marked done, corrected the
   "unconfirmed" auth note now that it's been tested.
 - `secrets.md` — new "Diagram regeneration" section.
 
@@ -1023,4 +1029,87 @@ Nothing scoped to this step remains — this closes every item raised
 across this session that had an owner and a "not started"/"not yet done"
 marker, except the two explicitly-still-open residual items already
 called out above (vault-meta durability design question; a true
-multi-hour endurance run).
+multi-hour endurance run). **Step 11 closed vault-meta durability; the
+multi-hour run was explicitly deferred after a shorter clean sample.**
+
+## Step 11 — Follow-up hardening and regression baseline: DONE
+
+Goal: close the concrete follow-ups in `project-next-steps.md` without
+changing the local-first default or expanding into accounts/permissions.
+
+### Durable vault metadata
+
+- Added a unique Neo4j `:VaultMeta` node containing vault id, token hash, and
+  creation/rotation timestamps. Plaintext tokens are still never stored.
+- Vault creation writes Neo4j first and compensates both stores on failure;
+  rotation updates Redis and Neo4j and restores the previous Redis metadata if
+  the durable update fails.
+- If Redis metadata or `vaults:index` is missing, `vaultExists()` reconstructs
+  it from Neo4j before authentication proceeds. Server startup backfills older
+  Redis-only vaults into Neo4j.
+- Live integration deleted a vault's Redis keys/index, then confirmed
+  `vaultExists`, bearer authentication, and `/sync/snapshot` recovered from the
+  durable metadata/records.
+
+### Stream credentials and proxy outage behavior
+
+- Added `POST /sync/stream-ticket`: bearer auth is exchanged for a hashed,
+  one-hour, stream-only random credential. `EventSource` URLs no longer contain
+  the durable vault token.
+- Tickets are bound to the current token-hash generation, so rotation rejects
+  old tickets on a new/reconnecting stream. Existing open sockets remain open
+  until they disconnect.
+- The client obtains a fresh ticket for explicit reconnects and retains the
+  existing debounced sync-loss warning behavior when ticket acquisition or SSE
+  fails.
+- A live Caddy-path test connected SSE through the documented reverse proxy,
+  killed its upstream sync server, and observed the client-facing stream close
+  (`caddy-sse-closed-after-upstream-kill`). This closes Step 8's production-
+  proxy uncertainty; the Vite development-proxy limitation remains cosmetic.
+
+### Tombstone retention and automated verification
+
+- Live short-retention coverage created and tombstoned a record, swept it, and
+  confirmed deletion from both Neo4j and Redis.
+- The committed server suite covers patch validation/application plus live
+  Redis/Neo4j token rotation, ticket revocation, idempotency, LWW rejection,
+  stale tombstone rejection, durable snapshot recovery, and two-store purge.
+- The Playwright suite covers persistence/bootstrap plus the three product
+  milestones; GitHub Actions runs both suites and both builds with Redis and
+  Neo4j services.
+
+### Curtailed endurance sample (heavy testing deferred)
+
+The intended two-hour run was stopped at the user's request after the last
+minute sample at **1,140,002 ms (~19 minutes)**. This is retained as a useful
+short soak, not represented as a completed endurance test:
+
+- 20 concurrent SSE connections and one accepted write/second; 1,139 writes
+  accepted by the last sample with zero request errors.
+- The materializer was killed at five minutes and restarted after 30 seconds.
+  Sampled pending work rose to 1 at the failure boundary and returned to 0 on
+  the next minute sample, demonstrating automatic recovery at this load.
+- After warm-up/restart, sync-server RSS held at about 118.7 MB and materializer
+  RSS at about 120.1 MB through the recorded interval. Redis memory increased
+  with the record volume accumulated during the run.
+- Because the run was curtailed, it did not execute the harness's terminal
+  accepted-versus-materialized equality check and cannot rule out a slow leak.
+  The partial artifact is `remote-sync-endurance-results.json`, labeled
+  `status: curtailed` with requested and observed durations.
+- Temporary Caddy/server/materializer processes were stopped; the explicit
+  test vault was removed from Redis and Neo4j; the exact Neo4j configuration
+  was restored, no auth override remains, and the Neo4j service is active.
+
+Heavy multi-hour/day testing is now a deliberate future deployment exercise,
+not a blocker for this repository follow-up.
+
+## Removed: the old §11 "streaming/lazy local storage" future-direction note
+
+Deleted from `remote-sync-architecture.md` at the user's explicit call:
+a full IndexedDB/OPFS + windowed-subscription migration is scope creep
+for this product, not a natural next phase of it — keeping it in the doc
+as a standing "maybe someday" implied otherwise. The real, narrower
+complaint that prompted it (`localNgEngine.ts` reserializes and writes
+the *entire* store synchronously on every persist, not just what
+changed) was legitimate and has since been addressed on its own, much smaller
+terms — see `incremental-persistence-progress.md` (DONE).

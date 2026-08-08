@@ -1,0 +1,200 @@
+{
+  "status": "curtailed",
+  "reason": "Stopped at the user's request; heavy endurance testing is deferred.",
+  "vaultId": "7485cb8c-a29b-46c1-a303-4592ee1be1f5",
+  "requestedDurationMs": 7200000,
+  "observedDurationMs": 1140002,
+  "acceptedAtLastSample": 1139,
+  "errorsAtLastSample": 0,
+  "writesPerSecond": 1,
+  "sseConnections": 20,
+  "samples": [
+    {
+      "elapsedMs": 5,
+      "accepted": 0,
+      "errors": 0,
+      "redisBytes": 3929680,
+      "syncServerRssKb": 135792,
+      "materializerRssKb": 135724
+    },
+    {
+      "elapsedMs": 60000,
+      "accepted": 59,
+      "errors": 0,
+      "redisBytes": 3933112,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 118092,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 120001,
+      "accepted": 119,
+      "errors": 0,
+      "redisBytes": 3997304,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 118092,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 180000,
+      "accepted": 179,
+      "errors": 0,
+      "redisBytes": 4050648,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 118092,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 240001,
+      "accepted": 239,
+      "errors": 0,
+      "redisBytes": 4114216,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 118092,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 300002,
+      "accepted": 299,
+      "errors": 0,
+      "redisBytes": 4082576,
+      "syncServerRssKb": 118648,
+      "pending": 1
+    },
+    {
+      "elapsedMs": 360001,
+      "accepted": 359,
+      "errors": 0,
+      "redisBytes": 4180328,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 133920,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 420001,
+      "accepted": 419,
+      "errors": 0,
+      "redisBytes": 4248120,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 120096,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 480001,
+      "accepted": 479,
+      "errors": 0,
+      "redisBytes": 4321336,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 120096,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 540001,
+      "accepted": 539,
+      "errors": 0,
+      "redisBytes": 4432088,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 120096,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 600001,
+      "accepted": 599,
+      "errors": 0,
+      "redisBytes": 4502456,
+      "syncServerRssKb": 118648,
+      "materializerRssKb": 120096,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 660001,
+      "accepted": 659,
+      "errors": 0,
+      "redisBytes": 4500888,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120096,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 720001,
+      "accepted": 719,
+      "errors": 0,
+      "redisBytes": 4597928,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 780001,
+      "accepted": 779,
+      "errors": 0,
+      "redisBytes": 4678952,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 840001,
+      "accepted": 839,
+      "errors": 0,
+      "redisBytes": 4777864,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 900001,
+      "accepted": 899,
+      "errors": 0,
+      "redisBytes": 4807880,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 960002,
+      "accepted": 959,
+      "errors": 0,
+      "redisBytes": 4897800,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1020002,
+      "accepted": 1019,
+      "errors": 0,
+      "redisBytes": 4931992,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1080002,
+      "accepted": 1079,
+      "errors": 0,
+      "redisBytes": 5002088,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1140002,
+      "accepted": 1139,
+      "errors": 0,
+      "redisBytes": 5064840,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    },
+    {
+      "elapsedMs": 1200002,
+      "accepted": 1199,
+      "errors": 0,
+      "redisBytes": 5149736,
+      "syncServerRssKb": 118672,
+      "materializerRssKb": 120120,
+      "pending": 0
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 # Remote Sync Layer — Architecture Design
 
-Status: proposal / not yet implemented.
+Status: implemented. This document preserves the design reasoning; see
+`remote-sync.md` for the concise current-state reference and
+`remote-sync-progress.md` for build and verification history.
 
 ## 1. Goals and non-goals
 
@@ -28,13 +30,13 @@ Non-goals:
   changes) but is a bespoke transport, not NextGraph's actual CRDT wire
   format.
 
-## 2. Current state (recap)
+## 2. Original local-only state (recap)
 
 - `src/utils/ngSession.ts` generates a random `private_store_id` on first
   load and persists it to `localStorage`. `usePrivateNuri` turns that into
   `did:ng:<private_store_id>`, which is the `@graph` value used to scope
   every subscription (`MetaStoreContext.tsx`).
-- `src/utils/localNgEngine.ts` is the entire storage/sync engine today: an
+- `src/utils/localNgEngine.ts` began as the entire storage engine: an
   in-memory `Store` keyed by `graph|id`, persisted to `localStorage`
   (debounced 120ms), and mirrored across tabs of the *same origin* via
   `BroadcastChannel`. It exposes exactly two functions
@@ -44,7 +46,9 @@ Non-goals:
   `type: "set"` patches merge member-by-member (add/remove one value from an
   array) — already commutative. Everything else overwrites the field
   (last-write-wins, currently ordered only by local call order).
-- There is no server. `run.sh` runs `vite dev --host`.
+- At the design starting point there was no server. The implemented `server/`
+  now provides the optional sync API and serves the built client; `run.sh`
+  launches it, its materializer, and Vite for local development.
 
 **Consequence for sync design**: because `private_store_id` is randomly
 generated per browser profile, two browser installs today have disjoint
@@ -67,10 +71,12 @@ enters into every device/browser they want kept in sync.
 - All records a node wants synced are written under `@graph = vaultId`
   instead of the random `private_store_id`. The simplest migration is to
   make the *private store's* graph become the vault id once sync is
-  configured: on first successful pairing, the client renames its local
-  `@graph` values from the old random id to the vault id in one local
-  transaction, then proceeds as normal. Until a vault is configured, nothing
-  changes — the app is exactly as local-only as it is today.
+  configured. The implemented client switches the active graph and reloads;
+  it does **not** automatically rename records already stored under the old
+  local graph. Those records remain in browser storage but are not part of the
+  vault. Use Settings export before pairing and import after pairing when the
+  existing local dataset should seed the vault. Until a vault is configured,
+  nothing changes — the app is exactly as local-only as it is today.
 
 This is *not* user authentication (no accounts, no login, no per-user
 records) — it's a shared-secret pairing so the server knows which nodes
@@ -419,20 +425,24 @@ per-user records. Concretely:
   Settings (`SyncSettings.tsx`). Any other device still holding the old
   token gets 401s until it's manually given the new one — inherent to a
   shared-secret scheme with no per-device identity, not a bug.
-- Every `/sync/stream`, `/sync/patches`, `/sync/snapshot`, and
-  `/sync/vaults/rotate` call requires `Authorization: Bearer <vaultToken>`
-  scoped to the `vault` in the query/body; the server rejects mismatches
-  with 401 before touching Redis/Neo4j.
+- Every `/sync/patches`, `/sync/snapshot`, and `/sync/vaults/rotate` call
+  requires `Authorization: Bearer <vaultToken>`, scoped to the `vault` query
+  parameter. Browser `EventSource` cannot set request headers, so the client
+  exchanges bearer auth at `POST /sync/stream-ticket` for a one-hour,
+  stream-only random ticket and places only that scoped credential in the SSE
+  URL. The server rejects mismatches with 401 before touching Redis/Neo4j.
+  Tickets are bound to the current token hash, so rotating the vault token
+  also invalidates them for subsequent connections; an already-open SSE socket
+  naturally remains open until it disconnects.
 - Tokens are stored server-side as a SHA-256 hash (not plaintext) in
-  Redis's per-vault `meta` hash (`vaultStore.ts`), verified with a
+  Redis's per-vault `meta` hash and a durable Neo4j `:VaultMeta` node
+  (`vaultStore.ts`), verified with a
   constant-time compare. No separate per-token salt: the token itself is
   192 bits of `randomBytes`, so an unsalted hash carries the same
   practical guarantee a salt exists to provide for low-entropy secrets
   like passwords — a precomputed rainbow table over a 192-bit space isn't
-  a real attack. (Storage location deviates from an earlier draft of this
-  section, which said Neo4j — vault meta/tokens live in Redis only; see
-  `remote-sync-progress.md`'s step-3 notes for why that's an accepted,
-  explicit scoping decision rather than an oversight.)
+  a real attack. Neo4j mirroring closes the Redis-only identity-loss gap
+  found during hard-kill testing.
 - `POST /sync/vaults` is rate-limited per client IP (`VAULT_CREATE_RATE_LIMIT`,
   default 10/hour) — the one endpoint with no auth at all (it *creates* the
   credential), so it's the one open abuse/storage-exhaustion vector a
@@ -471,88 +481,7 @@ against §3/§9 as specified.
 6. Load/soak test: many idle SSE connections, burst writes, simulated long
    node-offline periods, Redis/Neo4j restart under load.
 
-## 11. Future direction: streaming/lazy local storage (not started)
-
-Flagged during step 2, not on the build-order critical path — recorded here
-so it isn't lost. Everything below is a proposal for a later phase, not a
-decision.
-
-### The problem, concretely, in this codebase
-
-`localNgEngine.ts` currently does the simplest thing that could work: the
-entire graph is one JS object (`Store`, `localNgEngine.ts:38`), loaded whole
-into a module-level variable at startup (`let store: Store = loadStore()`,
-`localNgEngine.ts:77`), and on every single patch the *whole* store is
-`JSON.stringify`'d and written back to `localStorage` in full
-(`localNgEngine.ts:86-93`). `useShape`'s `orm_start_graph` subscribes to
-"all locally stored objects matching a shape and scope" — there's no
-concept of a partial or windowed subscription; a subscriber gets everything
-that matches, full stop.
-
-This was the right call for an MVP and is fine at today's scale, but it has
-a hard ceiling that's independent of performance: `localStorage` is
-synchronous and capped at roughly 5-10MB per origin depending on browser.
-Once total record volume approaches that, the app doesn't degrade
-gracefully — it breaks (quota exceeded on write). Perf (full
-`JSON.stringify`/`parse` on every mutation, everything reactively
-re-rendering off one big store) becomes a problem well before that, but the
-storage ceiling is the harder wall.
-
-The remote sync layer built in steps 1-2 inherits the same eager-loading
-shape rather than fixing it: `/sync/snapshot` (`server/src/vaultStore.ts`'s
-`snapshot()`) does an `HGETALL` of the *entire* per-vault Redis hash and
-ships it as one JSON blob (`{ seq, records: Store }`), and the client's
-`resyncFromSnapshot` (`remoteSyncEngine.ts:204-220`) applies it via
-`replaceGraphAndReload`, which reloads the whole page around the whole new
-`Store`. So a large vault means a large full-graph transfer on every fresh
-device pairing or gap-triggered resync, not just a large `localStorage`
-write.
-
-### The shift being proposed
-
-Move from eager loading (whole graph in memory/`localStorage` at startup)
-to demand-driven streaming (querying and windowing records on demand),
-matching the general pattern: memory scaling goes from O(total records) to
-O(records actually on screen). Concretely, for this codebase:
-
-- **Storage layer**: replace the single `localStorage` blob with an
-  indexed store in IndexedDB (or OPFS), keyed the way graph data actually
-  gets queried here — by subject (today's `@id`/`@graph` lookups), and by
-  shape/type (today's `orm_start_graph` scope filter) — so a query can
-  pull back only the matching records instead of the entire store.
-- **Subscription layer**: `orm_start_graph` currently means "give me
-  everything matching this shape/scope." A windowed version would let
-  callers like `BlockRenderer.tsx` ask only for a block's immediate
-  children (mirroring how `collectDescendantBlockIds` in `blockGraph.ts`
-  already walks the graph incrementally rather than assuming it's all
-  resident) rather than the whole graph being implicitly available.
-- **Sync protocol**: `/sync/snapshot` would need to become windowed/paged
-  too, not just the client store — otherwise the client-side fix is
-  undermined by a resync that still pulls everything from the server in
-  one shot. This is a real, non-optional part of doing this properly here,
-  not an orthogonal concern.
-- **Off-main-thread traversal**: if graph traversal work grows (deeper
-  `blockGraph.ts` walks, more complex shape resolution), consider moving
-  it into a Web Worker so it can't block UI frames — not urgent at current
-  traversal depth, but worth keeping in mind if `blockGraph.ts` grows more
-  expensive.
-
-One thing that's already fine and doesn't need to change: cross-tab sync
-via `BroadcastChannel` already sends compact patch deltas rather than
-whole-graph snapshots (this is the same patch shape the remote sync layer
-reuses), so that part of the design already matches the target end state.
-
-### Why later, not now
-
-This is real work with real risk (a storage migration touches every read
-path in `localNgEngine.ts`) and there's no evidence yet that current usage
-is anywhere near the `localStorage` ceiling. Reasonable trigger conditions
-to revisit this: approaching the ~5-10MB `localStorage` quota in practice,
-or noticeable UI jank from full-store re-renders/serialization on typical
-vaults. Until then, this section is a placeholder for when that happens,
-not a task to schedule.
-
-## 12. Diagrams via d2topng: DONE
+## 11. Diagrams via d2topng: DONE
 
 Originally flagged as a future-phase idea while wrapping up build-order
 step 4, deferred until the build order settled. It has (§10, plus the
