@@ -1,10 +1,13 @@
 # Incremental localStorage Persistence — Progress Report
 
-Tracks implementation of the approved plan at
-`/home/user/.claude/plans/shiny-yawning-hanrahan.md` (also summarized
-below). Separate initiative from the remote-sync work
-(`remote-sync-architecture.md`/`remote-sync-progress.md`) — this is a
-client-only fix to `src/utils/localNgEngine.ts`'s local persistence layer.
+**Status: historical. Complete; not maintained.** The record of one finished
+client-only change to `src/utils/localNgEngine.ts`'s persistence layer, kept
+for its measurements and its rationale. The plan it implemented is summarized
+in full below, so no external plan file is needed to read it.
+
+Separate initiative from the remote-sync work
+(`remote-sync-architecture.md`/`remote-sync-progress.md`). For current and
+future work, see `product-gaps-plan.md`.
 
 ## Why
 

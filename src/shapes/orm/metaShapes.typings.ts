@@ -107,6 +107,18 @@ export interface Block {
    */
   sortDirection?: "did:ng:z:ascending" | "did:ng:z:descending";
   /**
+   * Whether readers get a search box over this data block
+   *
+   * Original IRI: did:ng:z:searchEnabled
+   */
+  searchEnabled?: boolean;
+  /**
+   * Records shown per page, or all records when omitted
+   *
+   * Original IRI: did:ng:z:pageSize
+   */
+  pageSize?: number;
+  /**
    * The Tab this block lives in directly (top-level blocks only)
    *
    * Original IRI: did:ng:z:parentTabId

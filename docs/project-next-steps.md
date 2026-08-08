@@ -1,13 +1,15 @@
 # Project Next Steps — Completion Report
 
-This began as the ordered follow-up plan from the repository review on
-2026-08-08. It is retained beside the progress reports as the acceptance
-checklist and completion record. Detailed implementation history lives in
+**Status: historical. Closed 2026-08-08; superseded by `product-gaps-plan.md`.**
+Despite the title, this is not a list of pending work — every item below is
+done. It began as the ordered follow-up plan from that day's repository review
+and is retained as the acceptance checklist and completion record for that
+tranche. Statements about remaining limits describe the codebase *as it stood
+at closure*, not necessarily today. Detailed implementation history lives in
 `incremental-persistence-progress.md` and `remote-sync-progress.md`.
 
-Status: DONE for the agreed implementation scope. At the user's direction, the
-multi-hour endurance run was curtailed and is explicitly deferred to a later
-heavy-testing session.
+The one item deferred rather than completed — the multi-hour endurance run —
+is carried forward as step 10 of `product-gaps-plan.md`.
 
 ## 1. Incremental localStorage persistence — DONE
 
@@ -48,7 +50,9 @@ heavy-testing session.
 - [x] The product evaluation reflects incremental localStorage and the explicit
   decision not to pursue IndexedDB/windowed subscriptions in this scope.
 - [x] Remaining limits stay explicit: full startup load, in-memory scans,
-  unpaginated rendering, and a 4 MB application safety ceiling.
+  unpaginated rendering, and a 4 MB application safety ceiling. (Rendering is
+  no longer unpaginated — data blocks gained reader search and paging in the
+  next tranche. The other three limits still stand.)
 - [x] Pairing docs match the implementation: switching to a vault does not
   rename an existing local graph; export/import is the migration path.
 

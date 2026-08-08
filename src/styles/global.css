@@ -339,6 +339,14 @@ a {
     gap: var(--space-4);
 }
 
+.block-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
 .record-card {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);

@@ -383,6 +383,15 @@ function DataBlockEditor({
   const properties = block.schemaId
     ? allProperties.filter((property) => property.schemaId === block.schemaId)
     : [];
+  // Mirrors the renderer's searchable-property rule: search reaches exactly
+  // the fields on screen, so with no bound field widget there is nothing for a
+  // search box to match and the renderer omits it.
+  const hasFieldWidget = widgets.some(
+    (widget) =>
+      widget.widgetType === "did:ng:z:field" &&
+      widget.propertyName &&
+      properties.some((property) => property.name === widget.propertyName),
+  );
 
   const changeSchema = (schemaId: string) => {
     block.schemaId = schemaId;
@@ -516,7 +525,47 @@ function DataBlockEditor({
             <option value="did:ng:z:descending">Descending</option>
           </select>
         </div>
+        <div className="field-group">
+          <span className="field-label">Reader search</span>
+          <label className="option-card" htmlFor={`${block["@id"]}-search-enabled`}>
+            <input
+              id={`${block["@id"]}-search-enabled`}
+              type="checkbox"
+              className="checkbox"
+              checked={block.searchEnabled === true}
+              onChange={(event) => {
+                if (event.target.checked) block.searchEnabled = true;
+                else delete block.searchEnabled;
+              }}
+            />
+            <span className="option-text">Show a search box</span>
+          </label>
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-page-size`}>
+            Records per page
+          </label>
+          <input
+            id={`${block["@id"]}-page-size`}
+            className="input"
+            type="number"
+            min={1}
+            value={block.pageSize ?? ""}
+            placeholder="All records"
+            onChange={(event) => {
+              const next = Math.trunc(Number(event.target.value));
+              if (Number.isFinite(next) && next > 0) block.pageSize = next;
+              else delete block.pageSize;
+            }}
+          />
+        </div>
       </div>
+      {block.searchEnabled === true && !hasFieldWidget && (
+        <small className="helper-text">
+          Search covers field widgets only. Add a field widget for the search box
+          to appear.
+        </small>
+      )}
       <WidgetsEditor block={block} />
     </article>
   );

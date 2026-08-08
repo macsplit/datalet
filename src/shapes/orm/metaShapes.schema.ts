@@ -181,6 +181,28 @@ export const metaShapesSchema: Schema = {
       {
         dataTypes: [
           {
+            valType: "boolean",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:searchEnabled",
+        readablePredicate: "searchEnabled",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "number",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:pageSize",
+        readablePredicate: "pageSize",
+      },
+      {
+        dataTypes: [
+          {
             valType: "iri",
           },
         ],

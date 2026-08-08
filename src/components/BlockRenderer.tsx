@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useShape } from "@ng-org/orm/react";
 import type {
   Block,
@@ -34,6 +34,23 @@ function propertySignature(properties: PropertyDef[]): string {
       ].join("|"),
     )
     .join(";");
+}
+
+/**
+ * Every value a property can hold, as display strings. A single stringifier
+ * backs both the builder-configured filter and the reader's search box, so
+ * "contains" means the same thing in both places.
+ */
+function valueStrings(raw: unknown): string[] {
+  const values = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [raw];
+  return values.map((value) => String(value ?? ""));
+}
+
+/** `needle` must already be trimmed and lower-cased by the caller. */
+function containsNeedle(raw: unknown, needle: string): boolean {
+  return valueStrings(raw).some((value) =>
+    value.toLocaleLowerCase().includes(needle),
+  );
 }
 
 function defaultValue(property: PropertyDef): string | number | boolean | Set<string> {
@@ -92,23 +109,84 @@ function ResolvedDataBlock({
     records.add(record);
   };
 
+  // Only properties actually rendered as fields are searchable, so a reader
+  // never gets hits from data that is not on screen. A reference field matches
+  // on its stored target id rather than the resolved label: resolving a label
+  // needs the target schema's own subscription, which only ReferenceField
+  // mounts, and opening a second subscription per data block to search it
+  // would cost more than the feature is worth.
+  const searchableNames = widgets
+    .filter(
+      (widget) =>
+        widget.widgetType === "did:ng:z:field" &&
+        widget.propertyName &&
+        properties.some((property) => property.name === widget.propertyName),
+    )
+    .map((widget) => widget.propertyName as string);
+  // JSON-encoded so the memo below has a stable primitive dependency;
+  // `widgets` is a graph-backed array that is a fresh value on every render.
+  const searchableKey = JSON.stringify(searchableNames);
+  const searchable = useMemo(() => JSON.parse(searchableKey) as string[], [searchableKey]);
+
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  const searchEnabled = block.searchEnabled === true && searchableNames.length > 0;
+  const needle = searchEnabled ? query.trim().toLocaleLowerCase() : "";
   const filterNeedle = (block.filterValue ?? "").trim().toLocaleLowerCase();
-  const filterProperty = block.filterPropertyName;
-  const visibleRecords = [...records].filter((record) => {
-    if (!filterProperty || !filterNeedle) return true;
-    const raw = record[filterProperty];
-    const values = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [raw];
-    return values.some((value) => String(value ?? "").toLocaleLowerCase().includes(filterNeedle));
-  });
+  const filterProperty = block.filterPropertyName ?? "";
   const sortProperty = block.sortPropertyName || "@id";
   const direction = block.sortDirection === "did:ng:z:descending" ? -1 : 1;
-  const sortedRecords = visibleRecords.sort((left, right) => {
-    const a = left[sortProperty];
-    const b = right[sortProperty];
-    if (typeof a === "number" && typeof b === "number") return (a - b) * direction;
-    if (typeof a === "boolean" && typeof b === "boolean") return (Number(a) - Number(b)) * direction;
-    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true }) * direction;
-  });
+  const pageSize = Math.max(0, Math.trunc(block.pageSize ?? 0));
+
+  // useShape hands back a new proxy identity whenever anything in the set
+  // changes (its deepSignal is created with replaceProxiesInBranchOnChange),
+  // so depending on `records` recomputes exactly when the data moves and not
+  // on unrelated re-renders of this block's ancestors.
+  const visibleRecords = useMemo(() => {
+    const matching = [...records].filter((record) => {
+      if (filterProperty && filterNeedle && !containsNeedle(record[filterProperty], filterNeedle)) {
+        return false;
+      }
+      if (!needle) return true;
+      return searchable.some((name) => containsNeedle(record[name], needle));
+    });
+    return matching.sort((left, right) => {
+      const a = left[sortProperty];
+      const b = right[sortProperty];
+      if (typeof a === "number" && typeof b === "number") return (a - b) * direction;
+      if (typeof a === "boolean" && typeof b === "boolean") return (Number(a) - Number(b)) * direction;
+      return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true }) * direction;
+    });
+  }, [records, filterProperty, filterNeedle, needle, searchable, sortProperty, direction]);
+
+  const total = visibleRecords.length;
+  const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
+
+  // Any change to what is being listed sends the reader back to the first
+  // page; landing on page 4 of a 2-page result is the classic paging bug.
+  // Adjusting state during render is React's own pattern for this and avoids
+  // the extra commit an effect would cost.
+  const resetKey = JSON.stringify([
+    filterProperty,
+    filterNeedle,
+    needle,
+    sortProperty,
+    direction,
+    pageSize,
+  ]);
+  const [lastResetKey, setLastResetKey] = useState(resetKey);
+  if (lastResetKey !== resetKey) {
+    setLastResetKey(resetKey);
+    setPage(0);
+  }
+
+  // Deleting the last record on the final page shrinks pageCount without any
+  // of the above changing, so the page index is clamped rather than trusted.
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = pageSize > 0 ? currentPage * pageSize : 0;
+  const pageRecords =
+    pageSize > 0 ? visibleRecords.slice(pageStart, pageStart + pageSize) : visibleRecords;
 
   return (
     <section className="panel">
@@ -129,9 +207,24 @@ function ResolvedDataBlock({
           )}
         </header>
       )}
+      {searchEnabled && (
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-search`}>
+            Search {schema.name}
+          </label>
+          <input
+            id={`${block["@id"]}-search`}
+            className="input"
+            type="search"
+            value={query}
+            placeholder={`Search ${searchableNames.join(", ")}`}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      )}
       <div className="cards-stack">
-        {sortedRecords.length > 0 ? (
-          sortedRecords.map((record) => (
+        {pageRecords.length > 0 ? (
+          pageRecords.map((record) => (
             <RecordCard
               key={`${record["@graph"]}|${record["@id"]}`}
               record={record}
@@ -141,9 +234,41 @@ function ResolvedDataBlock({
             />
           ))
         ) : (
-          <p className="muted">No records yet.</p>
+          <p className="muted">
+            {needle || (filterProperty && filterNeedle)
+              ? "No records match."
+              : "No records yet."}
+          </p>
         )}
       </div>
+      {pageSize > 0 && total > 0 && (
+        <div className="block-pagination">
+          <span className="muted">
+            Showing {pageStart + 1}–{pageStart + pageRecords.length} of {total}
+          </span>
+          <div className="builder-actions">
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={currentPage === 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              Previous
+            </button>
+            <span className="muted">
+              Page {currentPage + 1} of {pageCount}
+            </span>
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={currentPage >= pageCount - 1}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

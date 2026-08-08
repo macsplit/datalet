@@ -36,6 +36,10 @@ To run the optional cross-device sync stack, install Redis and Neo4j, export
 [`docs/remote-sync-deployment.md`](docs/remote-sync-deployment.md) for
 deployment options.
 
+[`docs/README.md`](docs/README.md) indexes all documentation and marks which
+documents are current and which are historical records of finished work.
+[`docs/product-gaps-plan.md`](docs/product-gaps-plan.md) is the active plan.
+
 ## Building an interface
 
 1. Open **Settings → Manage schemas**.
@@ -75,6 +79,13 @@ A tab contains an ordered tree of blocks:
 
 Data blocks can filter records by a configured field/value and sort by record
 id or any schema field in ascending or descending order.
+
+Two further settings apply to whoever is reading the tab rather than building
+it. **Reader search** adds a search box above the records, matching across the
+fields the block actually displays; a reference field matches on the stored
+target id rather than its resolved label. **Records per page** splits the list
+into pages, defaulting to showing everything. A search query lives only in the
+open page — it is neither stored in the graph nor synced.
 
 Data blocks can contain these widgets:
 
@@ -129,6 +140,8 @@ src/
 │   ├── BlockRenderer.tsx       # Recursive graph-defined page renderer
 │   ├── FieldWidget.tsx         # Field display and editing controls
 │   ├── RecordCard.tsx          # Generic record editor
+│   ├── DataBackup.tsx          # JSON export and import
+│   ├── SyncSettings.tsx        # Vault pairing controls
 │   └── RuntimeSafety.tsx       # Error boundary and safety notifications
 ├── hooks/
 │   ├── MetaStoreContext.tsx    # Shared metadata subscriptions
@@ -140,6 +153,7 @@ src/
 │   └── useSettings.ts
 ├── pages/
 │   ├── TabPage.tsx
+│   ├── SettingsPage.tsx
 │   ├── SchemaListPage.tsx
 │   ├── SchemaEditorPage.tsx
 │   ├── TabsManagerPage.tsx

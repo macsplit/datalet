@@ -1,10 +1,13 @@
 # Product Evaluation — 2026-08-08
 
 An assessment of what this project is well suited to and what it is not,
-started at commit `53aaef0` and updated after the persistence/test follow-up.
-Based on reading the application source
-(`src/`), the sync tier (`server/`), and the four `remote-sync*` design
-documents — not on user research or field deployment.
+started at commit `53aaef0`, updated after the persistence/test follow-up, and
+again after data-block reader search and pagination landed. Based on reading
+the application source (`src/`), the sync tier (`server/`), and the four
+`remote-sync*` design documents — not on user research or field deployment.
+
+**Status: current.** This document is kept accurate as work lands; the ordered
+plan for the gaps it identifies is `product-gaps-plan.md`.
 
 ## What it actually is
 
@@ -67,8 +70,10 @@ behavior. Date/time, file/image, rich text, URL, and email types also remain
 absent.
 
 **Any dataset above small.** Data blocks apply configured field filtering and
-sorting, but there is no end-user ad hoc search, grouping, pagination, or
-aggregation. Underneath, the entire store is held in memory with a hard
+sorting, and readers now get an optional search box and pagination over the
+displayed fields. Grouping and aggregation remain absent, and search is a
+linear scan of the in-memory store rather than an index. Underneath, the entire
+store is held in memory with a hard
 4 MB cap (`RUNTIME_LIMITS.storedBytes`, `src/utils/runtimeHealth.ts:69`).
 Persistence is now incremental per touched record, but startup still loads
 every record and subscriptions still scan the full in-memory store.
@@ -135,9 +140,10 @@ on. Not ready for team use, complex relational workflows, meaningful volume,
 or sensitive information.
 
 The previously identified high-leverage product gaps—export/import,
-data-block filter/sort, and reference fields—are now implemented. The next
-likely application-layer gaps are end-user search/pagination, date/time and
-file field types, and undo/history for conflict or editing mistakes.
+data-block filter/sort, reference fields, and end-user search/pagination—are now
+implemented. The next likely application-layer gaps are date/time and file field
+types, and undo/history for conflict or editing mistakes. The ordered plan for
+the rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

@@ -1,9 +1,16 @@
 # Remote Sync — Implementation Progress Log
 
-Running log of what's actually been built and verified, kept up to date as
-work proceeds. See `remote-sync-architecture.md` for the design and
-`remote-sync-deployment.md` for the target deployment; this file tracks
-build-order progress against `remote-sync-architecture.md` §10.
+**Status: historical. Closed after step 11; not maintained.** This is the
+build log for the sync tier as it was constructed — what was built, what broke,
+and how each fix was verified. It is kept for that record, not as a description
+of current behavior.
+
+- Current behavior: `remote-sync.md`.
+- Design reasoning: `remote-sync-architecture.md`.
+- Deployment: `remote-sync-deployment.md`.
+- Current and future work: `product-gaps-plan.md`.
+
+Steps below track build order against `remote-sync-architecture.md` §10.
 
 ## Step 1 — In-memory sync server skeleton: DONE
 

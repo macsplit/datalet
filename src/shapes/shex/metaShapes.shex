@@ -30,6 +30,10 @@ ex:BlockShape {
     // rdfs:comment "Property used to order records, or @id when omitted" ;
   ex:sortDirection [ex:ascending ex:descending] ?
     // rdfs:comment "Direction used to order records in a data block" ;
+  ex:searchEnabled xsd:boolean ?
+    // rdfs:comment "Whether readers get a search box over this data block" ;
+  ex:pageSize xsd:integer ?
+    // rdfs:comment "Records shown per page, or all records when omitted" ;
   ex:parentTabId IRI ?
     // rdfs:comment "The Tab this block lives in directly (top-level blocks only)" ;
   ex:parentBlockId IRI ?
