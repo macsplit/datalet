@@ -22,6 +22,14 @@ ex:BlockShape {
     // rdfs:comment "How child blocks are arranged (layout blocks only)" ;
   ex:schemaId IRI ?
     // rdfs:comment "The SchemaDef this block displays records of (data blocks only)" ;
+  ex:filterPropertyName xsd:string ?
+    // rdfs:comment "Property whose display value must contain filterValue (data blocks only)" ;
+  ex:filterValue xsd:string ?
+    // rdfs:comment "Case-insensitive value filter for a data block" ;
+  ex:sortPropertyName xsd:string ?
+    // rdfs:comment "Property used to order records, or @id when omitted" ;
+  ex:sortDirection [ex:ascending ex:descending] ?
+    // rdfs:comment "Direction used to order records in a data block" ;
   ex:parentTabId IRI ?
     // rdfs:comment "The Tab this block lives in directly (top-level blocks only)" ;
   ex:parentBlockId IRI ?
@@ -40,7 +48,7 @@ ex:WidgetShape {
     // rdfs:comment "Optional display label override" ;
   ex:propertyName xsd:string ?
     // rdfs:comment "The bound PropertyDef's name (field widgets only)" ;
-  ex:fieldType [ex:text ex:number ex:currency ex:dropdown ex:multiSelect ex:checkbox] ?
+  ex:fieldType [ex:text ex:number ex:currency ex:dropdown ex:multiSelect ex:checkbox ex:reference] ?
     // rdfs:comment "How to render the bound field (field widgets only)" ;
 }
 
@@ -58,10 +66,12 @@ ex:PropertyDefShape {
     // rdfs:comment "The property's name" ;
   ex:order xsd:integer
     // rdfs:comment "Sort order among sibling properties" ;
-  ex:dataType [ex:text ex:number ex:boolean ex:enum]
+  ex:dataType [ex:text ex:number ex:boolean ex:enum ex:reference]
     // rdfs:comment "The property's underlying data type" ;
   ex:cardinality [ex:one ex:optional ex:many]
     // rdfs:comment "Whether the property is required, optional, or a multi-value set" ;
   ex:enumOptions xsd:string *
     // rdfs:comment "Allowed values when dataType is enum" ;
+  ex:referenceSchemaId IRI ?
+    // rdfs:comment "Target SchemaDef when dataType is reference" ;
 }

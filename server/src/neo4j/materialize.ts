@@ -42,6 +42,60 @@ import type { OrmRecord, Store } from "../patchApply.js";
 // even though no shape in this app currently names a field this way.
 const RESERVED_PROPS = new Set(["id", "graph", "recordId", "recordGraph", "type", "deletedAtHlc"]);
 
+export type DurableVaultMeta = {
+  vaultId: string;
+  tokenHash: string;
+  createdAt: number;
+  rotatedAt?: number;
+};
+
+/** Durable copy of vault identity; plaintext bearer tokens are never stored. */
+export async function upsertVaultMeta(meta: DurableVaultMeta): Promise<void> {
+  const session = neo4jSession();
+  try {
+    await session.run(
+      `MERGE (v:VaultMeta {id: $vaultId})
+       SET v.tokenHash = $tokenHash,
+           v.createdAt = $createdAt,
+           v.rotatedAt = $rotatedAt`,
+      { ...meta, rotatedAt: meta.rotatedAt ?? null },
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+export async function readVaultMeta(vaultId: string): Promise<DurableVaultMeta | undefined> {
+  const session = neo4jSession();
+  try {
+    const result = await session.run(
+      "MATCH (v:VaultMeta {id: $vaultId}) RETURN v",
+      { vaultId },
+    );
+    if (result.records.length === 0) return undefined;
+    const props = result.records[0].get("v").properties as Record<string, unknown>;
+    return {
+      vaultId,
+      tokenHash: String(props.tokenHash),
+      createdAt: Number(props.createdAt),
+      ...(props.rotatedAt !== null && props.rotatedAt !== undefined
+        ? { rotatedAt: Number(props.rotatedAt) }
+        : {}),
+    };
+  } finally {
+    await session.close();
+  }
+}
+
+export async function deleteVaultMeta(vaultId: string): Promise<void> {
+  const session = neo4jSession();
+  try {
+    await session.run("MATCH (v:VaultMeta {id: $vaultId}) DETACH DELETE v", { vaultId });
+  } finally {
+    await session.close();
+  }
+}
+
 /**
  * Cypher has no parameterized labels, so a dynamic per-type label has to be
  * spliced into the query text. Safe here only because this strips the

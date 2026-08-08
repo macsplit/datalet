@@ -29,6 +29,7 @@ function propertySignature(properties: PropertyDef[]): string {
         property.order,
         property.dataType,
         property.cardinality,
+        property.referenceSchemaId ?? "",
         [...(property.enumOptions ?? [])].sort().join(","),
       ].join("|"),
     )
@@ -44,6 +45,8 @@ function defaultValue(property: PropertyDef): string | number | boolean | Set<st
       return false;
     case "did:ng:z:enum":
       return property.enumOptions?.values().next().value ?? "";
+    case "did:ng:z:reference":
+      return "";
     default:
       return "";
   }
@@ -89,9 +92,23 @@ function ResolvedDataBlock({
     records.add(record);
   };
 
-  const sortedRecords = [...records].sort((a, b) =>
-    a["@id"].localeCompare(b["@id"]),
-  );
+  const filterNeedle = (block.filterValue ?? "").trim().toLocaleLowerCase();
+  const filterProperty = block.filterPropertyName;
+  const visibleRecords = [...records].filter((record) => {
+    if (!filterProperty || !filterNeedle) return true;
+    const raw = record[filterProperty];
+    const values = raw instanceof Set ? [...raw] : Array.isArray(raw) ? raw : [raw];
+    return values.some((value) => String(value ?? "").toLocaleLowerCase().includes(filterNeedle));
+  });
+  const sortProperty = block.sortPropertyName || "@id";
+  const direction = block.sortDirection === "did:ng:z:descending" ? -1 : 1;
+  const sortedRecords = visibleRecords.sort((left, right) => {
+    const a = left[sortProperty];
+    const b = right[sortProperty];
+    if (typeof a === "number" && typeof b === "number") return (a - b) * direction;
+    if (typeof a === "boolean" && typeof b === "boolean") return (Number(a) - Number(b)) * direction;
+    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true }) * direction;
+  });
 
   return (
     <section className="panel">

@@ -39,6 +39,7 @@ const FIELD_TYPES: Array<{
   { value: "did:ng:z:dropdown", label: "Dropdown" },
   { value: "did:ng:z:multiSelect", label: "Multi-select" },
   { value: "did:ng:z:checkbox", label: "Checkbox" },
+  { value: "did:ng:z:reference", label: "Record reference" },
 ];
 
 function defaultFieldType(
@@ -54,6 +55,8 @@ function defaultFieldType(
       return property.cardinality === "did:ng:z:many"
         ? "did:ng:z:multiSelect"
         : "did:ng:z:dropdown";
+    case "did:ng:z:reference":
+      return "did:ng:z:reference";
     default:
       return "did:ng:z:text";
   }
@@ -377,6 +380,9 @@ function DataBlockEditor({
 }: BlockEditorProps) {
   const { properties: allProperties } = usePropertyDefs();
   const { widgets, deleteWidget } = useWidgets(block["@id"]);
+  const properties = block.schemaId
+    ? allProperties.filter((property) => property.schemaId === block.schemaId)
+    : [];
 
   const changeSchema = (schemaId: string) => {
     block.schemaId = schemaId;
@@ -384,6 +390,13 @@ function DataBlockEditor({
       (property) => property.schemaId === schemaId,
     );
     const nextNames = new Set(nextProperties.map((property) => property.name));
+    if (block.filterPropertyName && !nextNames.has(block.filterPropertyName)) {
+      delete block.filterPropertyName;
+      delete block.filterValue;
+    }
+    if (block.sortPropertyName && !nextNames.has(block.sortPropertyName)) {
+      delete block.sortPropertyName;
+    }
     for (const widget of widgets) {
       if (
         widget.widgetType === "did:ng:z:field" &&
@@ -431,6 +444,76 @@ function DataBlockEditor({
                 {schema.name}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-filter-property`}>
+            Filter property
+          </label>
+          <select
+            id={`${block["@id"]}-filter-property`}
+            className="select"
+            value={block.filterPropertyName ?? ""}
+            onChange={(event) => {
+              if (event.target.value) block.filterPropertyName = event.target.value;
+              else {
+                delete block.filterPropertyName;
+                delete block.filterValue;
+              }
+            }}
+          >
+            <option value="">No filter</option>
+            {properties.map((property) => (
+              <option value={property.name} key={property["@id"]}>{property.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-filter-value`}>
+            Filter contains
+          </label>
+          <input
+            id={`${block["@id"]}-filter-value`}
+            className="input"
+            value={block.filterValue ?? ""}
+            disabled={!block.filterPropertyName}
+            placeholder="Case-insensitive text"
+            onChange={(event) => (block.filterValue = event.target.value)}
+          />
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-sort-property`}>
+            Sort property
+          </label>
+          <select
+            id={`${block["@id"]}-sort-property`}
+            className="select"
+            value={block.sortPropertyName ?? ""}
+            onChange={(event) => {
+              if (event.target.value) block.sortPropertyName = event.target.value;
+              else delete block.sortPropertyName;
+            }}
+          >
+            <option value="">Record id</option>
+            {properties.map((property) => (
+              <option value={property.name} key={property["@id"]}>{property.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${block["@id"]}-sort-direction`}>
+            Sort direction
+          </label>
+          <select
+            id={`${block["@id"]}-sort-direction`}
+            className="select"
+            value={block.sortDirection ?? "did:ng:z:ascending"}
+            onChange={(event) => {
+              block.sortDirection = event.target.value as NonNullable<Block["sortDirection"]>;
+            }}
+          >
+            <option value="did:ng:z:ascending">Ascending</option>
+            <option value="did:ng:z:descending">Descending</option>
           </select>
         </div>
       </div>

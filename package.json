@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "test": "pnpm test:client && pnpm test:server",
+    "test:client": "playwright test",
+    "test:server": "tsx --test server/test/**/*.test.ts",
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:materializer": "ROLE=materializer tsx watch server/src/index.ts",
@@ -27,6 +30,7 @@
   },
   "devDependencies": {
     "@ng-org/shex-orm": "0.1.2-alpha.7",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^26.1.2",
     "@types/react": "19.1.10",
     "@types/react-dom": "19.1.7",

@@ -34,6 +34,19 @@ export function SchemaListPage() {
     }
     for (const property of properties) {
       if (property.schemaId === schemaId) deletePropertyDef(property);
+      else if (property.referenceSchemaId === schemaId) {
+        property.dataType = "did:ng:z:text";
+        delete property.referenceSchemaId;
+        for (const widget of widgets) {
+          const owner = blocks.find((block) => block["@id"] === widget.parentBlockId);
+          if (
+            owner?.schemaId === property.schemaId &&
+            widget.propertyName === property.name
+          ) {
+            widget.fieldType = "did:ng:z:text";
+          }
+        }
+      }
     }
     const dataBlockIds = new Set(
       blocks

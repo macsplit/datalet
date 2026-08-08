@@ -5,7 +5,7 @@ import { useMetaStore } from "./MetaStoreContext";
 
 export type CreatePropertyDef = Pick<PropertyDef, "schemaId" | "name"> &
   Partial<
-    Pick<PropertyDef, "order" | "dataType" | "cardinality" | "enumOptions">
+    Pick<PropertyDef, "order" | "dataType" | "cardinality" | "enumOptions" | "referenceSchemaId">
   >;
 
 /** Read a schema's ordered properties and expose mutations. */
@@ -33,6 +33,7 @@ export function usePropertyDefs(schemaId?: string) {
         dataType: values.dataType ?? "did:ng:z:text",
         cardinality: values.cardinality ?? "did:ng:z:one",
         enumOptions: values.enumOptions ?? new Set<string>(),
+        ...(values.referenceSchemaId && { referenceSchemaId: values.referenceSchemaId }),
       });
     },
     [privateNuri, propertySet],

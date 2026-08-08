@@ -83,6 +83,30 @@ export interface Block {
    */
   schemaId?: IRI;
   /**
+   * Property whose display value must contain filterValue (data blocks only)
+   *
+   * Original IRI: did:ng:z:filterPropertyName
+   */
+  filterPropertyName?: string;
+  /**
+   * Case-insensitive value filter for a data block
+   *
+   * Original IRI: did:ng:z:filterValue
+   */
+  filterValue?: string;
+  /**
+   * Property used to order records, or @id when omitted
+   *
+   * Original IRI: did:ng:z:sortPropertyName
+   */
+  sortPropertyName?: string;
+  /**
+   * Direction used to order records in a data block
+   *
+   * Original IRI: did:ng:z:sortDirection
+   */
+  sortDirection?: "did:ng:z:ascending" | "did:ng:z:descending";
+  /**
    * The Tab this block lives in directly (top-level blocks only)
    *
    * Original IRI: did:ng:z:parentTabId
@@ -157,7 +181,8 @@ export interface Widget {
     | "did:ng:z:currency"
     | "did:ng:z:dropdown"
     | "did:ng:z:multiSelect"
-    | "did:ng:z:checkbox";
+    | "did:ng:z:checkbox"
+    | "did:ng:z:reference";
 }
 
 /**
@@ -227,7 +252,8 @@ export interface PropertyDef {
     | "did:ng:z:text"
     | "did:ng:z:number"
     | "did:ng:z:boolean"
-    | "did:ng:z:enum";
+    | "did:ng:z:enum"
+    | "did:ng:z:reference";
   /**
    * Whether the property is required, optional, or a multi-value set
    *
@@ -240,4 +266,10 @@ export interface PropertyDef {
    * Original IRI: did:ng:z:enumOptions
    */
   enumOptions?: Set<string>;
+  /**
+   * Target SchemaDef when dataType is reference
+   *
+   * Original IRI: did:ng:z:referenceSchemaId
+   */
+  referenceSchemaId?: IRI;
 }

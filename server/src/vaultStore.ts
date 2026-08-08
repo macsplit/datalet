@@ -23,7 +23,13 @@ import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypt
 import { redis } from "./redis/client.js";
 import { watchVaultStream } from "./redis/streamWatcher.js";
 import { BATCH_DEDUP_TTL_SECONDS, STREAM_MAXLEN } from "./redis/config.js";
-import { purgeExpiredTombstones, readVaultRecords } from "./neo4j/materialize.js";
+import {
+  deleteVaultMeta,
+  purgeExpiredTombstones,
+  readVaultMeta,
+  readVaultRecords,
+  upsertVaultMeta,
+} from "./neo4j/materialize.js";
 import { TOMBSTONE_RETENTION_MS } from "./config.js";
 import type { Patch, Store } from "./patchApply.js";
 
@@ -57,15 +63,27 @@ const hlcKey = (vaultId: string) => `vault:${vaultId}:hlc`;
 export const streamKey = (vaultId: string) => `vault:${vaultId}:stream`;
 const batchKey = (vaultId: string, batchId: string) => `vault:${vaultId}:batch:${batchId}`;
 const tombstoneKey = (vaultId: string) => `vault:${vaultId}:tombstones`;
+const streamTicketKey = (vaultId: string, ticketHash: string) =>
+  `vault:${vaultId}:stream-ticket:${ticketHash}`;
+const STREAM_TICKET_TTL_SECONDS = 60 * 60;
 
 export async function createVault(): Promise<{ vaultId: string; vaultToken: string }> {
   const vaultId = randomUUID();
   const vaultToken = randomBytes(24).toString("base64url");
   const tokenHash = createHash("sha256").update(vaultToken).digest("hex");
-  await redis().hset(metaKey(vaultId), { token: tokenHash, createdAt: Date.now() });
-  // Lets the materializer (materializer.ts) discover this vault's stream
-  // without scanning Redis's whole keyspace - see its doc comment.
-  await redis().sadd(VAULTS_INDEX_KEY, vaultId);
+  const createdAt = Date.now();
+  await upsertVaultMeta({ vaultId, tokenHash, createdAt });
+  try {
+    await redis().hset(metaKey(vaultId), { token: tokenHash, createdAt });
+    // Lets the materializer (materializer.ts) discover this vault's stream
+    // without scanning Redis's whole keyspace - see its doc comment.
+    await redis().sadd(VAULTS_INDEX_KEY, vaultId);
+  } catch (error) {
+    await redis().del(metaKey(vaultId)).catch(() => undefined);
+    await redis().srem(VAULTS_INDEX_KEY, vaultId).catch(() => undefined);
+    await deleteVaultMeta(vaultId).catch(() => undefined);
+    throw error;
+  }
   return { vaultId, vaultToken };
 }
 
@@ -79,7 +97,20 @@ export async function createVault(): Promise<{ vaultId: string; vaultToken: stri
 export async function rotateVaultToken(vaultId: string): Promise<string> {
   const vaultToken = randomBytes(24).toString("base64url");
   const tokenHash = createHash("sha256").update(vaultToken).digest("hex");
-  await redis().hset(metaKey(vaultId), { token: tokenHash, rotatedAt: Date.now() });
+  const previous = await redis().hgetall(metaKey(vaultId));
+  const rotatedAt = Date.now();
+  await redis().hset(metaKey(vaultId), { token: tokenHash, rotatedAt });
+  try {
+    await upsertVaultMeta({
+      vaultId,
+      tokenHash,
+      createdAt: Number(previous.createdAt ?? rotatedAt),
+      rotatedAt,
+    });
+  } catch (error) {
+    if (previous.token) await redis().hset(metaKey(vaultId), previous);
+    throw error;
+  }
   return vaultToken;
 }
 
@@ -89,15 +120,70 @@ export async function listVaultIds(): Promise<string[]> {
 }
 
 export async function vaultExists(vaultId: string): Promise<boolean> {
-  return (await redis().exists(metaKey(vaultId))) === 1;
+  if ((await redis().exists(metaKey(vaultId))) === 1) return true;
+  const durable = await readVaultMeta(vaultId);
+  if (!durable) return false;
+  await redis().hset(metaKey(vaultId), {
+    token: durable.tokenHash,
+    createdAt: durable.createdAt,
+    ...(durable.rotatedAt !== undefined && { rotatedAt: durable.rotatedAt }),
+  });
+  await redis().sadd(VAULTS_INDEX_KEY, vaultId);
+  return true;
 }
 
 export async function checkVaultToken(vaultId: string, token: string): Promise<boolean> {
+  if (!(await vaultExists(vaultId))) return false;
   const storedHex = await redis().hget(metaKey(vaultId), "token");
   if (!storedHex) return false;
   const candidate = createHash("sha256").update(token).digest();
   const stored = Buffer.from(storedHex, "hex");
   return candidate.length === stored.length && timingSafeEqual(candidate, stored);
+}
+
+/** Issue a short-lived, stream-only credential so the vault token never appears in an SSE URL. */
+export async function createStreamTicket(vaultId: string): Promise<string> {
+  const ticket = randomBytes(24).toString("base64url");
+  const hash = createHash("sha256").update(ticket).digest("hex");
+  const tokenHash = await redis().hget(metaKey(vaultId), "token");
+  if (!tokenHash) throw new Error("Cannot issue a stream ticket for an unknown vault.");
+  // Bind the ticket to the current token generation. Rotation therefore
+  // invalidates unused/reconnecting tickets without scanning ticket keys.
+  await redis().set(
+    streamTicketKey(vaultId, hash),
+    tokenHash,
+    "EX",
+    STREAM_TICKET_TTL_SECONDS,
+  );
+  return ticket;
+}
+
+export async function checkStreamTicket(vaultId: string, ticket: string): Promise<boolean> {
+  if (!ticket) return false;
+  const hash = createHash("sha256").update(ticket).digest("hex");
+  const [ticketGeneration, currentGeneration] = await Promise.all([
+    redis().get(streamTicketKey(vaultId, hash)),
+    redis().hget(metaKey(vaultId), "token"),
+  ]);
+  return Boolean(ticketGeneration && currentGeneration && ticketGeneration === currentGeneration);
+}
+
+/** Backfill durable metadata for vaults created before Neo4j mirroring existed. */
+export async function mirrorVaultMetadataToNeo4j(): Promise<number> {
+  const vaultIds = await listVaultIds();
+  let mirrored = 0;
+  for (const vaultId of vaultIds) {
+    const meta = await redis().hgetall(metaKey(vaultId));
+    if (!meta.token) continue;
+    await upsertVaultMeta({
+      vaultId,
+      tokenHash: meta.token,
+      createdAt: Number(meta.createdAt ?? Date.now()),
+      ...(meta.rotatedAt ? { rotatedAt: Number(meta.rotatedAt) } : {}),
+    });
+    mirrored += 1;
+  }
+  return mirrored;
 }
 
 export async function applyBatch(vaultId: string, input: PatchBatchInput): Promise<ApplyResult> {

@@ -44,6 +44,10 @@ export async function ensureNeo4jSchema(): Promise<void> {
         "FOR (r:Record) REQUIRE (r.graph, r.id) IS UNIQUE",
     );
     await session.run("CREATE INDEX record_graph_type IF NOT EXISTS FOR (r:Record) ON (r.graph, r.type)");
+    await session.run(
+      "CREATE CONSTRAINT vault_meta_id IF NOT EXISTS " +
+        "FOR (v:VaultMeta) REQUIRE v.id IS UNIQUE",
+    );
   } finally {
     await session.close();
   }

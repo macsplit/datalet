@@ -94,7 +94,7 @@ export async function rotateVaultToken(): Promise<string> {
   if (!response.ok) throw new Error(`rotate failed with status ${response.status}`);
   const { vaultToken } = (await response.json()) as { vaultToken: string };
   writeJson(CONFIG_KEY, { ...config, vaultToken });
-  if (started) connectStream({ ...config, vaultToken });
+  if (started) void connectStream({ ...config, vaultToken });
   return vaultToken;
 }
 
@@ -143,6 +143,7 @@ function setCursor(vaultId: string, seq: number) {
 
 let unsubscribeLocalPatches: (() => void) | undefined;
 let eventSource: EventSource | undefined;
+let streamConnectGeneration = 0;
 let flushing = false;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let flushBackoffMs = 1_000;
@@ -271,17 +272,42 @@ function scheduleReconnect(config: VaultConfig, delayMs = 5_000) {
   if (reconnectTimer !== undefined) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = undefined;
-    connectStream(config);
+    void connectStream(config);
   }, delayMs);
 }
 
-function connectStream(config: VaultConfig) {
+async function connectStream(config: VaultConfig) {
+  const generation = ++streamConnectGeneration;
   eventSource?.close();
-  clearSyncDownWarning();
+  let ticket: string;
+  try {
+    const response = await fetch(
+      `/sync/stream-ticket?vault=${encodeURIComponent(config.vaultId)}`,
+      { method: "POST", headers: { Authorization: `Bearer ${config.vaultToken}` } },
+    );
+    if (!response.ok) throw new Error(`stream ticket request failed with status ${response.status}`);
+    ticket = ((await response.json()) as { ticket: string }).ticket;
+  } catch {
+    if (generation === streamConnectGeneration && started) {
+      if (syncDownTimer === undefined && syncDownWarningId === undefined) {
+        syncDownTimer = setTimeout(() => {
+          syncDownTimer = undefined;
+          syncDownWarningId = reportRuntimeIssue(
+            "Changes made on this device are still being saved locally and will sync automatically once the connection returns.",
+            "Remote sync connection lost",
+            "warning",
+          );
+        }, SYNC_DOWN_WARNING_DELAY_MS);
+      }
+      scheduleReconnect(config);
+    }
+    return;
+  }
+  if (generation !== streamConnectGeneration || !started) return;
   const since = getCursor(config.vaultId);
   const url =
     `/sync/stream?vault=${encodeURIComponent(config.vaultId)}` +
-    `&since=${since}&token=${encodeURIComponent(config.vaultToken)}`;
+    `&since=${since}&ticket=${encodeURIComponent(ticket)}`;
   const source = new EventSource(url);
   eventSource = source;
 
@@ -296,6 +322,7 @@ function connectStream(config: VaultConfig) {
         "warning",
       );
     }, SYNC_DOWN_WARNING_DELAY_MS);
+    scheduleReconnect(config);
   });
 
   source.addEventListener("patches", (event) => {
@@ -322,8 +349,8 @@ function connectStream(config: VaultConfig) {
     source.close();
     void resyncFromSnapshot(config);
   });
-  // EventSource retries the connection natively with backoff; nothing else
-  // to do here on a transient error.
+  // EventSource retries natively, while scheduleReconnect also obtains a
+  // fresh short-lived stream ticket in case the previous one expired.
 }
 
 function enqueueOutbound(config: VaultConfig, patches: Patch[], shape: string) {
@@ -351,7 +378,7 @@ export function startSync() {
   unsubscribeLocalPatches = onLocalPatch((patches, shape) => {
     enqueueOutbound(config, patches, shape);
   });
-  connectStream(config);
+  void connectStream(config);
   if (loadOutbox(config.vaultId).length > 0) scheduleFlush(config);
 
   window.addEventListener("online", onOnline);
@@ -362,7 +389,7 @@ function onOnline() {
   if (!config) return;
   flushBackoffMs = 1_000;
   scheduleFlush(config, 0);
-  connectStream(config);
+  void connectStream(config);
 }
 
 export function stopSync() {
@@ -371,6 +398,7 @@ export function stopSync() {
   unsubscribeLocalPatches = undefined;
   eventSource?.close();
   eventSource = undefined;
+  streamConnectGeneration += 1;
   clearSyncDownWarning();
   if (flushTimer !== undefined) clearTimeout(flushTimer);
   flushTimer = undefined;

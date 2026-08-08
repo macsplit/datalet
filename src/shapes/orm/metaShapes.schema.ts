@@ -132,6 +132,55 @@ export const metaShapesSchema: Schema = {
       {
         dataTypes: [
           {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:filterPropertyName",
+        readablePredicate: "filterPropertyName",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:filterValue",
+        readablePredicate: "filterValue",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:sortPropertyName",
+        readablePredicate: "sortPropertyName",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "iri",
+            literals: ["did:ng:z:ascending"],
+          },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:descending"],
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:sortDirection",
+        readablePredicate: "sortDirection",
+      },
+      {
+        dataTypes: [
+          {
             valType: "iri",
           },
         ],
@@ -262,6 +311,10 @@ export const metaShapesSchema: Schema = {
             valType: "iri",
             literals: ["did:ng:z:checkbox"],
           },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:reference"],
+          },
         ],
         maxCardinality: 1,
         minCardinality: 0,
@@ -364,6 +417,10 @@ export const metaShapesSchema: Schema = {
             valType: "iri",
             literals: ["did:ng:z:enum"],
           },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:reference"],
+          },
         ],
         maxCardinality: 1,
         minCardinality: 1,
@@ -400,6 +457,17 @@ export const metaShapesSchema: Schema = {
         minCardinality: 0,
         iri: "did:ng:z:enumOptions",
         readablePredicate: "enumOptions",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "iri",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:referenceSchemaId",
+        readablePredicate: "referenceSchemaId",
       },
     ],
   },

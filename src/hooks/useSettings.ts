@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { createContext, createElement, useContext, useEffect, type ReactNode } from "react";
+import { OrmSubscription } from "@ng-org/orm";
 import { useShape } from "@ng-org/orm/react";
 import { SettingsShapeType } from "../shapes/orm/settingsShapes.shapeTypes";
 import type { Settings } from "../shapes/orm/settingsShapes.typings";
@@ -29,6 +30,7 @@ const SettingsContext = createContext<SettingsValue | undefined>(undefined);
 
 const DEFAULT_CURRENCY: Currency = "did:ng:z:EUR";
 const DEFAULT_APP_TITLE = "Local Knowledge Graph";
+export const SETTINGS_ID = "did:ng:z:SettingsSingleton";
 
 const CURRENCY_CODES: Record<Currency, string> = {
   "did:ng:z:USD": "USD",
@@ -77,24 +79,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!privateNuri) return;
     let cancelled = false;
-    let secondFrame = 0;
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        if (!cancelled && settingsSet.size === 0) {
-          settingsSet.add({
-            "@graph": privateNuri,
-            "@id": "",
-            "@type": "did:ng:z:Settings",
-            currency: DEFAULT_CURRENCY,
-            appTitle: DEFAULT_APP_TITLE,
-          });
-        }
-      });
+    // useShape owns this same canonical subscription. Acquiring a reference
+    // here exposes its readiness promise, avoiding a race between an arbitrary
+    // frame delay and the engine's initial-data callback on reload.
+    const subscription = OrmSubscription.getOrCreate(SettingsShapeType, {
+      graphs: [privateNuri],
+    });
+    void subscription.readyPromise.then(() => {
+      if (!cancelled && settingsSet.size === 0) {
+        settingsSet.add({
+          "@graph": privateNuri,
+          // A fixed identity makes concurrent bootstrap attempts from two
+          // tabs converge on one record instead of minting duplicates.
+          "@id": SETTINGS_ID,
+          "@type": "did:ng:z:Settings",
+          currency: DEFAULT_CURRENCY,
+          appTitle: DEFAULT_APP_TITLE,
+        });
+      }
     });
     return () => {
       cancelled = true;
-      cancelAnimationFrame(firstFrame);
-      cancelAnimationFrame(secondFrame);
+      subscription.close();
     };
   }, [privateNuri, settingsSet]);
 

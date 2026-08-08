@@ -14,13 +14,15 @@ import { createSyncServer } from "./httpServer.js";
 import { REDIS_URL } from "./redis/config.js";
 import { redis } from "./redis/client.js";
 import { NEO4J_URL } from "./neo4j/config.js";
-import { neo4jDriver } from "./neo4j/client.js";
+import { ensureNeo4jSchema, neo4jDriver } from "./neo4j/client.js";
 import { startMaterializer } from "./materializer.js";
+import { mirrorVaultMetadataToNeo4j } from "./vaultStore.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 await redis().ping();
 await neo4jDriver().verifyConnectivity();
+await ensureNeo4jSchema();
 
 // Same binary, two roles (remote-sync-architecture.md §6.3): the
 // materializer is a separate deployable process from the HTTP ingest tier,
@@ -31,6 +33,7 @@ if (process.env.ROLE === "materializer") {
   await startMaterializer();
   console.log(`localgraph materializer started, redis ${REDIS_URL}, neo4j ${NEO4J_URL}`);
 } else {
+  const mirroredVaults = await mirrorVaultMetadataToNeo4j();
   const staticDir = process.env.STATIC_DIR ?? resolve(moduleDir, "../dist");
   const port = Number(process.env.PORT ?? 3000);
   const server = createSyncServer(staticDir);
@@ -38,5 +41,6 @@ if (process.env.ROLE === "materializer") {
     console.log(
       `localgraph sync server listening on :${port}, serving ${staticDir}, redis ${REDIS_URL}, neo4j ${NEO4J_URL}`,
     );
+    if (mirroredVaults > 0) console.log(`mirrored ${mirroredVaults} vault metadata records to Neo4j`);
   });
 }

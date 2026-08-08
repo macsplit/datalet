@@ -12,6 +12,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import {
   applyBatch,
   checkVaultToken,
+  checkStreamTicket,
+  createStreamTicket,
   createVault,
   entriesSince,
   rotateVaultToken,
@@ -178,6 +180,21 @@ export function createSyncServer(staticDir: string) {
         return;
       }
 
+      if (url.pathname === "/sync/stream-ticket" && req.method === "POST") {
+        const vaultId = url.searchParams.get("vault") ?? "";
+        if (!(await vaultExists(vaultId))) {
+          sendJson(res, 404, { reason: "unknown vault" });
+          return;
+        }
+        const token = bearerToken(req);
+        if (!token || !(await checkVaultToken(vaultId, token))) {
+          sendJson(res, 401, { reason: "invalid token" });
+          return;
+        }
+        sendJson(res, 200, { ticket: await createStreamTicket(vaultId), expiresIn: 3600 });
+        return;
+      }
+
       if (url.pathname === "/sync/snapshot" && req.method === "GET") {
         const vaultId = url.searchParams.get("vault") ?? "";
         if (!(await vaultExists(vaultId))) {
@@ -199,11 +216,13 @@ export function createSyncServer(staticDir: string) {
           sendJson(res, 404, { reason: "unknown vault" });
           return;
         }
-        // Browsers' EventSource cannot set an Authorization header, so this
-        // one endpoint also accepts the bearer token as a query parameter.
-        const token = url.searchParams.get("token") ?? bearerToken(req);
-        if (!token || !(await checkVaultToken(vaultId, token))) {
-          sendJson(res, 401, { reason: "invalid token" });
+        // EventSource cannot set an Authorization header. The client first
+        // exchanges its bearer token for a short-lived, stream-only ticket;
+        // the long-lived vault secret therefore never enters proxy access
+        // logs as a URL query parameter.
+        const ticket = url.searchParams.get("ticket") ?? "";
+        if (!(await checkStreamTicket(vaultId, ticket))) {
+          sendJson(res, 401, { reason: "invalid stream ticket" });
           return;
         }
 

@@ -17,6 +17,7 @@ function shapeRevision(properties: PropertyDef[]): string {
         property.order,
         property.dataType,
         property.cardinality,
+        property.referenceSchemaId ?? "",
         [...(property.enumOptions ?? [])].sort().join("\u001f"),
       ].join("\u001e"),
     )
@@ -57,6 +58,8 @@ function dataTypesFor(property: PropertyDef): DataType[] {
       return [{ valType: "number" }];
     case "did:ng:z:boolean":
       return [{ valType: "boolean" }];
+    case "did:ng:z:reference":
+      return [{ valType: "iri" }];
     case "did:ng:z:enum": {
       const options = [...(property.enumOptions ?? [])];
       return options.length > 0

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import type { PropertyDef } from "../shapes/orm/metaShapes.typings";
+import type { PropertyDef, Widget } from "../shapes/orm/metaShapes.typings";
 import { usePropertyDefs } from "../hooks/usePropertyDefs";
 import { useSchemas } from "../hooks/useSchemas";
 import { useBlocks } from "../hooks/useBlocks";
@@ -12,6 +12,7 @@ const DATA_TYPES: Array<{ value: PropertyDef["dataType"]; label: string }> = [
   { value: "did:ng:z:number", label: "Number" },
   { value: "did:ng:z:boolean", label: "Boolean" },
   { value: "did:ng:z:enum", label: "Enum" },
+  { value: "did:ng:z:reference", label: "Reference" },
 ];
 
 const CARDINALITIES: Array<{
@@ -22,6 +23,23 @@ const CARDINALITIES: Array<{
   { value: "did:ng:z:optional", label: "Optional" },
   { value: "did:ng:z:many", label: "Multiple values" },
 ];
+
+function fieldTypeForProperty(property: PropertyDef): NonNullable<Widget["fieldType"]> {
+  switch (property.dataType) {
+    case "did:ng:z:number":
+      return "did:ng:z:number";
+    case "did:ng:z:boolean":
+      return "did:ng:z:checkbox";
+    case "did:ng:z:enum":
+      return property.cardinality === "did:ng:z:many"
+        ? "did:ng:z:multiSelect"
+        : "did:ng:z:dropdown";
+    case "did:ng:z:reference":
+      return "did:ng:z:reference";
+    default:
+      return "did:ng:z:text";
+  }
+}
 
 function EnumOption({
   option,
@@ -81,6 +99,7 @@ function PropertyEditor({
   index,
   onMove,
   onRename,
+  onDisplayTypeChange,
   onDelete,
 }: {
   property: PropertyDef;
@@ -88,8 +107,10 @@ function PropertyEditor({
   index: number;
   onMove: (from: number, offset: -1 | 1) => void;
   onRename: (next: string) => void;
+  onDisplayTypeChange: () => void;
   onDelete: () => void;
 }) {
+  const { schemas } = useSchemas();
   const [nameDraft, setNameDraft] = useState(property.name);
   const [nameError, setNameError] = useState("");
 
@@ -183,7 +204,14 @@ function PropertyEditor({
             className="select"
             value={property.dataType}
             onChange={(event) => {
-              property.dataType = event.target.value as PropertyDef["dataType"];
+              const next = event.target.value as PropertyDef["dataType"];
+              property.dataType = next;
+              if (next === "did:ng:z:reference") {
+                property.referenceSchemaId ??= schemas[0]?.["@id"];
+              } else {
+                delete property.referenceSchemaId;
+              }
+              onDisplayTypeChange();
             }}
           >
             {DATA_TYPES.map((option) => (
@@ -207,6 +235,7 @@ function PropertyEditor({
             onChange={(event) => {
               property.cardinality = event.target
                 .value as PropertyDef["cardinality"];
+              onDisplayTypeChange();
             }}
           >
             {CARDINALITIES.map((option) => (
@@ -238,6 +267,29 @@ function PropertyEditor({
           ) : (
             <p className="muted">No options configured.</p>
           )}
+        </div>
+      )}
+      {property.dataType === "did:ng:z:reference" && (
+        <div className="field-group">
+          <label className="field-label" htmlFor={`${property["@id"]}-reference-schema`}>
+            Referenced schema
+          </label>
+          <select
+            id={`${property["@id"]}-reference-schema`}
+            className="select"
+            value={property.referenceSchemaId ?? ""}
+            onChange={(event) => (property.referenceSchemaId = event.target.value)}
+          >
+            {schemas.length === 0 && <option value="">No schemas available</option>}
+            {schemas.map((candidate) => (
+              <option value={candidate["@id"]} key={candidate["@id"]}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+          <small className="helper-text">
+            Stored values use the referenced record id; labels come from that schema's first text field.
+          </small>
         </div>
       )}
     </article>
@@ -373,11 +425,29 @@ export function SchemaEditorPage() {
                       widget.label = next;
                     }
                   }
+                  for (const block of blocks) {
+                    if (block.schemaId !== schemaId) continue;
+                    if (block.filterPropertyName === property.name) block.filterPropertyName = next;
+                    if (block.sortPropertyName === property.name) block.sortPropertyName = next;
+                  }
                   property.name = next;
+                }}
+                onDisplayTypeChange={() => {
+                  for (const widget of widgetsBoundTo(property.name)) {
+                    widget.fieldType = fieldTypeForProperty(property);
+                  }
                 }}
                 onDelete={() => {
                   for (const widget of widgetsBoundTo(property.name)) {
                     deleteWidget(widget);
+                  }
+                  for (const block of blocks) {
+                    if (block.schemaId !== schemaId) continue;
+                    if (block.filterPropertyName === property.name) {
+                      delete block.filterPropertyName;
+                      delete block.filterValue;
+                    }
+                    if (block.sortPropertyName === property.name) delete block.sortPropertyName;
                   }
                   deletePropertyDef(property);
                 }}
