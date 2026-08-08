@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useShape } from "@ng-org/orm/react";
 import type {
   PropertyDef,
@@ -25,6 +25,34 @@ function valuesOf(value: unknown): string[] {
   if (value instanceof Set) return [...value].map(String);
   if (Array.isArray(value)) return value.map(String);
   return [];
+}
+
+function dateTimeInputValue(value: unknown): string {
+  if (typeof value !== "string" || !value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function displayDate(value: unknown, includeTime: boolean): string {
+  if (typeof value !== "string" || !value) return "Not set";
+  const date = includeTime
+    ? new Date(value)
+    : /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? new Date(
+          Number(value.slice(0, 4)),
+          Number(value.slice(5, 7)) - 1,
+          Number(value.slice(8, 10)),
+        )
+      : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(
+    undefined,
+    includeTime
+      ? { dateStyle: "medium", timeStyle: "short" }
+      : { dateStyle: "medium" },
+  ).format(date);
 }
 
 function ReferenceField({
@@ -58,9 +86,16 @@ function ReferenceField({
     (item) => item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum",
   );
   const options = [...targets].sort((a, b) => a["@id"].localeCompare(b["@id"]));
+  const recordValue = record[property.name];
+  const [localValue, setLocalValue] = useState(recordValue);
+  useEffect(() => setLocalValue(recordValue), [recordValue]);
   const selected = property.cardinality === "did:ng:z:many"
-    ? valuesOf(record[property.name])
-    : [typeof record[property.name] === "string" ? record[property.name] as string : ""];
+    ? valuesOf(localValue)
+    : [typeof localValue === "string" ? localValue : ""];
+  const setValue = (next: string | Set<string>) => {
+    setLocalValue(next);
+    record[property.name] = next;
+  };
   const display = (id: string) => {
     const match = options.find((candidate) => candidate["@id"] === id);
     if (!match) return id || "Not set";
@@ -79,9 +114,9 @@ function ReferenceField({
             multiple
             value={selected}
             onChange={(event) => {
-              record[property.name] = new Set(
+              setValue(new Set(
                 [...event.currentTarget.selectedOptions].map((option) => option.value),
-              );
+              ));
             }}
           >
             {options.map((option) => (
@@ -93,7 +128,7 @@ function ReferenceField({
             id={inputId}
             className="select"
             value={selected[0]}
-            onChange={(event) => (record[property.name] = event.target.value)}
+            onChange={(event) => setValue(event.target.value)}
           >
             <option value="">Not set</option>
             {options.map((option) => (
@@ -125,7 +160,9 @@ export function FieldWidget({
 }) {
   const { format, symbol } = useSettings();
   const propertyName = property.name;
-  const value = record[propertyName];
+  const recordValue = record[propertyName];
+  const [value, setLocalValue] = useState(recordValue);
+  useEffect(() => setLocalValue(recordValue), [recordValue]);
   const label = widget.label || propertyName;
   const fieldType = widget.fieldType ?? "did:ng:z:text";
   const enumOptions = [...(property.enumOptions ?? [])];
@@ -144,17 +181,16 @@ export function FieldWidget({
   }
 
   const setScalar = (next: string | number | boolean) => {
+    setLocalValue(next);
     record[propertyName] = next;
   };
 
   const toggleOption = (option: string, checked: boolean) => {
-    const current = record[propertyName];
-    if (!(current instanceof Set)) {
-      if (checked) record[propertyName] = new Set([option]);
-      return;
-    }
+    const current = value instanceof Set ? new Set(value) : new Set<string>();
     if (checked) current.add(option);
     else current.delete(option);
+    setLocalValue(current);
+    record[propertyName] = current;
   };
 
   if (fieldType === "did:ng:z:checkbox") {
@@ -216,6 +252,32 @@ export function FieldWidget({
           </div>
         ) : (
           <p className="muted">None selected.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (fieldType === "did:ng:z:date" || fieldType === "did:ng:z:dateTime") {
+    const includeTime = fieldType === "did:ng:z:dateTime";
+    const inputValue = includeTime
+      ? dateTimeInputValue(value)
+      : typeof value === "string" ? value : "";
+    return (
+      <div className="field-group">
+        <label className="field-label" htmlFor={inputId}>{label}</label>
+        {isEditing ? (
+          <input
+            id={inputId}
+            type={includeTime ? "datetime-local" : "date"}
+            className="input"
+            value={inputValue}
+            onChange={(event) => {
+              const next = event.target.value;
+              setScalar(includeTime && next ? new Date(next).toISOString() : next);
+            }}
+          />
+        ) : (
+          <span className="value-text">{displayDate(value, includeTime)}</span>
         )}
       </div>
     );

@@ -4,16 +4,14 @@
 
 | | |
 |---|---|
-| **Done** | Step 1 — data-block reader search and pagination |
-| **Next** | Step 2 — date and time field types |
+| **Done** | Steps 1–2 and 9a — reader search/pagination, date/time fields, stale-edit fix |
+| **Next** | Step 3 — URL, email, and long-text field types |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
-| **Newly found** | Step 9a — edited field values go stale on screen (pre-existing) |
 
 Step 9a was found while building step 1's coverage and is not from the original
-evaluation. It is a correctness defect in the edit path, and step 7 (undo)
-depends on edits rendering correctly, so it should be resolved before step 7 —
-and reasonably could be taken before step 2 if display correctness outranks new
-field types.
+evaluation. It was resolved before step 2 because step 7 (undo) depends on
+edits rendering correctly and every new input type would otherwise inherit the
+same stale display.
 
 Derived from `product-evaluation-2026-08-08.md`. That document does not carry a
 literal "priority practical fixes" heading, so this plan takes the practical
@@ -116,7 +114,15 @@ changing the query resets to page 1.
 
 ---
 
-## 2. Date and time field types
+## 2. Date and time field types — DONE
+
+Shipped as described. Date-only values remain `YYYY-MM-DD`; date-time editor
+values are normalized to UTC ISO strings and converted back to local time for
+editing and browser-locale display. Empty values remain empty. The generated
+ORM schema, both builders, runtime dynamic shape, defaults, and field renderer
+all recognize the new types. Playwright covers persistence across reload,
+empty values, chronological sorting, UTC normalization, and local editor
+round-tripping.
 
 **Why here.** Named first among the missing types in the evaluation's summary,
 and the only one that stores as a plain JSON string — so it crosses the patch
@@ -339,7 +345,7 @@ Three options, in my order of preference:
    unpaired product's "no network surface at all" property. Largest scope, and
    it changes what the local-only mode is.
 
-## 9a. Found during step 1: edited field values go stale on screen
+## 9a. Found during step 1: edited field values go stale on screen — DONE
 
 Not in the original evaluation — surfaced while building step 1's coverage, and
 worth fixing before step 7 (undo), which depends on edits rendering correctly.
@@ -365,6 +371,15 @@ This is plausibly the same neighborhood as the tracked upstream
 `@ng-org/orm` lifecycle issue. Investigate before writing any workaround — a fix
 in the app layer that papers over a dependency bug is worth avoiding if the
 dependency can be fixed instead.
+
+**Resolution.** Confirmed against the installed React adapter: a write can
+replace the deep-signal record branch while a field still renders the retired
+proxy supplied in its current card props. The dependency is external, so field
+widgets now hold an optimistic local value, write through the same record proxy
+as before, and resynchronize when the record prop supplies a genuinely newer
+value. Persistence, cross-tab broadcast, and remote sync remain unchanged.
+The behavior is covered by a Playwright regression that verifies both the live
+input and the per-record persisted bytes.
 
 ## 10. Deferred: multi-hour endurance run
 

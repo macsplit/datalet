@@ -11,6 +11,7 @@ const DATA_TYPES: Array<{ value: PropertyDef["dataType"]; label: string }> = [
   { value: "did:ng:z:text", label: "Text" },
   { value: "did:ng:z:number", label: "Number" },
   { value: "did:ng:z:boolean", label: "Boolean" },
+  { value: "did:ng:z:date", label: "Date / time" },
   { value: "did:ng:z:enum", label: "Enum" },
   { value: "did:ng:z:reference", label: "Reference" },
 ];
@@ -30,6 +31,8 @@ function fieldTypeForProperty(property: PropertyDef): NonNullable<Widget["fieldT
       return "did:ng:z:number";
     case "did:ng:z:boolean":
       return "did:ng:z:checkbox";
+    case "did:ng:z:date":
+      return "did:ng:z:date";
     case "did:ng:z:enum":
       return property.cardinality === "did:ng:z:many"
         ? "did:ng:z:multiSelect"

@@ -78,6 +78,31 @@ function booksFixture(
   ];
 }
 
+function eventsFixture(
+  entries: Array<{ name: string; when: string }>,
+  fieldType: "did:ng:z:date" | "did:ng:z:dateTime" = "did:ng:z:date",
+) {
+  const schemaId = "did:ng:z:meta:schema:events";
+  const blockId = "block-events";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Events" },
+    { "@graph": GRAPH, "@id": "property-event-name", "@type": "did:ng:z:PropertyDef", schemaId, name: "Name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-event-when", "@type": "did:ng:z:PropertyDef", schemaId, name: "When", order: 1, dataType: "did:ng:z:date", cardinality: "did:ng:z:optional", enumOptions: [] },
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId, parentTabId: "did:ng:z:HomeTab", sortPropertyName: "When" },
+    { "@graph": GRAPH, "@id": "widget-event-name", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Name", label: "Name", fieldType: "did:ng:z:text" },
+    { "@graph": GRAPH, "@id": "widget-event-when", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:field", propertyName: "When", label: "When", fieldType },
+    { "@graph": GRAPH, "@id": "widget-event-actions", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 2, widgetType: "did:ng:z:editDeleteActions" },
+    ...entries.map((entry, index) => ({
+      "@graph": GRAPH,
+      "@id": `event-${index}`,
+      "@type": `did:ng:z:user:${schemaId}`,
+      Name: entry.name,
+      When: entry.when,
+    })),
+  ];
+}
+
 const SEARCH_LABEL = "Search Books";
 
 test("search narrows a data block to matching records", async ({ page }) => {
@@ -311,6 +336,102 @@ test("an active search reflects record changes without a reload", async ({ page 
   await expect(cards).toHaveCount(1);
   expect(await cards.nth(0).textContent()).toContain("Dune");
   await expect(page.getByLabel(SEARCH_LABEL)).toHaveValue("du");
+});
+
+test("edited record fields stay current on screen and in storage", async ({ page }) => {
+  await seedSession(page);
+  const records = booksFixture([{ title: "Dune", rating: 5 }]);
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-actions",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 2,
+    widgetType: "did:ng:z:editDeleteActions",
+  });
+  await seedNewFormat(page, records);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  const title = page.getByLabel("Title");
+  await title.fill("Dune Messiah");
+
+  // The deep-signal adapter replaces a record proxy after a write. The card
+  // must receive the replacement instead of snapping back to its stale prop.
+  await expect(title).toHaveValue("Dune Messiah");
+  await page.waitForTimeout(200);
+  await expect
+    .poll(() => page.evaluate(
+      ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.Title,
+      { prefix: RECORD_PREFIX, key: `${GRAPH}|book-0` },
+    ))
+    .toBe("Dune Messiah");
+});
+
+test("date fields persist byte-identically and empty dates stay empty", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, eventsFixture([
+    { name: "Launch", when: "2026-08-01" },
+    { name: "Unscheduled", when: "" },
+  ]));
+  await page.goto("/");
+
+  const launch = page.locator(".record-card").filter({ hasText: "Launch" });
+  await launch.getByRole("button", { name: "Edit record" }).click();
+  await page.getByLabel("When").fill("2026-08-08");
+  await expect(page.getByLabel("When")).toHaveValue("2026-08-08");
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.When,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|event-0` },
+  )).toBe("2026-08-08");
+
+  await page.reload();
+  const reloadedLaunch = page.locator(".record-card").filter({ hasText: "Launch" });
+  await reloadedLaunch.getByRole("button", { name: "Edit record" }).click();
+  await expect(page.getByLabel("When")).toHaveValue("2026-08-08");
+  await page.getByRole("button", { name: "Done editing" }).click();
+  const unscheduled = page.locator(".record-card").filter({ hasText: "Unscheduled" });
+  await unscheduled.getByRole("button", { name: "Edit record" }).click();
+  await expect(page.getByLabel("When")).toHaveValue("");
+});
+
+test("date sorting is chronological for normalized stored values", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, eventsFixture([
+    { name: "Latest", when: "2026-12-31" },
+    { name: "Earliest", when: "2025-01-10" },
+    { name: "Middle", when: "2026-02-03" },
+  ]));
+  await page.goto("/");
+
+  const cards = page.locator(".record-card");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0)).toContainText("Earliest");
+  await expect(cards.nth(1)).toContainText("Middle");
+  await expect(cards.nth(2)).toContainText("Latest");
+});
+
+test("date-time fields store UTC while preserving the local editor value", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(
+    page,
+    eventsFixture([{ name: "Call", when: "" }], "did:ng:z:dateTime"),
+  );
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  const input = page.getByLabel("When");
+  await input.fill("2026-08-08T14:30");
+  await expect(input).toHaveValue("2026-08-08T14:30");
+  const expectedUtc = await page.evaluate(() => new Date("2026-08-08T14:30").toISOString());
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.When,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|event-0` },
+  )).toBe(expectedUtc);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Edit record" }).click();
+  await expect(page.getByLabel("When")).toHaveValue("2026-08-08T14:30");
 });
 
 test("the builder writes search and page size onto the block", async ({ page }) => {

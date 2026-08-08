@@ -36,6 +36,8 @@ const FIELD_TYPES: Array<{
   { value: "did:ng:z:text", label: "Text" },
   { value: "did:ng:z:number", label: "Number" },
   { value: "did:ng:z:currency", label: "Currency" },
+  { value: "did:ng:z:date", label: "Date" },
+  { value: "did:ng:z:dateTime", label: "Date and time" },
   { value: "did:ng:z:dropdown", label: "Dropdown" },
   { value: "did:ng:z:multiSelect", label: "Multi-select" },
   { value: "did:ng:z:checkbox", label: "Checkbox" },
@@ -51,6 +53,8 @@ function defaultFieldType(
       return "did:ng:z:number";
     case "did:ng:z:boolean":
       return "did:ng:z:checkbox";
+    case "did:ng:z:date":
+      return "did:ng:z:date";
     case "did:ng:z:enum":
       return property.cardinality === "did:ng:z:many"
         ? "did:ng:z:multiSelect"

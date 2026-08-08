@@ -2,7 +2,8 @@
 
 An assessment of what this project is well suited to and what it is not,
 started at commit `53aaef0`, updated after the persistence/test follow-up, and
-again after data-block reader search and pagination landed. Based on reading
+again after data-block reader search/pagination and date/time fields landed.
+Based on reading
 the application source (`src/`), the sync tier (`server/`), and the four
 `remote-sync*` design documents — not on user research or field deployment.
 
@@ -66,8 +67,9 @@ which is why sync bolted on without rewriting the app.
 **Complex relational workflows.** Fields now include record references, so a
 Task can point to a Project without duplicating its name. There are still no
 reverse lookups, joins, relationship constraints, rollups, or cascading record
-behavior. Date/time, file/image, rich text, URL, and email types also remain
-absent.
+behavior. File/image, rich text, URL, and email types also remain absent.
+Date and date-time fields are supported as ISO strings, with date-time values
+normalized to UTC and displayed in the browser locale.
 
 **Any dataset above small.** Data blocks apply configured field filtering and
 sorting, and readers now get an optional search box and pagination over the
@@ -140,10 +142,10 @@ on. Not ready for team use, complex relational workflows, meaningful volume,
 or sensitive information.
 
 The previously identified high-leverage product gaps—export/import,
-data-block filter/sort, reference fields, and end-user search/pagination—are now
-implemented. The next likely application-layer gaps are date/time and file field
-types, and undo/history for conflict or editing mistakes. The ordered plan for
-the rest is `product-gaps-plan.md`.
+data-block filter/sort, reference fields, end-user search/pagination, and
+date/time fields—are now implemented. The next likely application-layer gaps
+are URL/email/long-text controls, file fields, and undo/history for conflict or
+editing mistakes. The ordered plan for the rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

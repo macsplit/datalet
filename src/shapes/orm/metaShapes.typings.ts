@@ -191,6 +191,8 @@ export interface Widget {
     | "did:ng:z:text"
     | "did:ng:z:number"
     | "did:ng:z:currency"
+    | "did:ng:z:date"
+    | "did:ng:z:dateTime"
     | "did:ng:z:dropdown"
     | "did:ng:z:multiSelect"
     | "did:ng:z:checkbox"
@@ -264,6 +266,7 @@ export interface PropertyDef {
     | "did:ng:z:text"
     | "did:ng:z:number"
     | "did:ng:z:boolean"
+    | "did:ng:z:date"
     | "did:ng:z:enum"
     | "did:ng:z:reference";
   /**

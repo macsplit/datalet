@@ -62,6 +62,7 @@ A schema describes one record type. Its ordered fields support:
 - Text
 - Number
 - Boolean
+- Date / time (date-only or UTC-normalized date-time display)
 - Enum
 - Reference to a record in another schema
 - Required, optional, or multi-value cardinality
@@ -91,8 +92,8 @@ Data blocks can contain these widgets:
 
 - **Panel title** displays the block heading.
 - **Add button** creates a record with schema-derived defaults.
-- **Field** binds a schema field to a text, number, currency, dropdown,
-  multi-select, checkbox, or record-reference control.
+- **Field** binds a schema field to a text, number, currency, date, date-time,
+  dropdown, multi-select, checkbox, or record-reference control.
 - **Edit/delete actions** enables record editing and confirmed deletion.
 
 New data blocks receive the standard title, add, edit/delete, and field widgets.

@@ -58,6 +58,8 @@ function dataTypesFor(property: PropertyDef): DataType[] {
       return [{ valType: "number" }];
     case "did:ng:z:boolean":
       return [{ valType: "boolean" }];
+    case "did:ng:z:date":
+      return [{ valType: "string" }];
     case "did:ng:z:reference":
       return [{ valType: "iri" }];
     case "did:ng:z:enum": {

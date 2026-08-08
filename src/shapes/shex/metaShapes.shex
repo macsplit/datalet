@@ -52,7 +52,7 @@ ex:WidgetShape {
     // rdfs:comment "Optional display label override" ;
   ex:propertyName xsd:string ?
     // rdfs:comment "The bound PropertyDef's name (field widgets only)" ;
-  ex:fieldType [ex:text ex:number ex:currency ex:dropdown ex:multiSelect ex:checkbox ex:reference] ?
+  ex:fieldType [ex:text ex:number ex:currency ex:date ex:dateTime ex:dropdown ex:multiSelect ex:checkbox ex:reference] ?
     // rdfs:comment "How to render the bound field (field widgets only)" ;
 }
 
@@ -70,7 +70,7 @@ ex:PropertyDefShape {
     // rdfs:comment "The property's name" ;
   ex:order xsd:integer
     // rdfs:comment "Sort order among sibling properties" ;
-  ex:dataType [ex:text ex:number ex:boolean ex:enum ex:reference]
+  ex:dataType [ex:text ex:number ex:boolean ex:date ex:enum ex:reference]
     // rdfs:comment "The property's underlying data type" ;
   ex:cardinality [ex:one ex:optional ex:many]
     // rdfs:comment "Whether the property is required, optional, or a multi-value set" ;

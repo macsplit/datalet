@@ -60,6 +60,8 @@ function defaultValue(property: PropertyDef): string | number | boolean | Set<st
       return 0;
     case "did:ng:z:boolean":
       return false;
+    case "did:ng:z:date":
+      return "";
     case "did:ng:z:enum":
       return property.enumOptions?.values().next().value ?? "";
     case "did:ng:z:reference":

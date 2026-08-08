@@ -323,6 +323,14 @@ export const metaShapesSchema: Schema = {
           },
           {
             valType: "iri",
+            literals: ["did:ng:z:date"],
+          },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:dateTime"],
+          },
+          {
+            valType: "iri",
             literals: ["did:ng:z:dropdown"],
           },
           {
@@ -434,6 +442,10 @@ export const metaShapesSchema: Schema = {
           {
             valType: "iri",
             literals: ["did:ng:z:boolean"],
+          },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:date"],
           },
           {
             valType: "iri",
