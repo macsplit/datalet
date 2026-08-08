@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–3 and 9a — reader search/pagination, expanded fields, stale-edit fix |
-| **Next** | Step 4 — installable offline shell |
+| **Done** | Steps 1–4 and 9a — reader tools, expanded fields, offline shell, stale-edit fix |
+| **Next** | Step 5 — make discarded sync writes visible |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -185,7 +185,17 @@ URL is not rendered as a live link.
 
 ---
 
-## 4. Installable offline shell (manifest + service worker)
+## 4. Installable offline shell (manifest + service worker) — DONE
+
+Shipped with a web manifest, deterministic 192/512 icons derived from the
+existing vector mark, production-only service-worker registration, and an
+explicit dependency-free worker. Install caches the built shell and its hashed
+assets; static GETs are cache-first with background refresh, navigations fall
+back to the shell, old cache versions are removed, and `/sync/*` is always
+bypassed. A separate production-preview Playwright test takes Chromium offline,
+confirms a persisted record survives a cold reload, and confirms sync health
+cannot be served from the worker. `pnpm test:client` runs both the normal dev
+suite and this production-only check.
 
 **Why here.** The evaluation calls the offline framing out directly: data
 persists offline but a cold load with no network will not start the app. This

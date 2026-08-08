@@ -108,11 +108,6 @@ the Redis conflict path, Redis-loss snapshot recovery, and tombstone purging,
 run in CI. Coverage is intentionally narrow; most UI builder workflows still
 need broader regression coverage.
 
-**True offline-first, despite the framing.** There is no service worker
-and no web manifest (`public/` contains only a favicon). Data persists
-offline, but a cold page load with no network will not start the app.
-It is "local storage," not "installable offline app."
-
 ## Smaller things worth knowing
 
 - Conflict resolution is field-level LWW with no history, no undo, and
@@ -124,6 +119,10 @@ It is "local storage," not "installable offline app."
   in the outbox, but it is disruptive.
 - JSON export/import now provides an explicit local backup path containing
   both records and builder metadata.
+- Production builds include a manifest and service worker. After one online
+  load, the shell and local records cold-start offline; paired edits continue
+  using the existing persistent outbox. Sync endpoints are always bypassed by
+  the worker.
 - A known upstream `@ng-org/orm` subscription-lifecycle race is
   documented; the error boundary catches it, but it surfaces as a
   reload screen when it fires.
@@ -145,9 +144,9 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-next likely application-layer gaps are an installable offline shell, file
-fields, and undo/history for conflict or editing mistakes. The ordered plan
-for the rest is `product-gaps-plan.md`.
+next likely application-layer gaps are visible conflict losses,
+non-destructive stale-cursor recovery, file fields, and undo/history for
+editing mistakes. The ordered plan for the rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

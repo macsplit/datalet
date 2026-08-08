@@ -10,6 +10,12 @@ for the same site synchronize through `BroadcastChannel`. An optional sync
 server can pair a private vault across devices; leaving sync unconfigured
 keeps the application entirely browser-local.
 
+Production builds are installable as a web app and cache their application
+shell. After one online load, an unpaired app can cold-start fully offline with
+its local records. A paired app also starts offline and queues edits in its
+existing outbox until the sync server is reachable again; `/sync/*` requests
+are never intercepted or replayed by the service worker.
+
 ## Requirements
 
 - Node.js 22.18 or newer
