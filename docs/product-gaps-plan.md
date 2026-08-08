@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–2 and 9a — reader search/pagination, date/time fields, stale-edit fix |
-| **Next** | Step 3 — URL, email, and long-text field types |
+| **Done** | Steps 1–3 and 9a — reader search/pagination, expanded fields, stale-edit fix |
+| **Next** | Step 4 — installable offline shell |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -153,7 +153,15 @@ order; an empty date round-trips as empty rather than epoch.
 
 ---
 
-## 3. URL, email, and long-text field types
+## 3. URL, email, and long-text field types — DONE
+
+Shipped as described. Text properties can now use URL, email, and long-text
+widgets without changing their stored data type. URL and email editors use
+their native input modes; read mode emits HTTP(S) and `mailto:` links with
+`noreferrer noopener`, while unsupported or malformed URL schemes remain plain
+text. Long text uses a resizable textarea and preserves whitespace in read
+mode. Playwright covers persistence/reload, the rendered controls and links,
+line breaks, and an inert `javascript:` URL.
 
 **Why here.** Same seam as step 2 and nearly free once it is open — all three
 are `valType: "string"` with a different input type and a different read-mode

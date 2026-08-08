@@ -34,6 +34,9 @@ const FIELD_TYPES: Array<{
   label: string;
 }> = [
   { value: "did:ng:z:text", label: "Text" },
+  { value: "did:ng:z:longText", label: "Long text" },
+  { value: "did:ng:z:url", label: "URL" },
+  { value: "did:ng:z:email", label: "Email" },
   { value: "did:ng:z:number", label: "Number" },
   { value: "did:ng:z:currency", label: "Currency" },
   { value: "did:ng:z:date", label: "Date" },

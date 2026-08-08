@@ -55,6 +55,17 @@ function displayDate(value: unknown, includeTime: boolean): string {
   ).format(date);
 }
 
+function safeWebUrl(value: string): string | undefined {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function ReferenceField({
   record,
   property,
@@ -278,6 +289,57 @@ export function FieldWidget({
           />
         ) : (
           <span className="value-text">{displayDate(value, includeTime)}</span>
+        )}
+      </div>
+    );
+  }
+
+  if (fieldType === "did:ng:z:longText") {
+    const text = typeof value === "string" ? value : "";
+    return (
+      <div className="field-group">
+        <label className="field-label" htmlFor={inputId}>{label}</label>
+        {isEditing ? (
+          <textarea
+            id={inputId}
+            className="textarea"
+            value={text}
+            onChange={(event) => setScalar(event.target.value)}
+          />
+        ) : (
+          <p className="value-text preserve-whitespace">{text || "Not set"}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (fieldType === "did:ng:z:url" || fieldType === "did:ng:z:email") {
+    const text = typeof value === "string" ? value : "";
+    const href = fieldType === "did:ng:z:email"
+      ? text ? `mailto:${text}` : undefined
+      : safeWebUrl(text);
+    return (
+      <div className="field-group">
+        <label className="field-label" htmlFor={inputId}>{label}</label>
+        {isEditing ? (
+          <input
+            id={inputId}
+            type={fieldType === "did:ng:z:email" ? "email" : "url"}
+            className="input"
+            value={text}
+            onChange={(event) => setScalar(event.target.value)}
+          />
+        ) : href ? (
+          <a
+            className="value-text"
+            href={href}
+            target={fieldType === "did:ng:z:url" ? "_blank" : undefined}
+            rel="noreferrer noopener"
+          >
+            {text}
+          </a>
+        ) : (
+          <span className="value-text">{text || "Not set"}</span>
         )}
       </div>
     );

@@ -189,6 +189,9 @@ export interface Widget {
    */
   fieldType?:
     | "did:ng:z:text"
+    | "did:ng:z:longText"
+    | "did:ng:z:url"
+    | "did:ng:z:email"
     | "did:ng:z:number"
     | "did:ng:z:currency"
     | "did:ng:z:date"

@@ -315,6 +315,18 @@ export const metaShapesSchema: Schema = {
           },
           {
             valType: "iri",
+            literals: ["did:ng:z:longText"],
+          },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:url"],
+          },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:email"],
+          },
+          {
+            valType: "iri",
             literals: ["did:ng:z:number"],
           },
           {

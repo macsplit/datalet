@@ -103,6 +103,36 @@ function eventsFixture(
   ];
 }
 
+function contactFixture(website = "", email = "", notes = "") {
+  const schemaId = "did:ng:z:meta:schema:contacts";
+  const blockId = "block-contacts";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Contacts" },
+    ...[
+      ["Website", 0],
+      ["Email", 1],
+      ["Notes", 2],
+    ].map(([name, order]) => ({
+      "@graph": GRAPH,
+      "@id": `property-contact-${String(name).toLowerCase()}`,
+      "@type": "did:ng:z:PropertyDef",
+      schemaId,
+      name,
+      order,
+      dataType: "did:ng:z:text",
+      cardinality: "did:ng:z:optional",
+      enumOptions: [],
+    })),
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId, parentTabId: "did:ng:z:HomeTab" },
+    { "@graph": GRAPH, "@id": "widget-contact-website", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Website", label: "Website", fieldType: "did:ng:z:url" },
+    { "@graph": GRAPH, "@id": "widget-contact-email", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:field", propertyName: "Email", label: "Email", fieldType: "did:ng:z:email" },
+    { "@graph": GRAPH, "@id": "widget-contact-notes", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 2, widgetType: "did:ng:z:field", propertyName: "Notes", label: "Notes", fieldType: "did:ng:z:longText" },
+    { "@graph": GRAPH, "@id": "widget-contact-actions", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 3, widgetType: "did:ng:z:editDeleteActions" },
+    { "@graph": GRAPH, "@id": "contact-0", "@type": `did:ng:z:user:${schemaId}`, Website: website, Email: email, Notes: notes },
+  ];
+}
+
 const SEARCH_LABEL = "Search Books";
 
 test("search narrows a data block to matching records", async ({ page }) => {
@@ -432,6 +462,50 @@ test("date-time fields store UTC while preserving the local editor value", async
   await page.reload();
   await page.getByRole("button", { name: "Edit record" }).click();
   await expect(page.getByLabel("When")).toHaveValue("2026-08-08T14:30");
+});
+
+test("URL, email, and long-text controls persist and render appropriately", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, contactFixture());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  await expect(page.getByLabel("Website")).toHaveAttribute("type", "url");
+  await expect(page.getByLabel("Email")).toHaveAttribute("type", "email");
+  await expect(page.getByLabel("Notes")).toHaveJSProperty("tagName", "TEXTAREA");
+  await page.getByLabel("Website").fill("https://example.com/profile");
+  await page.getByLabel("Email").fill("reader@example.com");
+  await page.getByLabel("Notes").fill("First line\nSecond line");
+
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null"),
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|contact-0` },
+  )).toMatchObject({
+    Website: "https://example.com/profile",
+    Email: "reader@example.com",
+    Notes: "First line\nSecond line",
+  });
+
+  await page.reload();
+  await expect(page.getByRole("link", { name: "https://example.com/profile" }))
+    .toHaveAttribute("href", "https://example.com/profile");
+  await expect(page.getByRole("link", { name: "reader@example.com" }))
+    .toHaveAttribute("href", "mailto:reader@example.com");
+  const notes = page.locator(".preserve-whitespace");
+  await expect(notes).toHaveText("First line\nSecond line");
+  await expect(notes).toHaveCSS("white-space", "pre-wrap");
+});
+
+test("unsafe URL schemes render as text rather than active links", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(
+    page,
+    contactFixture("javascript:alert(document.domain)", "reader@example.com", "Safe notes"),
+  );
+  await page.goto("/");
+
+  await expect(page.getByText("javascript:alert(document.domain)", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "javascript:alert(document.domain)" })).toHaveCount(0);
 });
 
 test("the builder writes search and page size onto the block", async ({ page }) => {
