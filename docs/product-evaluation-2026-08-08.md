@@ -110,8 +110,9 @@ need broader regression coverage.
 
 ## Smaller things worth knowing
 
-- Conflict resolution is field-level LWW with no history, no undo, and
-  no merge UI. Fully and partially superseded writes now raise a visible
+- Conflict resolution is field-level LWW with no shared history or merge UI.
+  A bounded page-session undo stack can reverse recent local edits by emitting
+  a fresh write. Fully and partially superseded writes now raise a visible
   warning with the server's reason and dropped-patch count; the winning value
   still converges through SSE without a second rollback path.
 - Recovery from a stale cursor reconciles the snapshot into mounted
@@ -144,9 +145,10 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-next likely application-layer gaps are local undo, broader builder regression
-coverage, and the blocked file-field storage decision. The ordered plan for
-the rest is `product-gaps-plan.md`.
+next likely application-layer gaps are broader builder regression coverage and
+the blocked file-field storage decision. A bounded local undo stack now covers
+editing mistakes without pretending to provide cross-device history. The
+ordered plan for the rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

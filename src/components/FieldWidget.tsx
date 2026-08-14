@@ -10,6 +10,7 @@ import { useSchemas } from "../hooks/useSchemas";
 import { usePropertyDefs } from "../hooks/usePropertyDefs";
 import { useMetaStore } from "../hooks/MetaStoreContext";
 import { buildShapeType } from "../utils/dynamicSchema";
+import { clearUndoDisplayForRecord } from "../utils/localNgEngine";
 
 const EMPTY_REFERENCE_SHAPE = {
   shape: "did:ng:z:MissingReferenceShape",
@@ -72,12 +73,14 @@ function ReferenceField({
   label,
   inputId,
   isEditing,
+  displayValue,
 }: {
   record: DynamicRecord;
   property: PropertyDef;
   label: string;
   inputId: string;
   isEditing: boolean;
+  displayValue?: unknown;
 }) {
   const { schemas } = useSchemas();
   const { properties } = usePropertyDefs(property.referenceSchemaId);
@@ -97,13 +100,14 @@ function ReferenceField({
     (item) => item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum",
   );
   const options = [...targets].sort((a, b) => a["@id"].localeCompare(b["@id"]));
-  const recordValue = record[property.name];
+  const recordValue = displayValue ?? record[property.name];
   const [localValue, setLocalValue] = useState(recordValue);
   useEffect(() => setLocalValue(recordValue), [recordValue]);
   const selected = property.cardinality === "did:ng:z:many"
     ? valuesOf(localValue)
     : [typeof localValue === "string" ? localValue : ""];
   const setValue = (next: string | Set<string>) => {
+    clearUndoDisplayForRecord(`${record["@graph"]}|${record["@id"]}`);
     setLocalValue(next);
     record[property.name] = next;
   };
@@ -163,15 +167,17 @@ export function FieldWidget({
   widget,
   property,
   isEditing,
+  displayValue,
 }: {
   record: DynamicRecord;
   widget: Widget;
   property: PropertyDef;
   isEditing: boolean;
+  displayValue?: unknown;
 }) {
   const { format, symbol } = useSettings();
   const propertyName = property.name;
-  const recordValue = record[propertyName];
+  const recordValue = displayValue ?? record[propertyName];
   const [value, setLocalValue] = useState(recordValue);
   useEffect(() => setLocalValue(recordValue), [recordValue]);
   const label = widget.label || propertyName;
@@ -187,11 +193,13 @@ export function FieldWidget({
         label={label}
         inputId={inputId}
         isEditing={isEditing}
+        displayValue={displayValue}
       />
     );
   }
 
   const setScalar = (next: string | number | boolean) => {
+    clearUndoDisplayForRecord(`${record["@graph"]}|${record["@id"]}`);
     setLocalValue(next);
     record[propertyName] = next;
   };
@@ -200,6 +208,7 @@ export function FieldWidget({
     const current = value instanceof Set ? new Set(value) : new Set<string>();
     if (checked) current.add(option);
     else current.delete(option);
+    clearUndoDisplayForRecord(`${record["@graph"]}|${record["@id"]}`);
     setLocalValue(current);
     record[propertyName] = current;
   };

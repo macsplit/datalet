@@ -27,6 +27,7 @@ import { SettingsProvider, useSettings } from "./hooks/useSettings";
 import { useTabs } from "./hooks/useTabs";
 import { RuntimeIssueBanner } from "./components/RuntimeSafety";
 import { MetaStoreProvider } from "./hooks/MetaStoreContext";
+import { UndoControl } from "./components/UndoControl";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
@@ -47,6 +48,7 @@ function RootLayout() {
         <div className="app-nav-inner">
           <span className="app-nav-brand">{appTitle}</span>
           <div className="app-nav-links">
+            <UndoControl />
             <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: "active" }}>
               {homeTab?.title || "Home"}
             </Link>

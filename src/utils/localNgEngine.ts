@@ -41,6 +41,14 @@ function recordKey(id: string): string {
 
 const recordByteLengths = new Map<string, number>();
 const dirtyIds = new Set<string>();
+const UNDO_LIMIT = 50;
+type UndoEntry = { patches: Patch[]; shapes: string[] };
+const undoStack: UndoEntry[] = [];
+const undoListeners = new Set<() => void>();
+const undoAppliedListeners = new Set<() => void>();
+let undoAppliedRevision = 0;
+let lastUndoRecords: Store = {};
+const expectedUndoEchoes = new Map<string, { signature: string; expiresAt: number }>();
 let storedBytesTotal = 0;
 let indexByteLength = 0;
 let loadWasRejected = false;
@@ -224,6 +232,10 @@ function loadStore(): Store {
 }
 
 let store: Store = loadStore();
+// ORM signals receive the records in `store` by reference and mutate them
+// before reporting a local patch. Keep an engine-owned snapshot so inverse
+// patches can still see the value that preceded that mutation.
+let undoSnapshotStore = JSON.parse(JSON.stringify(store)) as Store;
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
 let persistenceDisabled = loadWasRejected;
 
@@ -400,6 +412,158 @@ function snapshotPatches(key: string, record: OrmRecord): Patch[] {
   return patches;
 }
 
+function inversePatchesFor(patches: Patch[]): Patch[] {
+  const byKey = new Map<string, Patch[]>();
+  for (const patch of patches) {
+    const key = patchRootKey(patch);
+    if (key) byKey.set(key, [...(byKey.get(key) ?? []), patch]);
+  }
+  return [...byKey].flatMap(([key, keyPatches]) => {
+    const previous = undoSnapshotStore[key];
+    if (!previous) {
+      return [{ op: "remove" as const, path: `/${encodePathSegment(key)}` }];
+    }
+    const snapshot = JSON.parse(JSON.stringify(previous)) as OrmRecord;
+    const root = `/${encodePathSegment(key)}`;
+    if (keyPatches.some((patch) => patch.path === root)) {
+      return [
+        { op: "remove" as const, path: root },
+        ...snapshotPatches(key, snapshot),
+      ];
+    }
+    const properties = [...new Set(keyPatches.flatMap((patch) => {
+      const parts = patch.path.slice(1).split("/").filter(Boolean).map(decodePathSegment);
+      return parts[1] ? [parts[1]] : [];
+    }))];
+    return properties.flatMap((property) => {
+      const path = `${root}/${encodePathSegment(property)}`;
+      if (!Object.prototype.hasOwnProperty.call(snapshot, property)) {
+        return [{ op: "remove" as const, path }];
+      }
+      const value = snapshot[property];
+      return [
+        { op: "remove" as const, path },
+        {
+          op: "add" as const,
+          path,
+          value,
+          ...(Array.isArray(value) ? { type: "set", valType: "set" } : {}),
+        },
+      ];
+    });
+  });
+}
+
+function isAutomaticSingletonCreation(patches: Patch[]): boolean {
+  const keys = [...new Set(
+    patches.map(patchRootKey).filter((key): key is string => Boolean(key)),
+  )];
+  return keys.length > 0 && keys.every((key) => {
+    if (undoSnapshotStore[key]) return false;
+    const subject = identityFromStoreKey(key)["@id"];
+    return subject === "did:ng:z:HomeTab" || subject === "did:ng:z:SettingsSingleton";
+  });
+}
+
+function emitUndoChange() {
+  for (const listener of undoListeners) listener();
+}
+
+function clearRestoredUndoValues(patches: Patch[]) {
+  const keys = new Set(
+    patches.map(patchRootKey).filter((key): key is string => Boolean(key)),
+  );
+  if (![...keys].some((key) => lastUndoRecords[key])) return;
+  lastUndoRecords = Object.fromEntries(
+    Object.entries(lastUndoRecords).filter(([key]) => !keys.has(key)),
+  ) as Store;
+  undoAppliedRevision += 1;
+  for (const listener of undoAppliedListeners) listener();
+}
+
+export function clearUndoDisplayForRecord(key: string) {
+  if (!lastUndoRecords[key]) return;
+  lastUndoRecords = Object.fromEntries(
+    Object.entries(lastUndoRecords).filter(([candidate]) => candidate !== key),
+  ) as Store;
+  undoAppliedRevision += 1;
+  for (const listener of undoAppliedListeners) listener();
+}
+
+function pushUndo(entry: UndoEntry) {
+  undoStack.push(entry);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  emitUndoChange();
+}
+
+export function subscribeUndo(listener: () => void) {
+  undoListeners.add(listener);
+  return () => {
+    undoListeners.delete(listener);
+  };
+}
+
+export function subscribeUndoApplied(listener: () => void) {
+  undoAppliedListeners.add(listener);
+  return () => {
+    undoAppliedListeners.delete(listener);
+  };
+}
+
+export function getUndoAppliedRevision(): number {
+  return undoAppliedRevision;
+}
+
+export function getLastUndoRecords(): Store {
+  return lastUndoRecords;
+}
+
+export function getCanUndoSnapshot(): boolean {
+  return undoStack.length > 0;
+}
+
+export function undoLastLocalChange(): boolean {
+  const entry = undoStack.pop();
+  if (!entry) return false;
+  if (!validPatchBatch(entry.patches, "undo update")) {
+    emitUndoChange();
+    return false;
+  }
+  try {
+    applyPatchesToStore(entry.patches);
+    applyPatchesToStore(entry.patches, undoSnapshotStore, false);
+  } catch (error) {
+    reportRuntimeIssue(error, "Undo was stopped");
+    emitUndoChange();
+    return false;
+  }
+  schedulePersist();
+  const touchedKeys = [...new Set(
+    entry.patches.map(patchRootKey).filter((key): key is string => Boolean(key)),
+  )];
+  for (const shape of entry.shapes) {
+    broadcastToLocalSubscriptions(entry.patches, undefined, shape, true);
+    try {
+      postCrossTabPatches(entry.patches, shape);
+    } catch (error) {
+      reportRuntimeIssue(error, "Cross-tab synchronization was paused", "warning");
+    }
+    for (const listener of localPatchListeners) listener(entry.patches, shape);
+  }
+  // ORM subscriptions share mutable record branches with this store. Let the
+  // inverse patch finish traversing those branches before taking the immutable
+  // display snapshot used to reset optimistic field controls.
+  lastUndoRecords = Object.fromEntries(
+    touchedKeys.flatMap((key) => store[key]
+      ? [[key, JSON.parse(JSON.stringify(store[key])) as OrmRecord]]
+      : []),
+  ) as Store;
+  undoAppliedRevision += 1;
+  for (const listener of undoAppliedListeners) listener();
+  emitUndoChange();
+  return true;
+}
+
 function affectedSnapshots(patches: Patch[]): CrossTabSnapshots {
   const snapshots = Object.create(null) as CrossTabSnapshots;
   for (const patch of patches) {
@@ -506,9 +670,11 @@ function applyExternalPatches(
 ) {
   patches = omitDuplicateCreations(patches);
   if (patches.length === 0) return;
+  clearRestoredUndoValues(patches);
   const effectivePatches = recoverMissedCreations(patches, snapshots);
   try {
     applyPatchesToStore(effectivePatches);
+    applyPatchesToStore(effectivePatches, undoSnapshotStore, false);
   } catch (error) {
     reportRuntimeIssue(error, "An external data update was stopped");
     return;
@@ -667,6 +833,7 @@ function reconcileGraphSnapshotInternal(
 
   try {
     applyPatchesToStore(replacementPatches);
+    applyPatchesToStore(replacementPatches, undoSnapshotStore, false);
   } catch (error) {
     reportRuntimeIssue(error, "Remote sync snapshot reconciliation failed", "warning");
     return false;
@@ -727,11 +894,13 @@ export function replaceGraphAndReload(graph: string, records: Store) {
   for (const key of Object.keys(store)) {
     if (store[key]?.["@graph"] === graph && !(key in records)) {
       delete store[key];
+      delete undoSnapshotStore[key];
       dirtyIds.add(key);
     }
   }
   for (const [key, record] of Object.entries(records)) {
     store[key] = record;
+    undoSnapshotStore[key] = JSON.parse(JSON.stringify(record)) as OrmRecord;
     dirtyIds.add(key);
   }
   persistNow();
@@ -903,7 +1072,11 @@ function identityFromStoreKey(key: string): OrmRecord {
   };
 }
 
-function applyPatchesToStore(patches: Patch[]) {
+function applyPatchesToStore(
+  patches: Patch[],
+  target: Store = store,
+  trackDirty = true,
+) {
   for (const patch of patches) {
     if (!patch.path.startsWith("/")) continue;
     const parts = patch.path.slice(1).split("/").filter(Boolean).map(decodePathSegment);
@@ -912,16 +1085,16 @@ function applyPatchesToStore(patches: Patch[]) {
 
     if (parts.length === 1) {
       if (patch.op === "add") {
-        store[subjectId] ??= identityFromStoreKey(subjectId);
+        target[subjectId] ??= identityFromStoreKey(subjectId);
       } else if (patch.op === "remove") {
-        delete store[subjectId];
+        delete target[subjectId];
       }
-      dirtyIds.add(subjectId);
+      if (trackDirty) dirtyIds.add(subjectId);
       continue;
     }
 
-    const record = (store[subjectId] ??= identityFromStoreKey(subjectId));
-    dirtyIds.add(subjectId);
+    const record = (target[subjectId] ??= identityFromStoreKey(subjectId));
+    if (trackDirty) dirtyIds.add(subjectId);
 
     // Current alien-deepsignals patches use `type`; older ORM/backend
     // payloads used `valType`. Accept both so multi-value properties are
@@ -1020,6 +1193,7 @@ function broadcastToLocalSubscriptions(
   patches: Patch[],
   excludeSubscriptionId?: string,
   shapeFilter?: string,
+  expectUndoEcho = false,
 ) {
   for (const [subscriptionId, sub] of subscriptions) {
     if (subscriptionId === excludeSubscriptionId) continue;
@@ -1027,6 +1201,12 @@ function broadcastToLocalSubscriptions(
     const scopedPatches = patches.filter((patch) => patchMatchesScope(patch, sub));
     if (scopedPatches.length > 0) {
       try {
+        if (expectUndoEcho) {
+          expectedUndoEchoes.set(subscriptionId, {
+            signature: JSON.stringify(scopedPatches),
+            expiresAt: Date.now() + 1_000,
+          });
+        }
         sub.callback({ V0: { GraphOrmUpdate: scopedPatches } });
       } catch (error) {
         retireSubscription(subscriptionId);
@@ -1133,12 +1313,23 @@ async function graph_orm_update(
   _sessionId: unknown,
 ): Promise<void> {
   if (!validPatchBatch(patches, "local update")) return;
+  const expectedUndoEcho = expectedUndoEchoes.get(subscriptionId);
+  if (expectedUndoEcho) {
+    expectedUndoEchoes.delete(subscriptionId);
+    if (
+      expectedUndoEcho.expiresAt >= Date.now() &&
+      expectedUndoEcho.signature === JSON.stringify(patches)
+    ) return;
+  }
   patches = omitDuplicateCreations(patches);
   if (patches.length === 0) return;
+  const automaticSingletonCreation = isAutomaticSingletonCreation(patches);
+  const inversePatches = inversePatchesFor(patches);
   const activeOriginShape = subscriptions.get(subscriptionId)?.shapeType.shape;
   const inferredBefore = activeOriginShape ? new Set<string>() : inferActiveShapes(patches);
   try {
     applyPatchesToStore(patches);
+    applyPatchesToStore(patches, undoSnapshotStore, false);
   } catch (error) {
     reportRuntimeIssue(error, "A local data update was stopped");
     return;
@@ -1153,6 +1344,10 @@ async function graph_orm_update(
     if (closedShape) originShapes.add(closedShape);
     for (const shape of inferredBefore) originShapes.add(shape);
     for (const shape of inferActiveShapes(patches)) originShapes.add(shape);
+  }
+
+  if (originShapes.size > 0 && inversePatches.length > 0 && !automaticSingletonCreation) {
+    pushUndo({ patches: inversePatches, shapes: [...originShapes] });
   }
 
   for (const originShape of originShapes) {

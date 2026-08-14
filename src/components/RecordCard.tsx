@@ -12,11 +12,15 @@ export function RecordCard({
   widgets,
   properties,
   onDelete,
+  displayRecord,
+  displayRevision,
 }: {
   record: DynamicRecord;
   widgets: Widget[];
   properties: PropertyDef[];
   onDelete: () => void;
+  displayRecord?: Record<string, unknown>;
+  displayRevision?: number;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const hasActions = widgets.some(
@@ -30,7 +34,7 @@ export function RecordCard({
   );
 
   const handleDelete = () => {
-    if (window.confirm("Delete this record? This can't be undone.")) onDelete();
+    if (window.confirm("Delete this record?")) onDelete();
   };
 
   return (
@@ -70,11 +74,12 @@ export function RecordCard({
               : undefined;
             return property ? (
               <FieldWidget
-                key={widget["@id"]}
+                key={`${widget["@id"]}|${displayRevision ?? 0}`}
                 record={record}
                 widget={widget}
                 property={property}
                 isEditing={hasActions && isEditing}
+                displayValue={displayRecord?.[property.name]}
               />
             ) : (
               <p className="muted" key={widget["@id"]}>

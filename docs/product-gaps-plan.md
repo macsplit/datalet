@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–6 and 9a — reader tools, fields, offline shell, sync UX, stale-edit fix |
-| **Next** | Step 7 — local undo |
+| **Done** | Steps 1–7 and 9a — reader tools, fields, offline shell, sync UX, local undo, stale-edit fix |
+| **Next** | Step 8 — broader builder regression coverage |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -315,7 +315,18 @@ entries still flush afterwards.
 
 ---
 
-## 7. Local undo
+## 7. Local undo — DONE
+
+Shipped as a bounded 50-entry, page-session inverse stack with a navigation
+control and `Ctrl/Cmd+Z`. The engine keeps an immutable baseline separate from
+the ORM's shared mutable record branches, captures inverses before accepting
+each user patch, and applies undo as an ordinary fresh local write. It therefore
+uses the existing persistence, cross-tab, and remote-outbox paths rather than
+rewinding shared history. Automatic Home and Settings singleton creation does
+not enter the user stack. Optimistic field controls receive a restored display
+snapshot without replacing their writable ORM record. Playwright covers edit
+restoration on screen and in persisted bytes, record-creation undo, the keyboard
+shortcut, and the deliberately empty stack after reload.
 
 **Why this late.** The evaluation asks for "undo/history for conflict or editing
 mistakes". Undo across devices is history — a real feature with storage and

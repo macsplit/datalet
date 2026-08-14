@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useShape } from "@ng-org/orm/react";
 import type {
   Block,
@@ -19,6 +19,11 @@ import {
 import { RecordCard } from "./RecordCard";
 import { RuntimeCircuitNotice } from "./RuntimeSafety";
 import { RUNTIME_LIMITS } from "../utils/runtimeHealth";
+import {
+  getLastUndoRecords,
+  getUndoAppliedRevision,
+  subscribeUndoApplied,
+} from "../utils/localNgEngine";
 
 function propertySignature(properties: PropertyDef[]): string {
   return properties
@@ -91,6 +96,11 @@ function ResolvedDataBlock({
     [schema["@id"], signature],
   );
   const records = useShape(shapeType, privateNuri);
+  const undoRevision = useSyncExternalStore(
+    subscribeUndoApplied,
+    getUndoAppliedRevision,
+    getUndoAppliedRevision,
+  );
   const titleWidget = widgets.find(
     (widget) => widget.widgetType === "did:ng:z:title",
   );
@@ -226,15 +236,21 @@ function ResolvedDataBlock({
       )}
       <div className="cards-stack">
         {pageRecords.length > 0 ? (
-          pageRecords.map((record) => (
-            <RecordCard
-              key={`${record["@graph"]}|${record["@id"]}`}
-              record={record}
-              widgets={widgets}
-              properties={properties}
-              onDelete={() => records.delete(record)}
-            />
-          ))
+          pageRecords.map((record) => {
+            const recordKey = `${record["@graph"]}|${record["@id"]}`;
+            const restored = getLastUndoRecords()[recordKey];
+            return (
+              <RecordCard
+                key={recordKey}
+                record={record}
+                widgets={widgets}
+                properties={properties}
+                onDelete={() => records.delete(record)}
+                displayRecord={restored}
+                displayRevision={restored ? undoRevision : undefined}
+              />
+            );
+          })
         ) : (
           <p className="muted">
             {needle || (filterProperty && filterNeedle)

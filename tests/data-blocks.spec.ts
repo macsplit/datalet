@@ -398,6 +398,77 @@ test("edited record fields stay current on screen and in storage", async ({ page
     .toBe("Dune Messiah");
 });
 
+test("undo reverts an edit on screen and in persisted bytes", async ({ page }) => {
+  await seedSession(page);
+  const records = booksFixture([{ title: "Dune", rating: 5 }]);
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-actions",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 2,
+    widgetType: "did:ng:z:editDeleteActions",
+  });
+  await seedNewFormat(page, records);
+  await page.goto("/");
+
+  const undo = page.getByRole("button", { name: "Undo" });
+  await expect(undo).toBeDisabled();
+  await page.getByRole("button", { name: "Edit record" }).click();
+  await page.getByLabel("Title").fill("Dune Messiah");
+  await expect(undo).toBeEnabled();
+  await undo.click();
+
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.Title,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|book-0` },
+  )).toBe("Dune");
+  await expect(page.getByLabel("Title")).toHaveValue("Dune");
+  await expect(undo).toBeDisabled();
+});
+
+test("undo is session-local and Ctrl/Cmd+Z removes a newly created record", async ({ page }) => {
+  await seedSession(page);
+  const records = booksFixture([{ title: "Dune", rating: 5 }]);
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-add",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 2,
+    widgetType: "did:ng:z:addButton",
+    label: "Add book",
+  });
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-actions",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 3,
+    widgetType: "did:ng:z:editDeleteActions",
+  });
+  await seedNewFormat(page, records);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(page.locator(".record-card")).toHaveCount(2);
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".record-card")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  await page.getByLabel("Title").fill("Emma");
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.Title,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|book-0` },
+  )).toBe("Emma");
+  // Make and persist one new edit, then reload: the value survives but the
+  // in-memory undo stack deliberately does not.
+  await page.reload();
+  await expect(page.getByText("Emma", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+});
+
 test("date fields persist byte-identically and empty dates stay empty", async ({ page }) => {
   await seedSession(page);
   await seedNewFormat(page, eventsFixture([
