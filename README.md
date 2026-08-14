@@ -37,10 +37,15 @@ pnpm build
 ```
 
 To run the optional cross-device sync stack, install Redis and Neo4j, export
-`NEO4J_PASSWORD`, and use `./run.sh`. See
+`NEO4J_PASSWORD` or put it in an ignored `.env.local` copied from
+`.env.example`, and use `./run.sh`. See
 [`docs/remote-sync.md`](docs/remote-sync.md) for the current architecture and
 [`docs/remote-sync-deployment.md`](docs/remote-sync-deployment.md) for
 deployment options.
+
+With the full stack running, `pnpm test:smoke:sync` performs a short
+browser-to-Redis-to-Neo4j-to-second-browser verification and cleans up its
+temporary vault afterward.
 
 [`docs/README.md`](docs/README.md) indexes all documentation and marks which
 documents are current and which are historical records of finished work.

@@ -460,6 +460,14 @@ pnpm test:client
 pnpm test:server
 ```
 
+Before signing off a completed tranche, also run the real sync path with Redis
+and Neo4j available (the multi-hour endurance run remains a separate deferred
+item): start `./run.sh`, then run `pnpm test:smoke:sync` in another terminal.
+Also run the server suite with `.env.local` loaded and
+`REQUIRE_SYNC_INTEGRATION=1`; no integration test may be skipped. The smoke
+must traverse two browser contexts, Redis, the materializer, and a Neo4j-backed
+snapshot without leaving its temporary vault behind.
+
 Steps 1–3 additionally require `pnpm build:orm` to be re-run and the regenerated
 `src/shapes/orm/*` committed. `product-evaluation-2026-08-08.md` should be
 updated as each step lands, in the same style as the previous tranche — the

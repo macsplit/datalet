@@ -14,6 +14,7 @@
     "test:client": "playwright test && pnpm test:offline",
     "test:offline": "pnpm build && playwright test --config playwright.offline.config.ts",
     "test:server": "tsx --test server/test/**/*.test.ts",
+    "test:smoke:sync": "tsx --env-file-if-exists=.env.local server/test/fullStackSmoke.ts",
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:materializer": "ROLE=materializer tsx watch server/src/index.ts",
