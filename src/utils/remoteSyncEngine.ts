@@ -19,7 +19,7 @@
 import {
   applyRemoteSyncPatches,
   onLocalPatch,
-  replaceGraphAndReload,
+  reconcileGraphSnapshot,
   type Patch,
   type Store,
 } from "./localNgEngine";
@@ -279,11 +279,14 @@ async function resyncFromSnapshot(config: VaultConfig) {
     });
     if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
     const snapshot = (await response.json()) as { seq: number; records: Store };
-    setCursor(config.vaultId, snapshot.seq);
-    // Reloads the page — see replaceGraphAndReload's doc comment for why.
     // The graph identity embedded in records is "did:ng:<vaultId>" (see
     // usePrivateNuri.ts), not the bare vaultId used to address the API.
-    replaceGraphAndReload(`did:ng:${config.vaultId}`, snapshot.records);
+    if (!reconcileGraphSnapshot(`did:ng:${config.vaultId}`, snapshot.records)) {
+      throw new Error("snapshot failed local validation");
+    }
+    setCursor(config.vaultId, snapshot.seq);
+    void flushOutbox(config);
+    void connectStream(config);
   } catch (error) {
     reportRuntimeIssue(error, "Remote sync snapshot resync failed", "warning");
     scheduleReconnect(config);

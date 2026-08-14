@@ -54,7 +54,9 @@ both.
   Redis replays anything missed, then live updates continue.
 - If Redis has trimmed its stream past that point (long offline gap), the
   server tells the client to `GET /sync/snapshot` instead, which reads the
-  full current state from Neo4j.
+  full current state from Neo4j. The client validates and reconciles that
+  graph into its mounted subscriptions without reloading the page, advances
+  its cursor, reconnects SSE, and flushes its untouched outbox.
 
 ## Conflict resolution
 
@@ -164,7 +166,8 @@ only the short-lived ticket returned by `/sync/stream-ticket`.
 - **A client's resume cursor falls outside Redis's retained stream**
   (long offline gap, or a busy vault trimming its stream) — the server
   detects the gap and tells the client to fetch a full `/sync/snapshot`
-  instead of replaying deltas.
+  instead of replaying deltas. Reconciliation happens in place; open editors
+  and page state remain mounted while records converge.
 - **The materializer crashes mid-batch** — it's a Redis Streams consumer
   group member with a stable (not process-id-based) name, so on restart
   it re-reads its own still-unacknowledged entries before rejoining the

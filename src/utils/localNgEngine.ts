@@ -526,8 +526,33 @@ function applyExternalPatches(
 
 function onChannelMessage(event: MessageEvent) {
   const payload = event.data as
-    | { patches?: unknown; shape?: string; snapshots?: unknown }
+    | {
+        patches?: unknown;
+        shape?: string;
+        snapshots?: unknown;
+        snapshotGraph?: unknown;
+        snapshotRecords?: unknown;
+      }
     | null;
+  if (
+    payload &&
+    (payload.snapshotGraph !== undefined || payload.snapshotRecords !== undefined)
+  ) {
+    if (typeof payload.snapshotGraph !== "string") {
+      reportRuntimeIssue(
+        "Ignored a cross-tab snapshot with no graph identity.",
+        "Cross-tab synchronization safety circuit opened",
+        "warning",
+      );
+      return;
+    }
+    reconcileGraphSnapshotInternal(
+      payload.snapshotGraph,
+      payload.snapshotRecords,
+      false,
+    );
+    return;
+  }
   if (!payload || !validPatchBatch(payload.patches, "cross-tab update")) return;
   if (typeof payload.shape !== "string") {
     reportRuntimeIssue(
@@ -566,6 +591,125 @@ export function applyRemoteSyncPatches(patches: Patch[], shape: string): boolean
   if (!validPatchBatch(patches, "remote sync update")) return false;
   applyExternalPatches(patches, shape, true);
   return true;
+}
+
+function validGraphSnapshot(graph: string, value: unknown): value is Store {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  if (entries.length > RUNTIME_LIMITS.graphNodes) return false;
+  const valid = entries.every(([key, record]) => {
+    const typed = record as OrmRecord;
+    return (
+      key.length <= 16_384 &&
+      record !== null &&
+      typeof record === "object" &&
+      !Array.isArray(record) &&
+      typeof typed["@id"] === "string" &&
+      typed["@graph"] === graph &&
+      key === `${graph}|${typed["@id"]}`
+    );
+  });
+  if (!valid) return false;
+  try {
+    return JSON.stringify(value).length <= RUNTIME_LIMITS.storedBytes;
+  } catch {
+    return false;
+  }
+}
+
+function recordMatchesSubscription(record: OrmRecord, sub: Subscription): boolean {
+  return (
+    graphMatches(record["@graph"], sub.graphs) &&
+    subjectMatches(record["@id"], sub.subjects) &&
+    typeMatches(record, sub.shapeType)
+  );
+}
+
+function reconcileGraphSnapshotInternal(
+  graph: string,
+  value: unknown,
+  relayToTabs: boolean,
+): boolean {
+  if (!validGraphSnapshot(graph, value)) {
+    reportRuntimeIssue(
+      "Ignored an invalid or oversized remote snapshot.",
+      "Remote sync snapshot safety circuit opened",
+      "warning",
+    );
+    return false;
+  }
+  const records = value as Store;
+  const previous = Object.fromEntries(
+    Object.entries(store).filter(([, record]) => record["@graph"] === graph),
+  ) as Store;
+  const nextEntries = [
+    ...Object.entries(store).filter(([, record]) => record["@graph"] !== graph),
+    ...Object.entries(records),
+  ];
+  const projectedBytes =
+    JSON.stringify(nextEntries.map(([key]) => key)).length +
+    nextEntries.reduce((total, [, record]) => total + JSON.stringify(record).length, 0);
+  if (projectedBytes > RUNTIME_LIMITS.storedBytes) {
+    reportRuntimeIssue(
+      `The reconciled browser data needs ${projectedBytes.toLocaleString()} bytes; the safety limit is ${RUNTIME_LIMITS.storedBytes.toLocaleString()} bytes.`,
+      "Remote sync snapshot safety circuit opened",
+      "warning",
+    );
+    return false;
+  }
+  const replacementPatches: Patch[] = [
+    ...Object.keys(previous).map((key) => ({
+      op: "remove" as const,
+      path: `/${encodePathSegment(key)}`,
+    })),
+    ...Object.entries(records).flatMap(([key, record]) => snapshotPatches(key, record)),
+  ];
+
+  try {
+    applyPatchesToStore(replacementPatches);
+  } catch (error) {
+    reportRuntimeIssue(error, "Remote sync snapshot reconciliation failed", "warning");
+    return false;
+  }
+  schedulePersist();
+
+  // A flat server snapshot has no shape identity. Each mounted subscription
+  // already has that information, so derive its before/after membership here
+  // and replace only the records belonging to that shape and scope.
+  for (const [subscriptionId, sub] of [...subscriptions]) {
+    const oldMatches = Object.entries(previous)
+      .filter(([, record]) => recordMatchesSubscription(record, sub));
+    const newMatches = Object.entries(records)
+      .filter(([, record]) => recordMatchesSubscription(record, sub));
+    const patches: Patch[] = [
+      ...oldMatches.map(([key]) => ({
+        op: "remove" as const,
+        path: `/${encodePathSegment(key)}`,
+      })),
+      ...newMatches.flatMap(([key, record]) => snapshotPatches(key, record)),
+    ];
+    if (patches.length === 0) continue;
+    try {
+      sub.callback({ V0: { GraphOrmUpdate: patches } });
+    } catch (error) {
+      retireSubscription(subscriptionId);
+      reportRuntimeIssue(error, "A failing live-data subscription was disconnected");
+    }
+  }
+
+  if (relayToTabs) {
+    try {
+      channel?.postMessage({ snapshotGraph: graph, snapshotRecords: records });
+    } catch (error) {
+      reportRuntimeIssue(error, "Cross-tab snapshot synchronization was paused", "warning");
+    }
+  }
+  return true;
+}
+
+/** Replace one graph from a remote snapshot without reloading the page. */
+export function reconcileGraphSnapshot(graph: string, records: Store): boolean {
+  return reconcileGraphSnapshotInternal(graph, records, true);
 }
 
 /**

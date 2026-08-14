@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–5 and 9a — reader tools, fields, offline shell, honest sync conflicts, stale-edit fix |
-| **Next** | Step 6 — non-destructive stale-cursor recovery |
+| **Done** | Steps 1–6 and 9a — reader tools, fields, offline shell, sync UX, stale-edit fix |
+| **Next** | Step 7 — local undo |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -273,7 +273,18 @@ banner appears with the server's reason.
 
 ---
 
-## 6. Non-destructive stale-cursor recovery
+## 6. Non-destructive stale-cursor recovery — DONE
+
+Shipped with an in-place graph reconciler in the local engine. It validates the
+snapshot and projected storage size, replaces the graph through the existing
+patch applier, derives before/after membership for every mounted shape, and
+relays the flat snapshot to other tabs so each can do the same with its own
+subscriptions. The remote engine advances its cursor only after reconciliation,
+then reconnects SSE and flushes the untouched outbox. Import and pairing retain
+the explicit reload path. Playwright forces an SSE `resync`, verifies live
+records and an open editor converge without navigation, and confirms the
+pending outbox flushes and cursor advances afterwards; the upstream lifecycle
+fallback was not needed.
 
 **Why here.** Builds on step 5's honesty work and is the last sync-tier item.
 `resyncFromSnapshot` currently calls `replaceGraphAndReload`: wholesale graph

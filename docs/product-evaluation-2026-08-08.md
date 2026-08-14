@@ -114,9 +114,9 @@ need broader regression coverage.
   no merge UI. Fully and partially superseded writes now raise a visible
   warning with the server's reason and dropped-patch count; the winning value
   still converges through SSE without a second rollback path.
-- Recovery from a stale cursor is wholesale graph replacement plus a
-  forced page reload (`replaceGraphAndReload`). Unpushed edits survive
-  in the outbox, but it is disruptive.
+- Recovery from a stale cursor reconciles the snapshot into mounted
+  subscriptions without navigation, then reconnects the stream and flushes
+  the untouched outbox. Import and pairing still reload intentionally.
 - JSON export/import now provides an explicit local backup path containing
   both records and builder metadata.
 - Production builds include a manifest and service worker. After one online
@@ -144,9 +144,9 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-next likely application-layer gaps are non-destructive stale-cursor recovery,
-file fields, and undo/history for editing mistakes. The ordered plan for the
-rest is `product-gaps-plan.md`.
+next likely application-layer gaps are local undo, broader builder regression
+coverage, and the blocked file-field storage decision. The ordered plan for
+the rest is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence
