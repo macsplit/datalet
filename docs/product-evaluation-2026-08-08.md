@@ -147,10 +147,12 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-remaining named application-layer gap is the blocked file-field storage
-decision. A bounded local undo stack covers editing mistakes without pretending
-to provide cross-device history, and the core builder workflows now have
-end-to-end regression coverage. The ordered plan is `product-gaps-plan.md`.
+file and image fields remain intentionally absent: the product decision is to
+defer them until an IndexedDB or blob-storage design can keep binary data out of
+the 4 MB JSON/localStorage path. A bounded local undo stack covers editing
+mistakes without pretending to provide cross-device history, and the core
+builder workflows now have end-to-end regression coverage. The ordered plan is
+`product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

@@ -5,8 +5,8 @@
 | | |
 |---|---|
 | **Done** | Steps 1–8 and 9a — reader tools, fields, offline shell, sync UX, undo, builder coverage |
-| **Next** | Step 9 — file/image fields require the open storage decision |
-| **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
+| **Next** | Step 10 — deferred multi-hour endurance run |
+| **Decision** | Step 9 — file/image fields deferred until blob storage is designed |
 
 Step 9a was found while building step 1's coverage and is not from the original
 evaluation. It was resolved before step 2 because step 7 (undo) depends on
@@ -56,8 +56,9 @@ and none can be fixed without changing what the product is:
 Steps 1–4 are self-contained, need no server or storage change, and each lands
 independently. Steps 5–6 touch the sync engine and the local patch pipeline, so
 they follow once the app-layer work has settled. Steps 7–8 are verification
-work that is cheapest once the features it covers exist. Step 9 is gated on a
-decision the code cannot make.
+work that is cheapest once the features it covers exist. Step 9 required a
+storage decision and was explicitly deferred rather than forced into the
+current localStorage architecture.
 
 ---
 
@@ -375,19 +376,24 @@ need broader regression coverage" — for the workflows that predate this plan.
 
 ---
 
-## 9. Decision required: file and image fields
+## 9. File and image fields — DEFERRED BY DECISION
 
-**This step is blocked on a product decision, not on engineering.** The
-evaluation lists file/image among the missing types without noting that they
+**Decision (2026-08-14): defer until a storage design exists.** File and image
+values will not be added to the current JSON patch/localStorage path. Revisit
+only with an IndexedDB or blob-endpoint design that defines quotas, offline
+behavior, sync, retention, and orphan cleanup. This records option 1 below and
+closes the planning blocker without pretending the product supports files.
+
+The evaluation lists file/image among the missing types without noting that they
 collide head-on with a constraint it names elsewhere: the whole store lives in
 memory under a 4 MB `RUNTIME_LIMITS.storedBytes` cap, and every patch value
 crosses the sync path as JSON. One photograph exhausts the entire vault.
 
-Three options, in my order of preference:
+Options considered (option 1 selected):
 
 1. **Defer** until a storage decision (IndexedDB or a blob endpoint) is made.
-   Consistent with the previous tranche's explicit rejection of an IndexedDB
-   migration, and my recommendation.
+   Selected; consistent with the previous tranche's explicit rejection of an
+   IndexedDB migration.
 2. **Small inline images only** — a hard per-value limit (≈64 KB), base64 data
    URI, client-side downscale on selection, and a clear refusal above the limit.
    Ships inside the current architecture; genuinely useful for avatars, icons,
