@@ -103,10 +103,12 @@ window. Materialization runs at ~130 records/s, so the Neo4j copy trails the
 live Redis copy by seconds under load.
 
 **Long-term maintenance remains early.** The repository now has browser
-regressions for persistence/bootstrap and server tests for patch behavior and
-the Redis conflict path, Redis-loss snapshot recovery, and tombstone purging,
-run in CI. Coverage is intentionally narrow; most UI builder workflows still
-need broader regression coverage.
+regressions for persistence/bootstrap, reader data blocks, schema/property
+editing, tab management, nested blocks, widget management, cleanup cascades,
+sync recovery, and offline startup. Server tests cover patch behavior, the
+Redis conflict path, Redis-loss snapshot recovery, and tombstone purging and
+run in CI. This is meaningful workflow coverage, though not a comprehensive
+unit or visual test matrix.
 
 ## Smaller things worth knowing
 
@@ -145,10 +147,10 @@ or sensitive information.
 The previously identified high-leverage product gaps—export/import,
 data-block filter/sort, reference fields, end-user search/pagination, and
 date/time fields, and URL/email/long-text controls—are now implemented. The
-next likely application-layer gaps are broader builder regression coverage and
-the blocked file-field storage decision. A bounded local undo stack now covers
-editing mistakes without pretending to provide cross-device history. The
-ordered plan for the rest is `product-gaps-plan.md`.
+remaining named application-layer gap is the blocked file-field storage
+decision. A bounded local undo stack covers editing mistakes without pretending
+to provide cross-device history, and the core builder workflows now have
+end-to-end regression coverage. The ordered plan is `product-gaps-plan.md`.
 
 An IndexedDB/windowed-subscription migration was considered and explicitly
 rejected as current scope. Incremental per-record `localStorage` persistence

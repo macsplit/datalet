@@ -136,9 +136,10 @@ and excessive block depth are stopped by runtime safety limits. Recoverable
 problems appear in an on-screen error banner; render failures show a reload
 screen instead of leaving the page unresponsive.
 
-Run the regression suites with `pnpm test`. Client storage/bootstrap coverage
-uses Playwright; server conflict and Redis integration coverage uses Node's
-test runner.
+Run the regression suites with `pnpm test`. Playwright covers client storage,
+bootstrap, generated data blocks, and the schema/tab/block/widget builder
+workflows; server conflict and Redis integration coverage uses Node's test
+runner.
 
 Settings also provides JSON export/import for the active graph. Backups include
 user records and the schemas, tabs, blocks, widgets, and settings needed to

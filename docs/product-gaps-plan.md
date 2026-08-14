@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–7 and 9a — reader tools, fields, offline shell, sync UX, local undo, stale-edit fix |
-| **Next** | Step 8 — broader builder regression coverage |
+| **Done** | Steps 1–8 and 9a — reader tools, fields, offline shell, sync UX, undo, builder coverage |
+| **Next** | Step 9 — file/image fields require the open storage decision |
 | **Open decision** | Step 9 — file/image fields need a storage call before any work starts |
 
 Step 9a was found while building step 1's coverage and is not from the original
@@ -357,15 +357,19 @@ record creation removes the record.
 
 ---
 
-## 8. Broader builder regression coverage
+## 8. Broader builder regression coverage — DONE
 
-`tests/persistence.spec.ts` is 11 tests weighted toward persistence and sync.
-Steps 1–7 each add their own coverage; this step closes what the evaluation
-calls out — "most UI builder workflows still need broader regression coverage" —
-for the workflows that predate this plan: creating and editing a schema,
-reordering properties, tab management, nested layout blocks, widget
-add/reorder/delete, and schema deletion cleanup. Split `persistence.spec.ts` by
-concern once the file crosses roughly 15 tests.
+Shipped as a dedicated `tests/builders.spec.ts` suite rather than expanding the
+persistence file. Four end-to-end flows cover schema creation/rename, property
+type and ordering across reload, tab creation/rename/reorder/delete, nested
+layout and data blocks, widget creation/reorder/delete, cascade block cleanup,
+and schema deletion cleanup. The latter verifies both removal of owned
+properties/blocks/widgets and repair of surviving reference properties and
+field widgets back to text.
+
+`tests/persistence.spec.ts` remains weighted toward persistence and sync. This
+step closes what the evaluation called out — "most UI builder workflows still
+need broader regression coverage" — for the workflows that predate this plan.
 
 **Size** M.
 
