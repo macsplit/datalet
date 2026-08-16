@@ -15,13 +15,15 @@ built when, and the defects found doing it, see
 
 - Each browser stores its data locally (`localStorage`) and works fully
   offline — this doesn't change.
-- Pairing a **sync vault** (an id + a secret token, created once) makes a
-  browser also push/pull patches to a shared server.
+- Pairing a **sync vault** with one checksummed `LG1` code makes a browser also
+  push/pull patches to a shared server. The client decodes it locally to the
+  vault id and secret token the unchanged API uses.
 - Pairing switches the active graph; it does not automatically migrate an
   existing unpaired graph. Export before pairing and import afterward to seed
   a new vault with existing local data.
 - Multiple devices paired to the same vault converge to the same state.
-- No user accounts, no login — a vault's token is the only credential.
+- No user accounts, no login — possession of the pairing code (and therefore
+  its embedded vault token) is the only credential.
 
 ## Components
 

@@ -12,10 +12,11 @@ head:
    builder's own configuration and the user's records live in one store,
    reachable through one subscription mechanism. No account, no server, no
    network surface at all.
-2. **An optional sync tier.** Pairing a *vault* (an id plus a bearer token)
-   replicates that same graph across devices: HTTP POST up, Server-Sent Events
-   down, Redis for sequencing and fanout, Neo4j as the durable system of
-   record.
+2. **An optional sync tier.** Pairing a *vault* with one checksummed `LG1`
+   code replicates that same graph across devices: HTTP POST up, Server-Sent
+   Events down, Redis for sequencing and fanout, Neo4j as the durable system
+   of record. The client decodes the code to the server's unchanged vault id
+   and bearer token.
 
 The property that falls out of (1) — and the one thing here that is genuinely
 unusual — is that because builder metadata is stored like any other record, it
@@ -301,6 +302,14 @@ the sync engine.
 
 Pairing does **not** migrate the previous unpaired graph. Export a backup
 first, import it after.
+
+The Settings UI represents the vault UUID and 24-byte bearer token as one
+versioned Crockford-base32 pairing code. Its trailing mod-37 symbol catches
+single-character substitutions and adjacent transpositions before any network
+request. Decoding is case-insensitive and accepts Crockford's `0/O` and
+`1/I/L` aliases. Existing installations can still join through the collapsed
+legacy two-field form; the HTTP API and stored sync configuration are
+unchanged.
 
 ![System topology](diagrams/topology.png)
 

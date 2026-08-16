@@ -433,10 +433,11 @@ e.g. `src/utils/remoteSyncEngine.ts`, that:
    already exported from `localNgEngine.ts` — i.e. a remote patch re-uses
    exactly the same apply/notify path a cross-tab `BroadcastChannel`
    message does today, just from a different origin.
-4. Pairing UI: a small addition to the existing Settings page
-   (`SettingsPage.tsx`) — "Create sync vault" (calls `POST /sync/vaults`,
-   shows the token/QR to copy to another device) and "Join existing vault"
-   (paste vaultId + token). This is the only new UI surface required.
+4. Pairing UI: the Settings page calls `POST /sync/vaults`, then encodes the
+   returned UUID and token as one versioned, checksummed `LG1` Crockford-base32
+   string. Joining decodes that string locally before using the unchanged API;
+   a collapsed legacy vaultId + token form remains available. QR display and
+   scanning are a later presentation layer over the same LG1 value.
 
 ## 9. Security posture — decided: shared vault-token bearer scheme
 
@@ -450,11 +451,11 @@ secret per vault, not a user identity system — no accounts, no login, no
 per-user records. Concretely:
 
 - `POST /sync/vaults` returns `{ vaultId, vaultToken }` once, at creation.
-  The token is shown to the user to copy/scan onto each additional device
-  (§8.4's pairing UI) — it is never recoverable from the server after
+  The client folds both into one pairing code for the user to copy onto each
+  additional device (§8.4's pairing UI) — it is never recoverable from the server after
   creation, only rotatable: **`POST /sync/vaults/rotate` (bearer-
   authenticated with the *current* token) issues a fresh one and
-  invalidates the old immediately** — the "Rotate token" action in
+  invalidates the old immediately** — the "Rotate pairing code" action in
   Settings (`SyncSettings.tsx`). Any other device still holding the old
   token gets 401s until it's manually given the new one — inherent to a
   shared-secret scheme with no per-device identity, not a bug.

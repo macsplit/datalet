@@ -1,8 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import { encodePairingCode } from "../src/utils/pairingCode";
 
 const CONFIG_KEY = "meta-ui-builder:sync-vault";
 const OUTBOX_KEY = "meta-ui-builder:sync-outbox:test-vault";
 const SESSION_KEY = "meta-ui-builder:local-session";
+const VAULT_ID = "00112233-4455-4677-8899-aabbccddeeff";
+const VAULT_TOKEN = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX";
 
 async function seedPendingSync(page: Page, patchCount: number) {
   await page.addInitScript(({ configKey, outboxKey, sessionKey, patchCount }) => {
@@ -88,7 +91,7 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   await page.route("**/sync/vaults", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ vaultId: "fallback-vault", vaultToken: "fallback-token" }),
+    body: JSON.stringify({ vaultId: VAULT_ID, vaultToken: VAULT_TOKEN }),
   }));
   await page.route("**/sync/snapshot?*", (route) => route.fulfill({
     status: 200,
@@ -113,6 +116,8 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   await page.goto("/settings");
   await page.getByRole("button", { name: "Create sync vault" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Show" }).click();
+  await expect(page.getByLabel("Pairing code")).toHaveValue(/^LG1-/);
   await expect.poll(() => submitted).toBeTruthy();
 
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -122,7 +127,7 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
 });
 
 test("joining primes remote settings before reloading into the vault", async ({ page }) => {
-  const graph = "did:ng:existing-vault";
+  const graph = `did:ng:${VAULT_ID}`;
   const settingsId = "did:ng:z:SettingsSingleton";
   await page.route("**/sync/snapshot?*", (route) => route.fulfill({
     status: 200,
@@ -147,10 +152,49 @@ test("joining primes remote settings before reloading into the vault", async ({ 
   await page.route("**/sync/stream?*", (route) => route.abort());
 
   await page.goto("/settings");
-  await page.getByLabel("Vault ID").fill("existing-vault");
-  await page.getByLabel("Pairing token").fill("existing-token");
+  await page.getByLabel("Pairing code").fill(encodePairingCode(VAULT_ID, VAULT_TOKEN));
   await page.getByRole("button", { name: "Join vault" }).click();
 
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue("Existing vault title");
+});
+
+test("a mistyped pairing code is rejected before a network request", async ({ page }) => {
+  let snapshotRequests = 0;
+  await page.route("**/sync/snapshot?*", (route) => {
+    snapshotRequests += 1;
+    return route.abort();
+  });
+  const code = encodePairingCode(VAULT_ID, VAULT_TOKEN);
+  const last = code.at(-1)!;
+  const typo = code.slice(0, -1) + (last === "0" ? "1" : "0");
+
+  await page.goto("/settings");
+  await page.getByLabel("Pairing code").fill(typo);
+  await page.getByRole("button", { name: "Join vault" }).click();
+
+  await expect(page.getByText(/pairing code has a typo/i)).toBeVisible();
+  expect(snapshotRequests).toBe(0);
+});
+
+test("legacy vault ID and token entry remains available", async ({ page }) => {
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: "legacy-ticket" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+
+  await page.goto("/settings");
+  await page.getByText("Use legacy vault ID and token").click();
+  await page.getByLabel("Vault ID").fill(VAULT_ID);
+  await page.getByLabel("Pairing token").fill(VAULT_TOKEN);
+  await page.getByRole("button", { name: "Join with legacy credentials" }).click();
+
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 });

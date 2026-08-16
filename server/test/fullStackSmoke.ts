@@ -2,6 +2,7 @@ import { chromium, expect } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { closeNeo4j, neo4jSession } from "../src/neo4j/client.js";
 import { redis } from "../src/redis/client.js";
+import { decodePairingCode } from "../../src/utils/pairingCode.ts";
 
 const baseUrl = process.env.SMOKE_BASE_URL ??
   `http://127.0.0.1:${process.env.VITE_PORT ?? "5173"}`;
@@ -31,8 +32,9 @@ try {
   await firstPage.goto(`${baseUrl}/settings`);
   await firstPage.getByRole("button", { name: "Create sync vault" }).click();
   await expect(firstPage.getByText("Connected", { exact: true })).toBeVisible({ timeout: 15_000 });
-  vaultId = await firstPage.getByLabel("Vault ID").inputValue();
-  vaultToken = await firstPage.getByLabel("Pairing token").inputValue();
+  await firstPage.getByRole("button", { name: "Show" }).click();
+  const pairingCode = await firstPage.getByLabel("Pairing code").inputValue();
+  ({ vaultId, vaultToken } = decodePairingCode(pairingCode));
 
   // Pairing reloads immediately, while the deterministic Settings singleton
   // is created after its ORM subscription becomes ready. Wait for that real
@@ -93,8 +95,7 @@ try {
   const secondDevice = await browser.newContext();
   const secondPage = await secondDevice.newPage();
   await secondPage.goto(`${baseUrl}/settings`);
-  await secondPage.getByLabel("Vault ID").fill(vaultId);
-  await secondPage.getByLabel("Pairing token").fill(vaultToken);
+  await secondPage.getByLabel("Pairing code").fill(pairingCode);
   await secondPage.getByRole("button", { name: "Join vault" }).click();
   await expect(secondPage.getByText("Connected", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(secondPage.getByLabel("Shown in the nav bar and browser tab")).toHaveValue(

@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
+import { decodePairingCode, encodePairingCode } from "../utils/pairingCode";
 
 /**
  * Pairing/unpairing switches which graph the whole app reads from
@@ -26,7 +27,8 @@ export function SyncSettings() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const [showToken, setShowToken] = useState(false);
+  const [showPairingCode, setShowPairingCode] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
   const [joinVaultId, setJoinVaultId] = useState("");
   const [joinToken, setJoinToken] = useState("");
   const [copied, setCopied] = useState(false);
@@ -63,23 +65,37 @@ export function SyncSettings() {
     }
   }
 
-  async function handleJoin() {
-    if (!joinVaultId.trim() || !joinToken.trim()) return;
+  async function join(vaultId: string, vaultToken: string) {
     setJoining(true);
     setError(undefined);
     try {
-      await applyAndReload(joinVaultId.trim(), joinToken.trim());
+      await applyAndReload(vaultId, vaultToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not join the vault.");
       setJoining(false);
     }
   }
 
+  async function handleCodeJoin() {
+    if (!joinCode.trim()) return;
+    try {
+      const credentials = decodePairingCode(joinCode);
+      await join(credentials.vaultId, credentials.vaultToken);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That pairing code is not valid.");
+    }
+  }
+
+  async function handleLegacyJoin() {
+    if (!joinVaultId.trim() || !joinToken.trim()) return;
+    await join(joinVaultId.trim(), joinToken.trim());
+  }
+
   async function handleRotate() {
     if (
       !window.confirm(
-        "Generate a new pairing token? The old token stops working immediately - every other " +
-          "device paired to this vault will need the new token entered before it can sync again.",
+        "Generate a new pairing code? The old code stops working immediately - every other " +
+          "device paired to this vault will need the new code before it can sync again.",
       )
     ) {
       return;
@@ -117,6 +133,7 @@ export function SyncSettings() {
   }
 
   if (config) {
+    const pairingCode = encodePairingCode(config.vaultId, config.vaultToken);
     return (
       <section className="panel">
         <div className="panel-header">
@@ -127,47 +144,36 @@ export function SyncSettings() {
           <span className="badge">Connected</span>
         </div>
         <p className="helper-text">
-          This device syncs continuously with the server. Enter the same vault ID and
-          token in Settings on another device to keep it in sync too.
+          This device syncs continuously with the server. Paste this pairing code into
+          Settings on another device to connect it to the same vault.
         </p>
         <div className="field-group">
-          <label className="field-label" htmlFor="sync-vault-id">
-            Vault ID
+          <label className="field-label" htmlFor="sync-pairing-code">
+            Pairing code
           </label>
           <div className="layout-row">
-            <input id="sync-vault-id" className="input" readOnly value={config.vaultId} />
-            <button type="button" className="secondary-btn" onClick={() => handleCopy(config.vaultId)}>
-              Copy
-            </button>
-          </div>
-        </div>
-        <div className="field-group">
-          <label className="field-label" htmlFor="sync-vault-token">
-            Pairing token
-          </label>
-          <div className="layout-row">
-            <input
-              id="sync-vault-token"
+            <textarea
+              id="sync-pairing-code"
               className="input"
               readOnly
-              type={showToken ? "text" : "password"}
-              value={config.vaultToken}
+              rows={showPairingCode ? 3 : 1}
+              value={showPairingCode ? pairingCode : "••••••••••••••••••••••••••••••••"}
             />
-            <button type="button" className="secondary-btn" onClick={() => setShowToken((v) => !v)}>
-              {showToken ? "Hide" : "Show"}
+            <button type="button" className="secondary-btn" onClick={() => setShowPairingCode((value) => !value)}>
+              {showPairingCode ? "Hide" : "Show"}
             </button>
-            <button type="button" className="secondary-btn" onClick={() => handleCopy(config.vaultToken)}>
+            <button type="button" className="secondary-btn" onClick={() => handleCopy(pairingCode)}>
               Copy
             </button>
           </div>
           <p className="helper-text">
-            {copied ? "Copied." : "Anyone with this token can read and write this vault — share it only with your own devices."}
+            {copied ? "Copied." : "Anyone with this code can read and write this vault — share it only with your own devices."}
           </p>
         </div>
         {rotateError && <p className="helper-text danger-text">{rotateError}</p>}
         <div className="layout-row">
           <button type="button" className="secondary-btn" onClick={handleRotate} disabled={rotating}>
-            {rotating ? "Rotating…" : "Rotate token"}
+            {rotating ? "Rotating…" : "Rotate pairing code"}
           </button>
           <button type="button" className="secondary-btn danger-text" onClick={handleLeave}>
             Leave vault
@@ -196,35 +202,60 @@ export function SyncSettings() {
       <div className="section-stack">
         <p className="label-accent">Join an existing vault</p>
         <div className="field-group">
-          <label className="field-label" htmlFor="join-vault-id">
-            Vault ID
+          <label className="field-label" htmlFor="join-pairing-code">
+            Pairing code
           </label>
-          <input
-            id="join-vault-id"
+          <textarea
+            id="join-pairing-code"
             className="input"
-            value={joinVaultId}
-            onChange={(e) => setJoinVaultId(e.target.value)}
-          />
-        </div>
-        <div className="field-group">
-          <label className="field-label" htmlFor="join-vault-token">
-            Pairing token
-          </label>
-          <input
-            id="join-vault-token"
-            className="input"
-            value={joinToken}
-            onChange={(e) => setJoinToken(e.target.value)}
+            rows={3}
+            value={joinCode}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="LG1-…"
+            onChange={(event) => setJoinCode(event.target.value)}
           />
         </div>
         <button
           type="button"
           className="secondary-btn"
-          onClick={handleJoin}
-          disabled={joining || !joinVaultId.trim() || !joinToken.trim()}
+          onClick={handleCodeJoin}
+          disabled={joining || !joinCode.trim()}
         >
           {joining ? "Joining…" : "Join vault"}
         </button>
+        <details>
+          <summary>Use legacy vault ID and token</summary>
+          <div className="section-stack">
+            <div className="field-group">
+              <label className="field-label" htmlFor="join-vault-id">Vault ID</label>
+              <input
+                id="join-vault-id"
+                className="input"
+                value={joinVaultId}
+                onChange={(event) => setJoinVaultId(event.target.value)}
+              />
+            </div>
+            <div className="field-group">
+              <label className="field-label" htmlFor="join-vault-token">Pairing token</label>
+              <input
+                id="join-vault-token"
+                className="input"
+                value={joinToken}
+                onChange={(event) => setJoinToken(event.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={handleLegacyJoin}
+              disabled={joining || !joinVaultId.trim() || !joinToken.trim()}
+            >
+              {joining ? "Joining…" : "Join with legacy credentials"}
+            </button>
+          </div>
+        </details>
       </div>
     </section>
   );

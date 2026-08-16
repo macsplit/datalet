@@ -1,6 +1,6 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** B1 and B2 were completed 2026-08-16; Track A and the
+**Status: active.** B1 through B3 were completed 2026-08-16; Track A and the
 remaining Track B items have not started. Written 2026-08-16 from the code as
 it stood at `b707800` and kept current as work lands.
 
@@ -262,7 +262,7 @@ the resolved `@label`. Reference-valued export fields carry both `@label` and
 `@id` (or arrays of those pairs), preserving readability without discarding
 the stable relationship key.
 
-### B3. One pairing field instead of two — **small, client-only**
+### B3. One pairing field instead of two — **completed 2026-08-16**
 
 **Problem.** `SyncSettings.tsx:138` shows a 36-character UUID *and* a
 32-character base64url token as two separate fields, both mandatory, both
@@ -292,6 +292,12 @@ B5 handle the cases where a human would otherwise type it.
 in the client, which decodes to the same `vaultId` + `vaultToken` the API
 already expects. The join form must also still accept the legacy two-field
 input so existing pairings keep working.
+
+**Landed detail.** The 320-bit payload is 64 Crockford characters followed by
+the standard mod-37 check symbol, grouped as thirteen five-character groups
+after `LG1`. The primary create/join/rotate UI uses that single code; the old
+two fields remain in a collapsed legacy fallback. The full-stack smoke now
+pairs its second real browser through the LG1 code.
 
 ### B4. QR pairing — **medium**
 
