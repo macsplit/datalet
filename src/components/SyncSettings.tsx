@@ -16,14 +16,15 @@ import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } fr
  * (usePrivateNuri.ts) — a full reload is the simplest way to get every
  * `useShape` subscription to restart scoped to the new graph.
  */
-function applyAndReload(vaultId: string, vaultToken: string) {
-  setVaultConfig(vaultId, vaultToken);
+async function applyAndReload(vaultId: string, vaultToken: string) {
+  await setVaultConfig(vaultId, vaultToken);
   window.location.reload();
 }
 
 export function SyncSettings() {
   const config = getVaultConfig();
   const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
   const [joinVaultId, setJoinVaultId] = useState("");
@@ -51,7 +52,7 @@ export function SyncSettings() {
         );
       }
       const created = (await response.json()) as { vaultId: string; vaultToken: string };
-      applyAndReload(created.vaultId, created.vaultToken);
+      await applyAndReload(created.vaultId, created.vaultToken);
     } catch (err) {
       setError(
         err instanceof Error
@@ -62,9 +63,16 @@ export function SyncSettings() {
     }
   }
 
-  function handleJoin() {
+  async function handleJoin() {
     if (!joinVaultId.trim() || !joinToken.trim()) return;
-    applyAndReload(joinVaultId.trim(), joinToken.trim());
+    setJoining(true);
+    setError(undefined);
+    try {
+      await applyAndReload(joinVaultId.trim(), joinToken.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not join the vault.");
+      setJoining(false);
+    }
   }
 
   async function handleRotate() {
@@ -213,9 +221,9 @@ export function SyncSettings() {
           type="button"
           className="secondary-btn"
           onClick={handleJoin}
-          disabled={!joinVaultId.trim() || !joinToken.trim()}
+          disabled={joining || !joinVaultId.trim() || !joinToken.trim()}
         >
-          Join vault
+          {joining ? "Joining…" : "Join vault"}
         </button>
       </div>
     </section>

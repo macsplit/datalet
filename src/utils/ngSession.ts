@@ -10,30 +10,9 @@
 
 import { initNg as initNgSignals } from "@ng-org/orm";
 import { localEngine } from "./localNgEngine";
+import { randomUuid } from "./randomId";
 
 const SESSION_STORAGE_KEY = "meta-ui-builder:local-session";
-
-/**
- * `crypto.randomUUID()` throws outside a secure context (plain HTTP on
- * anything other than localhost/127.0.0.1 - e.g. a LAN IP like
- * `http://192.168.1.17:5173`), which would crash `init()` before React ever
- * mounts, leaving a permanently blank page. `crypto.getRandomValues` has no
- * such restriction, so build a UUID-shaped id from it instead.
- */
-function generateId(): string {
-  if (typeof crypto.randomUUID === "function") {
-    try {
-      return crypto.randomUUID();
-    } catch {
-      // Insecure context (e.g. plain HTTP on a LAN IP) - fall through below.
-    }
-  }
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 /** A local stand-in for NextGraph's `Session` type. No wallet involved. */
 export type LocalSession = {
@@ -52,10 +31,10 @@ function loadOrCreateSession(): LocalSession {
     // Ignore corrupt storage and create a fresh session below.
   }
   const newSession: LocalSession = {
-    session_id: generateId(),
-    private_store_id: generateId(),
-    protected_store_id: generateId(),
-    public_store_id: generateId(),
+    session_id: randomUuid(),
+    private_store_id: randomUuid(),
+    protected_store_id: randomUuid(),
+    public_store_id: randomUuid(),
   };
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
   return newSession;

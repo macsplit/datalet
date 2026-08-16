@@ -879,6 +879,11 @@ export function reconcileGraphSnapshot(graph: string, records: Store): boolean {
   return reconcileGraphSnapshotInternal(graph, records, true);
 }
 
+/** Flush pending record writes before an operation that is about to reload the page. */
+export function flushLocalPersistence() {
+  persistNow();
+}
+
 /**
  * Wholesale-replace one graph's records with a server snapshot and reload.
  * Used when a client's resume cursor has fallen outside the sync server's

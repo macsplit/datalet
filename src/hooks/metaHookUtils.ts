@@ -1,3 +1,5 @@
+import { randomUuid } from "../utils/randomId";
+
 export function byOrderThenId<T extends { order: number; "@id": string }>(
   left: T,
   right: T,
@@ -13,12 +15,5 @@ export function nextOrder(items: Iterable<{ order: number }>): number {
 
 /** Create an explicit globally unique subject IRI for builder-created metadata. */
 export function newMetaSubjectIri(kind: string): string {
-  let id: string;
-  try {
-    id = crypto.randomUUID();
-  } catch {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    id = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-  return `did:ng:z:meta:${encodeURIComponent(kind)}:${id}`;
+  return `did:ng:z:meta:${encodeURIComponent(kind)}:${randomUuid()}`;
 }

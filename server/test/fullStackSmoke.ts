@@ -18,10 +18,14 @@ const browser = await chromium.launch({
 try {
   const firstDevice = await browser.newContext();
   const firstPage = await firstDevice.newPage();
-  const patchResponses: Array<{ status: number; body: string }> = [];
+  const patchResponses: Array<{ status: number; request: string | null; body: string }> = [];
   firstPage.on("response", async (response) => {
     if (response.url().includes("/sync/patches")) {
-      patchResponses.push({ status: response.status(), body: await response.text() });
+      patchResponses.push({
+        status: response.status(),
+        request: response.request().postData(),
+        body: await response.text(),
+      });
     }
   });
   await firstPage.goto(`${baseUrl}/settings`);
@@ -68,7 +72,10 @@ try {
       )?.appTitle;
     }, { timeout: 20_000 }).toBe(marker);
   } catch (error) {
-    console.error(JSON.stringify({ patchResponses }));
+    const redisClient = redis();
+    const redisRecords = await redisClient.hgetall(`vault:${vaultId}:store`);
+    redisClient.disconnect();
+    console.error(JSON.stringify({ patchResponses, redisRecords }));
     throw error;
   }
 

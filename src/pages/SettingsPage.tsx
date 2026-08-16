@@ -8,19 +8,13 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { useSettings, type Currency } from "../hooks/useSettings";
+import { useSettings } from "../hooks/useSettings";
 import { Link } from "@tanstack/react-router";
 import { SyncSettings } from "../components/SyncSettings";
 import { DataBackup } from "../components/DataBackup";
 
-const CURRENCY_OPTIONS: { value: Currency; label: string }[] = [
-  { value: "did:ng:z:USD", label: "US Dollar ($)" },
-  { value: "did:ng:z:GBP", label: "British Pound (£)" },
-  { value: "did:ng:z:EUR", label: "Euro (€)" },
-];
-
 export function SettingsPage() {
-  const { currency, setCurrency, appTitle, setAppTitle } = useSettings();
+  const { appTitle, setAppTitle } = useSettings();
 
   return (
     <div className="page-content">
@@ -74,35 +68,6 @@ export function SettingsPage() {
             onChange={(e) => setAppTitle(e.target.value)}
           />
         </div>
-      </section>
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="label-accent">Display</p>
-            <h2 className="title">Currency</h2>
-          </div>
-        </div>
-        <div className="field-group">
-          <label className="field-label" htmlFor="currency-select">
-            Currency used for amounts
-          </label>
-          <select
-            id="currency-select"
-            className="select"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as Currency)}
-          >
-            {CURRENCY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="helper-text">
-          Changing currency only changes how amounts are displayed - existing values
-          are not converted.
-        </p>
       </section>
       <DataBackup />
       <SyncSettings />

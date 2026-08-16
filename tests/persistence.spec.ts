@@ -237,6 +237,7 @@ test("keeps one deterministic Settings record across reloads and tabs", async ({
   await seedSession(page);
   await page.goto("/settings");
   await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue("Local Knowledge Graph");
+  await expect(page.getByRole("heading", { name: "Currency" })).toHaveCount(0);
   const second = await context.newPage();
   await second.goto("/settings");
   await expect(second.getByLabel("Shown in the nav bar and browser tab")).toBeVisible();
@@ -256,7 +257,7 @@ test("keeps one deterministic Settings record across reloads and tabs", async ({
   expect(settings[0]["@id"]).toBe("did:ng:z:SettingsSingleton");
 });
 
-test("settings edits survive reload and propagate across tabs", async ({ context, page }) => {
+test("app title edits survive reload and propagate across tabs", async ({ context, page }) => {
   await seedSession(page);
   await page.goto("/settings");
   const second = await context.newPage();
@@ -270,7 +271,6 @@ test("settings edits survive reload and propagate across tabs", async ({ context
   const title = page.getByLabel("Shown in the nav bar and browser tab");
   const secondTitle = second.getByLabel("Shown in the nav bar and browser tab");
   await title.fill("Shared local graph");
-  await page.getByLabel("Currency used for amounts").selectOption("did:ng:z:GBP");
   await expect
     .poll(() =>
       second.evaluate(
@@ -279,7 +279,6 @@ test("settings edits survive reload and propagate across tabs", async ({ context
     )
     .toBeGreaterThan(0);
   await expect(secondTitle).toHaveValue("Shared local graph");
-  await expect(second.getByLabel("Currency used for amounts")).toHaveValue("did:ng:z:GBP");
   await page.waitForTimeout(200);
   await expect
     .poll(() =>
@@ -300,7 +299,6 @@ test("settings edits survive reload and propagate across tabs", async ({ context
   ).toBe("Shared local graph");
   await page.reload();
   await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue("Shared local graph");
-  await expect(page.getByLabel("Currency used for amounts")).toHaveValue("did:ng:z:GBP");
 });
 
 test("records localStorage overhead at realistic batch sizes", async ({ page }) => {

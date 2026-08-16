@@ -24,26 +24,6 @@ export const settingsShapesSchema: Schema = {
       {
         dataTypes: [
           {
-            valType: "iri",
-            literals: ["did:ng:z:USD"],
-          },
-          {
-            valType: "iri",
-            literals: ["did:ng:z:GBP"],
-          },
-          {
-            valType: "iri",
-            literals: ["did:ng:z:EUR"],
-          },
-        ],
-        maxCardinality: 1,
-        minCardinality: 1,
-        iri: "did:ng:z:currency",
-        readablePredicate: "currency",
-      },
-      {
-        dataTypes: [
-          {
             valType: "string",
           },
         ],

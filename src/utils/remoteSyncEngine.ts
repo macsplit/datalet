@@ -18,12 +18,14 @@
 
 import {
   applyRemoteSyncPatches,
+  flushLocalPersistence,
   onLocalPatch,
   reconcileGraphSnapshot,
   type Patch,
   type Store,
 } from "./localNgEngine";
 import { dismissRuntimeIssue, reportRuntimeIssue } from "./runtimeHealth";
+import { randomUuid } from "./randomId";
 
 const CONFIG_KEY = "meta-ui-builder:sync-vault";
 const CURSOR_PREFIX = "meta-ui-builder:sync-cursor:";
@@ -57,26 +59,28 @@ export function getVaultConfig(): VaultConfig | undefined {
   return readJson<VaultConfig>(CONFIG_KEY);
 }
 
-function generateNodeId(): string {
-  if (typeof crypto.randomUUID === "function") {
-    try {
-      return crypto.randomUUID();
-    } catch {
-      // Insecure context — fall through to the manual UUID build below.
-    }
+async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately = false) {
+  const response = await fetch(`/sync/snapshot?vault=${encodeURIComponent(config.vaultId)}`, {
+    headers: { Authorization: `Bearer ${config.vaultToken}` },
+  });
+  if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
+  const snapshot = (await response.json()) as { seq: number; records: Store };
+  const graph = `did:ng:${config.vaultId}`;
+  if (!reconcileGraphSnapshot(graph, snapshot.records)) {
+    throw new Error("snapshot failed local validation");
   }
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  if (flushImmediately) flushLocalPersistence();
+  setCursor(config.vaultId, snapshot.seq);
 }
 
-/** Pair this browser with a vault (freshly created or an existing one) and start syncing. */
-export function setVaultConfig(vaultId: string, vaultToken: string) {
-  const config: VaultConfig = { vaultId, vaultToken, nodeId: generateNodeId() };
+/** Validate and prime a vault locally before the caller reloads into its graph. */
+export async function setVaultConfig(vaultId: string, vaultToken: string) {
+  const config: VaultConfig = { vaultId, vaultToken, nodeId: randomUuid() };
+  // A joining browser must have the remote records on disk before reload.
+  // Otherwise providers can bootstrap defaults before the asynchronous sync
+  // connection delivers its first snapshot, creating a newer conflicting edit.
+  await fetchAndReconcileSnapshot(config, true);
   writeJson(CONFIG_KEY, config);
-  startSync();
   return config;
 }
 
@@ -274,17 +278,7 @@ function scheduleFlush(config: VaultConfig, delayMs = 0) {
 
 async function resyncFromSnapshot(config: VaultConfig) {
   try {
-    const response = await fetch(`/sync/snapshot?vault=${encodeURIComponent(config.vaultId)}`, {
-      headers: { Authorization: `Bearer ${config.vaultToken}` },
-    });
-    if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
-    const snapshot = (await response.json()) as { seq: number; records: Store };
-    // The graph identity embedded in records is "did:ng:<vaultId>" (see
-    // usePrivateNuri.ts), not the bare vaultId used to address the API.
-    if (!reconcileGraphSnapshot(`did:ng:${config.vaultId}`, snapshot.records)) {
-      throw new Error("snapshot failed local validation");
-    }
-    setCursor(config.vaultId, snapshot.seq);
+    await fetchAndReconcileSnapshot(config);
     void flushOutbox(config);
     void connectStream(config);
   } catch (error) {
@@ -381,7 +375,7 @@ async function connectStream(config: VaultConfig) {
 
 function enqueueOutbound(config: VaultConfig, patches: Patch[], shape: string) {
   const entry: OutboxEntry = {
-    batchId: crypto.randomUUID(),
+    batchId: randomUuid(),
     hlc: nextHlc(config.nodeId),
     shape,
     patches,

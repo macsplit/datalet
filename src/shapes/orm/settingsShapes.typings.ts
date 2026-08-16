@@ -23,12 +23,6 @@ export interface Settings {
    */
   "@type": "did:ng:z:Settings";
   /**
-   * The currency used to display monetary values
-   *
-   * Original IRI: did:ng:z:currency
-   */
-  currency: "did:ng:z:USD" | "did:ng:z:GBP" | "did:ng:z:EUR";
-  /**
    * The application title shown in the nav bar and browser tab
    *
    * Original IRI: did:ng:z:appTitle

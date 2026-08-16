@@ -4,8 +4,6 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
 ex:SettingsShape {
   a [ex:Settings] ;
-  ex:currency [ex:USD ex:GBP ex:EUR]
-    // rdfs:comment "The currency used to display monetary values" ;
   ex:appTitle xsd:string
     // rdfs:comment "The application title shown in the nav bar and browser tab" ;
 }
