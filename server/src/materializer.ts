@@ -15,37 +15,53 @@
  * blocks accepting or fanning out new patches to already-connected clients.
  *
  * Runs as its own process (`ROLE=materializer`, see index.ts) rather than
- * inside every sync-server replica: the consumer group already lets
- * multiple materializer processes divide the work safely (each stream
- * entry is delivered to exactly one group member), so scaling this out
- * later is a matter of running more `ROLE=materializer` processes, not a
- * redesign. One process is enough at this app's likely write volume - see
- * §6.3's sharded-worker-pool note for the scale-out path.
+ * inside every sync-server replica. Multiple processes divide vaults by a
+ * stable FNV-1a shard, and a short Redis lease prevents duplicate ownership
+ * of a configured shard. Each shard keeps one stable consumer name so a
+ * restarted process can drain that shard's pending entries.
  */
 
 import { newBlockingConnection, redis } from "./redis/client.js";
+import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import { listVaultIds, parseLogEntry, streamKey, sweepVaultTombstones, type LogEntry } from "./vaultStore.js";
 import { applyPatchesToStore, patchTarget, type Store } from "./patchApply.js";
 import { ensureNeo4jSchema } from "./neo4j/client.js";
 import { readRecord, tombstoneRecord, upsertRecord } from "./neo4j/materialize.js";
 import {
   MATERIALIZER_GROUP,
+  MATERIALIZER_SHARD_COUNT,
+  MATERIALIZER_SHARD_HEARTBEAT_MS,
+  MATERIALIZER_SHARD_INDEX,
+  MATERIALIZER_SHARD_LEASE_SECONDS,
   MATERIALIZER_STREAMS_PER_CONNECTION,
   VAULT_DISCOVERY_INTERVAL_MS,
 } from "./neo4j/config.js";
 import { TOMBSTONE_SWEEP_INTERVAL_MS } from "./config.js";
-
-// Stable across restarts (unlike process.pid) - a consumer group only
-// redelivers a crashed consumer's still-pending entries to a *later read
-// under the same consumer name*. A name that changed on every restart
-// would silently orphan whatever was in flight when the process died.
-const CONSUMER_NAME = process.env.MATERIALIZER_CONSUMER_ID ?? "materializer-1";
 
 type StreamEntryRow = [string, string[] | null];
 type StreamResponse = Array<[string, StreamEntryRow[]]> | null;
 type WatchedVault = { vaultId: string; key: string; recovered: boolean };
 const READ_COUNT = 50;
 const BLOCK_MS = 5_000;
+
+/** Stable unsigned FNV-1a over UTF-8 bytes, used for coordination-free ownership. */
+export function fnv1a(value: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of Buffer.from(value, "utf8")) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+export function materializerShardFor(vaultId: string, shardCount: number): number {
+  return fnv1a(vaultId) % shardCount;
+}
+
+export function materializerConsumerName(shardIndex: number): string {
+  return `materializer-${shardIndex}`;
+}
 
 async function ensureConsumerGroup(key: string): Promise<void> {
   try {
@@ -103,6 +119,7 @@ class MaterializerStreamBatch {
     readonly id: number,
     readonly capacity: number,
     private readonly blockMs: number,
+    private readonly consumerName: string,
     private readonly onFailure: (batch: MaterializerStreamBatch, error: unknown) => void,
   ) {}
 
@@ -135,7 +152,7 @@ class MaterializerStreamBatch {
     const args = [
       "GROUP",
       MATERIALIZER_GROUP,
-      CONSUMER_NAME,
+      this.consumerName,
       "COUNT",
       String(READ_COUNT),
       ...(block ? ["BLOCK", String(this.blockMs)] : []),
@@ -170,7 +187,8 @@ class MaterializerStreamBatch {
   }
 
   private async loop(): Promise<void> {
-    await this.connection.client("SETNAME", `localgraph-materializer-batch-${this.id}`);
+    const safeConsumerName = this.consumerName.replace(/[^A-Za-z0-9_-]/g, "_");
+    await this.connection.client("SETNAME", `localgraph-materializer-batch-${this.id}-${safeConsumerName}`);
     while (this.running) {
       // A vault added while this batch was already blocking must drain the
       // stable consumer's pending entries before its first ">" live read.
@@ -188,9 +206,10 @@ class MaterializerStreamBatch {
  * failure is logged and skipped rather than aborting the rest, matching
  * discoverAndWatch's per-vault fault isolation below.
  */
-async function sweepAllTombstones(): Promise<void> {
+async function sweepAllTombstones(ownsVault: (vaultId: string) => boolean): Promise<void> {
   const vaultIds = await listVaultIds();
   for (const vaultId of vaultIds) {
+    if (!ownsVault(vaultId)) continue;
     try {
       const purged = await sweepVaultTombstones(vaultId);
       if (purged > 0) console.log(`materializer: purged ${purged} expired tombstone(s) in vault ${vaultId}`);
@@ -206,6 +225,19 @@ export type MaterializerStats = {
   blockingConnections: number;
 };
 
+export type MaterializerServiceOptions = {
+  streamsPerConnection?: number;
+  discoveryIntervalMs?: number;
+  blockMs?: number;
+  shardIndex?: number;
+  shardCount?: number;
+  leaseSeconds?: number;
+  heartbeatMs?: number;
+  claimShard?: boolean;
+  ownsVault?: (vaultId: string) => boolean;
+  consumerName?: string;
+};
+
 export class MaterializerService {
   private readonly watchedVaults = new Set<string>();
   private readonly batches = new Set<MaterializerStreamBatch>();
@@ -214,13 +246,49 @@ export class MaterializerService {
   private tombstoneTimer: ReturnType<typeof setInterval> | undefined;
   private discoveryPromise: Promise<void> | undefined;
   private stopping = false;
+  private started = false;
+  private leaseTimer: ReturnType<typeof setInterval> | undefined;
+  private leaseOwned = false;
+  private readonly streamsPerConnection: number;
+  private readonly discoveryIntervalMs: number;
+  private readonly blockMs: number;
+  private readonly shardIndex: number;
+  private readonly shardCount: number;
+  private readonly leaseSeconds: number;
+  private readonly heartbeatMs: number;
+  private readonly claimShard: boolean;
+  private readonly ownsVault: (vaultId: string) => boolean;
+  private readonly consumerName: string;
+  private readonly leaseKey: string;
+  private readonly leaseOwner: string;
 
-  constructor(
-    private readonly streamsPerConnection = MATERIALIZER_STREAMS_PER_CONNECTION,
-    private readonly discoveryIntervalMs = VAULT_DISCOVERY_INTERVAL_MS,
-    private readonly blockMs = BLOCK_MS,
-    private readonly ownsVault: (vaultId: string) => boolean = () => true,
-  ) {}
+  constructor(options: MaterializerServiceOptions = {}) {
+    this.streamsPerConnection = options.streamsPerConnection ?? MATERIALIZER_STREAMS_PER_CONNECTION;
+    this.discoveryIntervalMs = options.discoveryIntervalMs ?? VAULT_DISCOVERY_INTERVAL_MS;
+    this.blockMs = options.blockMs ?? BLOCK_MS;
+    this.shardIndex = options.shardIndex ?? MATERIALIZER_SHARD_INDEX;
+    this.shardCount = options.shardCount ?? MATERIALIZER_SHARD_COUNT;
+    this.leaseSeconds = options.leaseSeconds ?? MATERIALIZER_SHARD_LEASE_SECONDS;
+    this.heartbeatMs = options.heartbeatMs ?? MATERIALIZER_SHARD_HEARTBEAT_MS;
+    this.claimShard = options.claimShard ?? true;
+    if (!Number.isInteger(this.shardCount) || this.shardCount < 1) {
+      throw new Error("materializer shard count must be a positive integer");
+    }
+    if (!Number.isInteger(this.shardIndex) || this.shardIndex < 0 || this.shardIndex >= this.shardCount) {
+      throw new Error("materializer shard index must be an integer within the configured shard count");
+    }
+    if (!Number.isInteger(this.streamsPerConnection) || this.streamsPerConnection < 1) {
+      throw new Error("materializer streams per connection must be a positive integer");
+    }
+    if (this.heartbeatMs >= this.leaseSeconds * 1_000) {
+      throw new Error("materializer heartbeat must be shorter than its shard lease");
+    }
+    this.ownsVault = options.ownsVault ??
+      ((vaultId) => materializerShardFor(vaultId, this.shardCount) === this.shardIndex);
+    this.consumerName = options.consumerName ?? materializerConsumerName(this.shardIndex);
+    this.leaseKey = `materializer:shard:${this.shardIndex}`;
+    this.leaseOwner = `${hostname()}:${process.pid}:${randomUUID()}:count-${this.shardCount}`;
+  }
 
   stats(): MaterializerStats {
     return {
@@ -231,16 +299,25 @@ export class MaterializerService {
   }
 
   async start(): Promise<void> {
-    if (this.discoveryTimer || this.tombstoneTimer) throw new Error("materializer service is already started");
+    if (this.started) throw new Error("materializer service is already started");
+    this.started = true;
     this.stopping = false;
-    await ensureNeo4jSchema();
-    await this.discoverNow();
-    this.discoveryTimer = setInterval(() => {
-      void this.discoverNow().catch((error) => console.error("materializer: vault discovery failed", error));
-    }, this.discoveryIntervalMs);
-    this.tombstoneTimer = setInterval(() => {
-      void sweepAllTombstones().catch((error) => console.error("materializer: tombstone sweep failed", error));
-    }, TOMBSTONE_SWEEP_INTERVAL_MS);
+    try {
+      if (this.claimShard) await this.acquireShardLease();
+      await ensureNeo4jSchema();
+      await this.discoverNow();
+      this.discoveryTimer = setInterval(() => {
+        void this.discoverNow().catch((error) => console.error("materializer: vault discovery failed", error));
+      }, this.discoveryIntervalMs);
+      this.tombstoneTimer = setInterval(() => {
+        void sweepAllTombstones(this.ownsVault)
+          .catch((error) => console.error("materializer: tombstone sweep failed", error));
+      }, TOMBSTONE_SWEEP_INTERVAL_MS);
+    } catch (error) {
+      this.started = false;
+      await this.releaseShardLease();
+      throw error;
+    }
   }
 
   discoverNow(): Promise<void> {
@@ -255,13 +332,17 @@ export class MaterializerService {
     this.stopping = true;
     if (this.discoveryTimer) clearInterval(this.discoveryTimer);
     if (this.tombstoneTimer) clearInterval(this.tombstoneTimer);
+    if (this.leaseTimer) clearInterval(this.leaseTimer);
     this.discoveryTimer = undefined;
     this.tombstoneTimer = undefined;
+    this.leaseTimer = undefined;
     await this.discoveryPromise?.catch(() => undefined);
     const batches = [...this.batches];
     this.batches.clear();
     this.watchedVaults.clear();
     await Promise.all(batches.map((batch) => batch.stop()));
+    await this.releaseShardLease();
+    this.started = false;
   }
 
   private async discover(): Promise<void> {
@@ -280,6 +361,7 @@ export class MaterializerService {
             this.nextBatchId++,
             this.streamsPerConnection,
             this.blockMs,
+            this.consumerName,
             (failed, error) => this.handleBatchFailure(failed, error),
           );
           this.batches.add(batch);
@@ -300,9 +382,55 @@ export class MaterializerService {
       error,
     );
   }
+
+  private async acquireShardLease(): Promise<void> {
+    const claimed = await redis().set(
+      this.leaseKey,
+      this.leaseOwner,
+      "EX",
+      this.leaseSeconds,
+      "NX",
+    );
+    if (claimed !== "OK") {
+      const current = await redis().get(this.leaseKey);
+      const message =
+        `materializer: shard ${this.shardIndex}/${this.shardCount} is already claimed by ${current ?? "another process"}`;
+      console.error(message);
+      throw new Error(message);
+    }
+    this.leaseOwned = true;
+    this.leaseTimer = setInterval(() => void this.refreshShardLease(), this.heartbeatMs);
+  }
+
+  private async refreshShardLease(): Promise<void> {
+    if (!this.leaseOwned || this.stopping) return;
+    try {
+      const refreshed = await redis().manageShardLease(
+        this.leaseKey,
+        this.leaseOwner,
+        String(this.leaseSeconds),
+      );
+      if (refreshed === 1) return;
+      throw new Error("lease is now owned by another process");
+    } catch (error) {
+      this.leaseOwned = false;
+      console.error(
+        `materializer: LOST SHARD ${this.shardIndex}/${this.shardCount}; stopping to prevent duplicate processing`,
+        error,
+      );
+      await this.stop().catch((stopError) => console.error("materializer: failed while stopping", stopError));
+    }
+  }
+
+  private async releaseShardLease(): Promise<void> {
+    if (!this.leaseOwned) return;
+    await redis().manageShardLease(this.leaseKey, this.leaseOwner, "0").catch(() => 0);
+    this.leaseOwned = false;
+  }
 }
 
-export async function startMaterializer(): Promise<void> {
+export async function startMaterializer(): Promise<MaterializerService> {
   const service = new MaterializerService();
   await service.start();
+  return service;
 }

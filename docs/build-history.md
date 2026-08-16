@@ -34,6 +34,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 10 | Plain-language reference doc with rendered diagrams. |
 | 11 | Durable vault metadata, stream tickets, automated regression suites in CI. |
 | 12 | Multi-tenant A1: materializer stream multiplexing, multi-stream pending recovery, and a reusable 200-vault connection/lag/memory harness. |
+| 13 | Multi-tenant A2: deterministic vault sharding, stable per-shard consumers, Redis lease/heartbeat conflict detection, and two-shard integration coverage. |
 
 ---
 

@@ -159,8 +159,10 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 - `sync-server` is stateless — proven with 2 instances behind a
   round-robin proxy sharing one Redis, no per-instance state.
 - The materializer multiplexes up to 64 vault streams onto each blocking Redis
-  connection. The batch size is tunable; deterministic process sharding is the
-  next scaling step.
+  connection. The batch size is tunable. Materializer processes scale out by
+  deterministic FNV-1a vault sharding; a short Redis lease rejects duplicate
+  shard indexes, and stable per-shard consumer names recover pending work after
+  restart.
 
 **Performance (measured on a dev box, not a production SLA)**
 

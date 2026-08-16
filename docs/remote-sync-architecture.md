@@ -263,9 +263,10 @@ different treatment:
 - **Redis**: Streams (the ordered patch log + fanout mechanism), plus
   request dedupe/idempotency keys and the short-lived materialized-view
   cache. Not the durable store.
-- **materializer**: one logical writer per vault (a Redis Streams
-  consumer group), horizontally shardable across multiple worker
-  processes if write volume ever needs it.
+- **materializer**: one logical writer per vault (a Redis Streams consumer
+  group), horizontally divided across explicitly indexed worker processes by
+  `fnv1a(vaultId) % shardCount`. Short Redis leases reject duplicate shard
+  claims and stable per-shard consumer names recover pending work on restart.
 - **Neo4j**: the durable store and `/sync/snapshot`'s source.
 
 ### 6.1 Ingest tier (the "sync-server" processes)

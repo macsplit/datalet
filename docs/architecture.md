@@ -427,8 +427,9 @@ was found the hard way and is documented in
 
 A separate process (`ROLE=materializer`, same build artifact) consumes each
 vault's stream through a Redis Streams consumer group and replays it into
-Neo4j. Being a consumer group means multiple materializer processes can divide
-the work safely without a redesign; one is enough at this write volume.
+Neo4j. One process owns every vault by default. At higher volume, processes
+take explicit indexes within a common shard count and own vault V when
+`fnv1a(V) % shardCount === shardIndex`.
 
 One blocking `XREADGROUP` carries up to 64 vault streams rather than opening a
 connection per vault. The limit is configurable with
@@ -439,11 +440,15 @@ batch are applied sequentially: this bounds Redis connections but means a slow
 Neo4j write can delay other vaults in the same batch. A smaller configured
 batch trades more connections for less head-of-line coupling.
 
-The consumer name is stable across restarts, not process-id-based. That matters
+The consumer name is `materializer-<shardIndex>`, stable across restarts and
+distinct between shards rather than process-id-based. That matters
 because a consumer group only redelivers a crashed consumer's pending entries
 to a later read *under the same consumer name*; a name that changed per restart
 would silently orphan whatever was in flight. On start it drains its own
-unacknowledged entries before joining the live tail.
+unacknowledged entries before joining the live tail. A process also holds the
+short-lived Redis key `materializer:shard:<index>` and heartbeats it. A
+duplicate index fails startup loudly; loss of an acquired lease stops that
+materializer so it fails closed instead of continuing as a second owner.
 
 Neo4j holds one `:Record` node per `(graph, subjectId)`, where `graph` is the
 vault id, carrying a dynamic label derived from the record's type — the type's

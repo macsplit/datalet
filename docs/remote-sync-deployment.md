@@ -109,6 +109,8 @@ services:
       NEO4J_URL: "bolt://neo4j:7687"
       NEO4J_USER: "neo4j"
       NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      MATERIALIZER_SHARD_COUNT: "1"
+      MATERIALIZER_SHARD_INDEX: "0"
       NODE_ENV: "production"
     networks: [backend]
 
@@ -148,7 +150,11 @@ Notes:
   configure).
 - `materializer` runs the same image with `ROLE=materializer`. Keep at least
   one instance running: it consumes accepted Redis Stream entries into Neo4j,
-  which is what makes snapshots and durable recovery advance.
+  which is what makes snapshots and durable recovery advance. Do not use
+  `docker compose --scale materializer=N`: every replica would receive index
+  zero and all but one would fail its Redis shard claim. Scale it with explicit
+  services or an orchestrator that assigns one unique index from `0` through
+  `MATERIALIZER_SHARD_COUNT - 1`.
 - Neo4j Community, single instance: no built-in HA/clustering. That's an
   accepted trade for a reproducible single-server OSS setup (see
   architecture doc §6.4/§7); back it up on a schedule (§1.6 below) and if
@@ -222,6 +228,7 @@ the `vaultToken` bearer secret (architecture doc §9).
 ```
 NEO4J_PASSWORD=change-me-to-a-long-random-value
 SYNC_DOMAIN=sync.example.org
+MATERIALIZER_SHARD_COUNT=1
 ```
 
 Copy to `.env`, fill in real values, never commit `.env` (already covered
@@ -397,6 +404,34 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now localgraph-materializer
 ```
 
+For multiple native workers, make the unit a template named
+`localgraph-materializer@.service`, add these lines to `[Service]`, and put the
+common count in `/opt/localgraph/.env`:
+
+```ini
+Environment=MATERIALIZER_SHARD_INDEX=%i
+# /opt/localgraph/.env: MATERIALIZER_SHARD_COUNT=2
+```
+
+Then start every index exactly once:
+
+```bash
+sudo systemctl enable --now localgraph-materializer@0 localgraph-materializer@1
+```
+
+The same rule applies to Compose: define `materializer-0` and
+`materializer-1` from the materializer service block, give both count `2`, and
+give them indexes `0` and `1`. A duplicate index exits with an `already
+claimed` error. A graceful stop releases its Redis lease immediately; after a
+crash, allow the default 15-second lease to expire before replacement startup.
+
+Changing the shard count reassigns vaults and changes which stable consumer
+must recover them. Before an upgrade from the pre-sharding consumer
+`materializer-1`, or before any shard-count change, stop ingest traffic, leave
+the old materializers running until `XPENDING vault:<id>:stream materializer`
+is zero for every vault, then stop the entire old pool and start the complete
+new pool. Never roll a shard-count change one worker at a time.
+
 ### 2.4 Reverse proxy (nginx alternative to Caddy)
 
 If not using Caddy, nginx needs explicit SSE-safe settings (Caddy does not
@@ -445,6 +480,8 @@ not disk/host loss.
 | `PAIR_CODE_TTL_SECONDS` | sync-server | temporary pair-code lifetime (default 600 seconds) |
 | `PAIR_REDEEM_RATE_LIMIT` / `PAIR_REDEEM_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/pair-redeem` guessing limit (default 10 per minute per client IP; the same trusted-proxy requirement applies) |
 | `MATERIALIZER_STREAMS_PER_CONNECTION` | materializer | maximum vault streams multiplexed into one blocking Redis read (default 64); lower it to reduce cross-vault head-of-line latency at the cost of more connections |
+| `MATERIALIZER_SHARD_COUNT` / `MATERIALIZER_SHARD_INDEX` | materializer | common worker count and this process's zero-based index (defaults 1 and 0); every index must run exactly once |
+| `MATERIALIZER_SHARD_LEASE_SECONDS` / `MATERIALIZER_SHARD_HEARTBEAT_MS` | materializer | duplicate-index lease TTL and refresh interval (defaults 15 seconds and 5000 ms; heartbeat must be shorter than TTL) |
 | `TOMBSTONE_RETENTION_MS` / `TOMBSTONE_SWEEP_INTERVAL_MS` | materializer | how long a deleted record's tombstone is kept before purging, and how often the sweep runs (architecture doc §5) |
 
 Vault tokens themselves need no server-side secret to configure: each is a

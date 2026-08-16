@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, test } from "node:test";
-import { MaterializerService } from "../src/materializer.js";
+import { MaterializerService, materializerConsumerName } from "../src/materializer.js";
 import { closeNeo4j, neo4jDriver, neo4jSession } from "../src/neo4j/client.js";
 import { MATERIALIZER_GROUP } from "../src/neo4j/config.js";
 import { readRecord } from "../src/neo4j/materialize.js";
@@ -78,8 +78,16 @@ test("materializer multiplexes streams and discovers a late vault into spare cap
   }
 
   const prefix = `a1-live-${randomUUID()}`;
+  const consumerName = `a1-multiplex-${randomUUID()}`;
   for (let index = 0; index < 5; index += 1) await seedStream(`${prefix}-${index}`, index);
-  const service = new MaterializerService(2, 50, 50, (vaultId) => vaultId.startsWith(prefix));
+  const service = new MaterializerService({
+    streamsPerConnection: 2,
+    discoveryIntervalMs: 50,
+    blockMs: 50,
+    claimShard: false,
+    consumerName,
+    ownsVault: (vaultId) => vaultId.startsWith(prefix),
+  });
   try {
     await service.start();
     await eventually(async () => {
@@ -95,7 +103,7 @@ test("materializer multiplexes streams and discovers a late vault into spare cap
     });
     const clients = await redis().client("LIST") as string;
     assert.equal(
-      clients.split("\n").filter((line) => line.includes("name=localgraph-materializer-batch-")).length,
+      clients.split("\n").filter((line) => line.includes(`-${consumerName}`)).length,
       3,
     );
 
@@ -109,7 +117,7 @@ test("materializer multiplexes streams and discovers a late vault into spare cap
   }
 });
 
-test("one multiplexed recovery read drains pending entries from every stream", async (t) => {
+test("a restarted shard drains its stable consumer's pending entries from every stream", async (t) => {
   if (!(await integrationAvailable())) {
     t.skip("Redis/Neo4j unavailable");
     return;
@@ -127,7 +135,7 @@ test("one multiplexed recovery read drains pending entries from every stream", a
     const delivered = await crashed.xreadgroup(
       "GROUP",
       MATERIALIZER_GROUP,
-      "materializer-1",
+      materializerConsumerName(0),
       "COUNT",
       "50",
       "STREAMS",
@@ -141,7 +149,13 @@ test("one multiplexed recovery read drains pending entries from every stream", a
     crashed.disconnect();
   }
 
-  const service = new MaterializerService(64, 50, 50, (vaultId) => vaultId.startsWith(prefix));
+  const service = new MaterializerService({
+    streamsPerConnection: 64,
+    discoveryIntervalMs: 50,
+    blockMs: 50,
+    claimShard: false,
+    ownsVault: (vaultId) => vaultId.startsWith(prefix),
+  });
   try {
     await service.start();
     await eventually(async () => {

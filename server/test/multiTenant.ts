@@ -2,21 +2,25 @@ import { closeNeo4j, neo4jDriver, neo4jSession } from "../src/neo4j/client.js";
 import { readRecord } from "../src/neo4j/materialize.js";
 import { MATERIALIZER_STREAMS_PER_CONNECTION } from "../src/neo4j/config.js";
 import { redis } from "../src/redis/client.js";
-import { MaterializerService } from "../src/materializer.js";
+import { MaterializerService, materializerShardFor } from "../src/materializer.js";
 import { applyBatch, createVault } from "../src/vaultStore.js";
 
 const vaultCount = Number(process.env.MULTI_TENANT_VAULTS ?? 200);
 const activeCount = Math.min(vaultCount, Number(process.env.MULTI_TENANT_ACTIVE_VAULTS ?? 50));
 const timeoutMs = Number(process.env.MULTI_TENANT_TIMEOUT_MS ?? 60_000);
 const initialCount = Math.min(10, vaultCount);
+const shardCount = Number(process.env.MULTI_TENANT_SHARDS ?? 2);
 const ownedVaults = new Set<string>();
 const vaults: Array<{ vaultId: string; vaultToken: string }> = [];
-const service = new MaterializerService(
-  MATERIALIZER_STREAMS_PER_CONNECTION,
-  100,
-  100,
-  (vaultId) => ownedVaults.has(vaultId),
-);
+const services = Array.from({ length: shardCount }, (_, shardIndex) => new MaterializerService({
+  streamsPerConnection: MATERIALIZER_STREAMS_PER_CONNECTION,
+  discoveryIntervalMs: 100,
+  blockMs: 100,
+  shardIndex,
+  shardCount,
+  ownsVault: (vaultId) =>
+    ownedVaults.has(vaultId) && materializerShardFor(vaultId, shardCount) === shardIndex,
+}));
 
 function percentile(values: number[], fraction: number): number {
   if (values.length === 0) return 0;
@@ -43,11 +47,11 @@ async function addVaults(count: number) {
     vaults.push(vault);
     ownedVaults.add(vault.vaultId);
   }
-  await service.discoverNow();
+  await Promise.all(services.map((service) => service.discoverNow()));
 }
 
 async function cleanup() {
-  await service.stop();
+  await Promise.all(services.map((service) => service.stop()));
   for (const { vaultId } of vaults) {
     const keys = await redis().keys(`vault:${vaultId}:*`);
     if (keys.length > 0) await redis().del(...keys);
@@ -73,7 +77,7 @@ async function cleanup() {
 try {
   await Promise.all([redis().ping(), neo4jDriver().verifyConnectivity()]);
   const before = await redisMetrics();
-  await service.start();
+  await Promise.all(services.map((service) => service.start()));
 
   await addVaults(initialCount);
   const initial = await redisMetrics();
@@ -117,13 +121,20 @@ try {
 
   const lags = [...lagByVault.values()];
   const after = await redisMetrics();
-  const expectedConnections = Math.ceil(vaultCount / MATERIALIZER_STREAMS_PER_CONNECTION);
+  const vaultsPerShard = Array.from({ length: shardCount }, (_, shardIndex) =>
+    vaults.filter(({ vaultId }) => materializerShardFor(vaultId, shardCount) === shardIndex).length);
+  const expectedConnections = vaultsPerShard.reduce(
+    (total, count) => total + Math.ceil(count / MATERIALIZER_STREAMS_PER_CONNECTION),
+    0,
+  );
   const summary = {
     ok: lagByVault.size === active.length && full.materializerConnections === expectedConnections,
     vaultCount,
     activeVaults: active.length,
     materializedVaults: lagByVault.size,
     streamsPerConnection: MATERIALIZER_STREAMS_PER_CONNECTION,
+    shardCount,
+    vaultsPerShard,
     expectedConnections,
     connections: {
       before: before.connectedClients,

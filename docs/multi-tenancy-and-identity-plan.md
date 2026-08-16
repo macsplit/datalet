@@ -1,8 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) was completed 2026-08-17; Track A1
-was completed 2026-08-17 and A2 through A7 have not started. Written 2026-08-16
-from the code as it stood at `b707800` and kept current as work lands.
+**Status: active.** Track B (B1 through B6) and Track A1/A2 were completed
+2026-08-17; A3 through A7 have not started. Written 2026-08-16 from the code
+as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -95,7 +95,7 @@ batch are deliberately processed sequentially, retaining the documented
 head-of-line tradeoff. Idle teardown remains deferred pending evidence that it
 would help.
 
-### A2. Shard materializer processes; fix the consumer name — **medium**
+### A2. Shard materializer processes; fix the consumer name — **completed 2026-08-17**
 
 **Problem.** Every materializer process runs the same discovery over *all*
 vaults, so a second process doubles connections instead of halving load. The
@@ -122,6 +122,22 @@ per-consumer pending-entry recovery that the stable-name design exists for.
 
 This is `remote-sync-architecture.md` §6.3's sharded-worker-pool note, which
 stops being optional at this tenant count.
+
+**Landed detail.** Materializers now own vaults by unsigned FNV-1a hash modulo
+`MATERIALIZER_SHARD_COUNT`, with a distinct
+`MATERIALIZER_SHARD_INDEX` and stable `materializer-<index>` consumer. Each
+process atomically claims `materializer:shard:<index>` in Redis, refreshes its
+short lease, refuses a duplicate claim loudly, and stops consuming if the
+heartbeat loses ownership. Graceful shutdown releases the claim immediately;
+after a crash it expires. Discovery and tombstone sweeping both observe the
+same shard boundary. Integration coverage starts two shards, proves disjoint
+and complete ownership and one consumer per stream, exercises stable-name
+pending recovery after restart, and proves duplicate-claim refusal followed by
+safe takeover after release. The reusable 200-vault harness now runs two
+shards by default and calculates the expected multiplexed connections per
+shard. The deployment guide documents distinct-index rollout and the required
+pending-work drain before changing shard count or upgrading from the old
+single `materializer-1` consumer.
 
 ### A3. Bound Neo4j label cardinality — **small**
 
