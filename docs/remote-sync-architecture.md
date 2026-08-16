@@ -1,8 +1,20 @@
-# Remote Sync Layer — Architecture Design
+# Remote Sync Layer — Design Rationale
 
-Status: implemented. This document preserves the design reasoning; see
-`remote-sync.md` for the concise current-state reference and
-`remote-sync-progress.md` for build and verification history.
+**Status: implemented; kept for the reasoning, not as a description of the
+code.** Read this for *why* the sync tier is shaped the way it is — what was
+considered, what was rejected, and what the trade-offs were.
+
+For what the system does today, read these instead:
+
+- [`architecture.md`](architecture.md) — the system as built, client and server.
+- [`remote-sync.md`](remote-sync.md) — the sync tier's actual endpoints,
+  conflict rules and edge cases.
+- [`build-history.md`](build-history.md) — what was built when, and the defects
+  found doing it.
+
+Where a section below sketches something the implementation later changed, it
+says so at that point. Its section numbers are referenced from doc comments
+throughout `server/src/`, so they are kept stable.
 
 ## 1. Goals and non-goals
 
@@ -114,6 +126,14 @@ below still applies).
 
 ### 4.2 Endpoints
 
+> **Superseded as written.** This was the original sketch. What shipped differs:
+> the vault id moved to a `?vault=` query parameter rather than the POST body,
+> `baseSeq` was never needed, `POST /sync/vaults/rotate` was added for token
+> rotation, and the SSE endpoint takes a short-lived ticket from
+> `POST /sync/stream-ticket` instead of the bearer token — `EventSource` cannot
+> set headers, and putting the durable token in a URL exposes it to proxy logs.
+> [`remote-sync.md`](remote-sync.md) has the current list.
+
 All under a `/sync` prefix on the same server that serves `dist/`.
 
 ```
@@ -199,11 +219,24 @@ different treatment:
   best-effort local-first"). This gives deterministic LWW regardless of
   network arrival order or clock skew (HLC bounds skew by design).
 
+  *As built, the UI does surface it:* the response carries accepted and
+  submitted counts, and the client raises a visible warning naming the dropped
+  count and the server's reason. One refinement the sketch missed — every patch
+  in a batch carries that batch's single HLC, so a strict comparison makes a
+  batch's own second patch for a field lose against itself. Within a batch the
+  last patch for a field wins instead; see [`remote-sync.md`](remote-sync.md).
+
 - **Tombstones**: a whole-record `remove` needs to be remembered for a
   retention window (e.g. 30 days) so a stale `add`/field-patch from a node
   that's been offline longer than that doesn't resurrect a deleted record.
   Store tombstones in Neo4j alongside live records (a `Deleted` label +
   `deletedAtHlc`), checked before applying any patch to that subject.
+
+  *As built, they live in both stores.* Neo4j keeps the `:Deleted` node as
+  designed, but the check has to happen at accept time, inside the Lua script,
+  before a patch is ever admitted to the stream — so Redis carries a per-vault
+  tombstone hash too. The purge sweep keeps them in step: Neo4j decides what
+  has expired, Redis mirrors the decision.
 
 - **Idempotency / at-least-once delivery**: `batchId` lets both server and
   clients de-duplicate a patch batch that's retried after a dropped
@@ -222,7 +255,7 @@ different treatment:
 
 - **Reverse proxy** (Caddy/nginx): TLS termination, load balancing across
   instances, SSE-safe (response buffering off — see step 2's `flushHeaders`
-  finding in `remote-sync-progress.md` for why this matters for SSE
+  finding in `build-history.md` for why this matters for SSE
   specifically).
 - **sync-server instances**: stateless, scale out freely. Each one serves
   the built client, the SSE stream, and `POST /sync/patches` — any
@@ -466,6 +499,11 @@ against §3/§9 as specified.
 
 ## 10. Suggested build order (MVP → full)
 
+> **Complete.** All of the below shipped, plus tombstone retention, security
+> hardening, a visible connection-lost warning, durable vault metadata and
+> stream tickets. [`build-history.md`](build-history.md) records what each step
+> actually cost and what broke.
+
 1. Sync server skeleton: serves `dist/`, `/sync/health`, in-memory (no
    Redis/Neo4j yet) single-process patch relay — proves the client
    integration (§8) end-to-end on one machine.
@@ -483,13 +521,14 @@ against §3/§9 as specified.
 
 ## 11. Diagrams via d2topng: DONE
 
-Originally flagged as a future-phase idea while wrapping up build-order
-step 4, deferred until the build order settled. It has (§10, plus the
-follow-on hardening/soak-testing steps in `remote-sync-progress.md`), so
-this was implemented: see `docs/remote-sync.md` for the polished,
-plain-language reference doc this produced, with two D2-sourced diagrams
-(`docs/diagrams/topology.d2`/`.png`, `docs/diagrams/write-path.d2`/`.png`)
-embedded in it.
+Diagram sources are D2, rendered to committed PNGs. Four exist:
+
+| Source | Rendered in |
+| --- | --- |
+| `diagrams/local-engine.d2` | [`architecture.md`](architecture.md) §1 — how an edit flows through the browser engine |
+| `diagrams/metadata-model.d2` | [`architecture.md`](architecture.md) §2 — builder metadata to runtime shape to records |
+| `diagrams/topology.d2` | [`architecture.md`](architecture.md) §3, [`remote-sync.md`](remote-sync.md) — the deployed sync tier |
+| `diagrams/write-path.d2` | [`architecture.md`](architecture.md) §3, [`remote-sync.md`](remote-sync.md) — one write, end to end |
 
 ### How it works
 

@@ -1,11 +1,15 @@
 # Remote Sync — Reference
 
 Plain-language reference for the sync layer that lets multiple browsers
-share one graph. For the original design reasoning and trade-off
-discussions, see `remote-sync-architecture.md`. For the step-by-step build
-log (what was built, what broke, how it was fixed), see
-`remote-sync-progress.md`. This document is the current-state summary of
-both.
+share one graph: what the endpoints are, how conflicts resolve, and how each
+failure mode behaves.
+
+For how the sync tier fits into the system as a whole, see
+[`architecture.md`](architecture.md) §3. For the original design reasoning and
+the trade-offs weighed, see
+[`remote-sync-architecture.md`](remote-sync-architecture.md). For what was
+built when, and the defects found doing it, see
+[`build-history.md`](build-history.md).
 
 ## What it does
 
@@ -70,6 +74,11 @@ both.
   record) is silently deduped, not overwritten.
 - **Record deletion**: tombstoned, not just removed, so a stale edit from
   before the deletion can't resurrect it later (see Edge cases).
+- **Within one batch**, patches are an ordered sequence rather than
+  competitors: they all carry the batch's single HLC, so the last patch for a
+  field wins, exactly as the same list applies locally. Without this a batch
+  that removes a field and then restores it — which is precisely the shape an
+  undo submits — would arrive at the vault as a bare deletion.
 
 ## Data model
 
@@ -197,45 +206,22 @@ only the short-lived ticket returned by `/sync/stream-ticket`.
   reconnect warning above won't appear in that specific dev setup even
   though it works in production. Test against a built client served
   directly by the sync-server to see it.
-- **A pre-existing, unrelated bug**: a vendored ORM dependency
-  (`@ng-org/orm`) has a subscription-lifecycle race when a live view
-  witnesses a remote-sync-delivered creation of a new object for a shape
-  it's already watching. Reproduces with zero sync code involved (pure
-  local editing triggers it too); the app's existing error boundary
-  catches it gracefully. Out of scope for this project's own code.
+- **A pre-existing, unrelated dependency bug**: `@ng-org/orm` has a
+  subscription-lifecycle race — an old shape's signal is torn down well after
+  its replacement opens, so two subscriptions can briefly watch the same
+  records. Reproduces with zero sync code involved. The local engine now drops
+  patch batches that change nothing, which makes the write path indifferent to
+  it; the app's error boundary catches whatever else surfaces.
 
 ---
 
-## Development process
+## How this was built
 
-Built incrementally, one build-order step at a time, each verified
-end-to-end before moving on (direct API/database inspection, not just
-browser testing — this is what caught most of the real bugs below).
+Built incrementally, each step verified end to end before the next began —
+mostly by probing the API and databases directly rather than through the
+browser, which is what caught most of the real defects.
 
-1. **In-memory sync-server skeleton** — proved the client integration and
-   wire protocol on a single process, no Redis/Neo4j yet.
-2. **Redis Streams for sequencing + fanout** — moved state off one
-   process's memory so multiple stateless instances can share a vault;
-   proved horizontal scaling behind a reverse proxy.
-3. **Neo4j + materializer** — added the durable system of record,
-   decoupled from Redis's ingest role. Found and fixed a real bug here:
-   Neo4j nodes were keyed by the wrong id, silently creating orphan
-   duplicates on every update after a record's first write.
-4. **Tombstones** — HLC last-write-wins was already in place; added the
-   missing half, rejecting stale edits to already-deleted records at
-   accept time.
-5. **Tombstone retention** — periodic purge of expired tombstones from
-   both Redis and Neo4j, so neither grows unbounded.
-6. **Load/soak test (burst)** — idle connections, concurrent write
-   bursts, and Redis/Neo4j restarts under load, against the real stack.
-7. **Vault-pairing security hardening** — token rotation and
-   vault-creation rate limiting, closing the last documented-but-
-   unbuilt gaps.
-8. **Visible sync-lost warning** — a debounced UI banner when the
-   connection to the sync-server is lost.
-9. **Deeper soak testing (hard-kill + sustained load)** — found and
-   fixed the Redis AOF/durability gap described above; sustained load
-   ran clean.
-
-See `remote-sync-progress.md` for the full narrative, including every bug
-found, how it was diagnosed, and how it was verified fixed.
+[`build-history.md`](build-history.md) records the sequence, every bug found
+(including the two significant ones: Neo4j nodes keyed by the wrong id, and
+Redis running without AOF so accepted writes could vanish), and the load
+measurements.

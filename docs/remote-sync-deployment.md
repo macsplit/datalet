@@ -195,7 +195,7 @@ Neo4j, and the reverse proxy.
 	# SSE must not be buffered - keep `encode gzip` out of this block. A
 	# compressing middleware withholds output until it has enough bytes to
 	# emit a block, which silently stalls the stream; confirmed by testing
-	# a real deployment (see remote-sync-progress.md's step 2 section).
+	# a real deployment (see build-history.md, step 2).
 	@sync path /sync/stream
 	handle @sync {
 		reverse_proxy sync-server:3000 {

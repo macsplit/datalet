@@ -1,30 +1,30 @@
 # Documentation Index
 
-Which documents describe the project as it is now, and which are records of
-work already finished. Historical documents are kept for their reasoning and
-measurements; where one of them states something that later changed, it says so
-at the point of the claim.
-
-## Current
+## Start here
 
 | Document | What it is |
-|---|---|
-| [`product-gaps-plan.md`](product-gaps-plan.md) | **The active plan.** Ordered remaining work, what is explicitly out of scope, and the next step. |
-| [`product-evaluation-2026-08-08.md`](product-evaluation-2026-08-08.md) | What the project is good and bad at. Kept accurate as work lands. |
-| [`remote-sync.md`](remote-sync.md) | Current-state reference for the sync tier: endpoints, conflict rules, edge cases. |
+| --- | --- |
+| [`architecture.md`](architecture.md) | **How the whole thing works today** — the browser engine, the metadata model, the optional sync tier, and where the constraints are. Read this first. |
+| [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
+| [`product-assessment.md`](product-assessment.md) | What the project is good and bad at. Kept accurate as work lands. |
+
+## Sync tier
+
+| Document | What it is |
+| --- | --- |
+| [`remote-sync.md`](remote-sync.md) | Operational reference: endpoints, conflict rules, edge cases, non-functional characteristics. |
 | [`remote-sync-deployment.md`](remote-sync-deployment.md) | Deployment guide. Compose and systemd paths; the snippets are templates, not checked-in files. |
-| [`remote-sync-architecture.md`](remote-sync-architecture.md) | Design reasoning behind the sync tier, marked implemented. Read for *why*, not *what*. |
+| [`remote-sync-architecture.md`](remote-sync-architecture.md) | Design rationale — what was considered and rejected, and why. Read for *why*, not *what*. Its section numbers are cited from `server/src/` doc comments, so they stay stable. |
 
 ## Historical
 
-| Document | What it recorded | Closed |
-|---|---|---|
-| [`project-next-steps.md`](project-next-steps.md) | Acceptance checklist for the 2026-08-08 review tranche. All items done; superseded by the plan above. | 2026-08-08 |
-| [`remote-sync-progress.md`](remote-sync-progress.md) | Step-by-step build log for the sync tier, including every bug found and how it was verified fixed. | after step 11 |
-| [`incremental-persistence-progress.md`](incremental-persistence-progress.md) | Build log and write-cost measurements for per-record `localStorage` persistence. | complete |
-| [`remote-sync-endurance-results.json`](remote-sync-endurance-results.json) | Partial endurance run, `status: curtailed` at ~19 of a planned 120 minutes. A real multi-hour run is step 10 of the plan. | curtailed |
+| Document | What it recorded |
+| --- | --- |
+| [`build-history.md`](build-history.md) | How the sync tier and the persistence layer were built, and — the part still worth reading — every real defect found, how it was found, and what changed. Condensed from three longer work journals. |
+| [`remote-sync-endurance-results.json`](remote-sync-endurance-results.json) | Partial endurance run, `status: curtailed` at ~19 of a planned 120 minutes. A real multi-hour run is the one open item in `roadmap.md`. |
 
 ## Diagrams
 
-`diagrams/` holds D2 sources and their rendered PNGs. Regeneration is described
-in `remote-sync-architecture.md` §12.
+`diagrams/` holds D2 sources and their committed PNGs. The PNGs are committed
+rather than rendered on view, so the docs keep working without a third-party
+service. Regeneration is described in `remote-sync-architecture.md` §11.

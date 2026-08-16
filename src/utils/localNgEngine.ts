@@ -250,7 +250,7 @@ let persistenceDisabled = loadWasRejected;
 /**
  * Incremental flush: only the records touched since the last flush
  * (`dirtyIds`) are re-serialized and written, not the whole store - see
- * remote-sync-progress.md's incremental-persistence entry for why. Two
+ * docs/build-history.md's incremental-persistence section for why. Two
  * passes: the first computes the projected total size and every write
  * without touching localStorage, so the existing all-or-nothing safety
  * cap (nothing gets written if the projected total would exceed

@@ -1,0 +1,30 @@
+direction: down
+
+ui: "React components\nuseShape(shapeType, graph)"
+orm: "@ng-org/orm\ndeep signals"
+engine: "localNgEngine\norm_start_graph\ngraph_orm_update"
+store: "store\nin memory, graph|subject -> record" {
+  shape: cylinder
+}
+disk: "localStorage\none key per record + index" {
+  shape: cylinder
+}
+undo: "undo stack\ninverse patches, 50 entries"
+peers: "other live subscriptions\nsame shape, this tab"
+tabs: "other browser tabs\nBroadcastChannel" {
+  shape: queue
+}
+sync: "remoteSyncEngine\noutbox + SSE (optional)"
+
+ui -> orm: "edit a field"
+orm -> engine: "patch batch"
+engine -> store: "apply"
+store -> disk: "flush touched records\n(debounced 120ms)"
+engine -> undo: "push inverse"
+engine -> peers: "deliver"
+engine -> tabs: "post"
+engine -> sync: "onLocalPatch"
+tabs -> engine: "apply external"
+sync -> engine: "applyRemoteSyncPatches"
+engine -> orm: "GraphOrmUpdate"
+orm -> ui: "re-render"

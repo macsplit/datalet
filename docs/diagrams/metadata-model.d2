@@ -1,0 +1,26 @@
+direction: right
+
+builder: "Builder metadata (one graph)" {
+  tab: "Tab\ntitle, order"
+  block: "Block\nlayout or data,\nfilter/sort/search/pageSize"
+  widget: "Widget\ntitle, add, field, actions"
+  schemadef: "SchemaDef\nname"
+  property: "PropertyDef\nname, dataType,\ncardinality, order"
+
+  tab -> block: "tabId"
+  block -> block: "parentBlockId"
+  block -> widget: "blockId"
+  block -> schemadef: "schemaId"
+  schemadef -> property: "schemaId"
+}
+
+runtimeshape: "buildShapeType()\nruntime ORM shape\ndid:ng:z:user:<schema>:Shape:<revision>"
+
+records: "User records\nsame graph, same engine,\nsame subscription mechanism" {
+  shape: cylinder
+}
+
+builder.schemadef -> runtimeshape: "type + predicates"
+builder.property -> runtimeshape: "one predicate each"
+runtimeshape -> records: "useShape() subscribes"
+builder.widget -> records: "renders and edits"

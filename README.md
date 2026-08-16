@@ -39,7 +39,8 @@ pnpm build
 To run the optional cross-device sync stack, install Redis and Neo4j, export
 `NEO4J_PASSWORD` or put it in an ignored `.env.local` copied from
 `.env.example`, and use `./run.sh`. See
-[`docs/remote-sync.md`](docs/remote-sync.md) for the current architecture and
+[`docs/remote-sync.md`](docs/remote-sync.md) for the endpoints, conflict rules
+and failure behaviour, and
 [`docs/remote-sync-deployment.md`](docs/remote-sync-deployment.md) for
 deployment options.
 
@@ -47,9 +48,14 @@ With the full stack running, `pnpm test:smoke:sync` performs a short
 browser-to-Redis-to-Neo4j-to-second-browser verification and cleans up its
 temporary vault afterward.
 
-[`docs/README.md`](docs/README.md) indexes all documentation and marks which
-documents are current and which are historical records of finished work.
-[`docs/product-gaps-plan.md`](docs/product-gaps-plan.md) is the active plan.
+## Documentation
+
+[`docs/architecture.md`](docs/architecture.md) explains how the whole system
+works — the browser storage engine, the metadata model that turns schemas into
+screens, and the optional sync tier — with diagrams.
+[`docs/README.md`](docs/README.md) indexes everything else and marks what is
+current and what is a historical record.
+[`docs/roadmap.md`](docs/roadmap.md) is what remains.
 
 ## Building an interface
 
@@ -151,9 +157,9 @@ problems appear in an on-screen error banner; render failures show a reload
 screen instead of leaving the page unresponsive.
 
 Run the regression suites with `pnpm test`. Playwright covers client storage,
-bootstrap, generated data blocks, and the schema/tab/block/widget builder
-workflows; server conflict and Redis integration coverage uses Node's test
-runner.
+bootstrap, generated data blocks, the schema/tab/block/widget builder
+workflows, sync recovery and warnings, and offline startup; patch-algebra and
+live Redis/Neo4j coverage uses Node's test runner. Both run in CI.
 
 Settings also provides JSON export/import for the active graph. Backups include
 user records and the schemas, tabs, blocks, widgets, and settings needed to
@@ -161,60 +167,49 @@ render them in a fresh browser profile.
 
 ## Architecture
 
-The app uses React, TanStack Router, an RDF shape ORM, and a browser-local graph
-engine.
+React, TanStack Router, an RDF shape ORM, and a browser-local graph engine.
+
+`@ng-org/orm` drives React through `useShape(shapeType, graph)` and needs only
+two functions from a storage engine: `orm_start_graph` to subscribe to objects
+matching a shape, and `graph_orm_update` to receive patches from local edits.
+`src/utils/localNgEngine.ts` implements both over `localStorage` and a
+`BroadcastChannel`, where the real NextGraph engine implements them over a wasm
+CRDT store and a broker. That narrow seam is why the optional sync tier could
+be added without touching any component.
+
+The builder stores five metadata types, as ordinary records in the same graph
+as the user's data:
+
+- `Tab` — a navigation destination.
+- `Block` — a layout container, or a data view bound to a schema.
+- `Widget` — rendering and editing configuration for a data block.
+- `SchemaDef` — a user-defined record type.
+- `PropertyDef` — an ordered field belonging to a schema.
+
+`buildShapeType()` turns a schema and its fields into a runtime ORM shape whose
+IRI carries a content revision, so changing a field reopens the subscription
+rather than reusing a stale one, while the stable record type keeps existing
+records loading. Because metadata is stored and synced like any other record,
+a screen built on one device appears on another.
 
 ```text
 src/
-├── components/
-│   ├── BlockRenderer.tsx       # Recursive graph-defined page renderer
-│   ├── FieldWidget.tsx         # Field display and editing controls
-│   ├── RecordCard.tsx          # Generic record editor
-│   ├── DataBackup.tsx          # JSON export and import
-│   ├── SyncSettings.tsx        # Vault pairing controls
-│   └── RuntimeSafety.tsx       # Error boundary and safety notifications
-├── hooks/
-│   ├── MetaStoreContext.tsx    # Shared metadata subscriptions
-│   ├── useTabs.ts
-│   ├── useBlocks.ts
-│   ├── useWidgets.ts
-│   ├── useSchemas.ts
-│   ├── usePropertyDefs.ts
-│   └── useSettings.ts
-├── pages/
-│   ├── TabPage.tsx
-│   ├── SettingsPage.tsx
-│   ├── SchemaListPage.tsx
-│   ├── SchemaEditorPage.tsx
-│   ├── TabsManagerPage.tsx
-│   └── BlocksBuilderPage.tsx
-├── shapes/
-│   ├── shex/metaShapes.shex    # Metadata shape definitions
-│   └── orm/metaShapes.*.ts     # Generated ORM artifacts
-└── utils/
-    ├── blockGraph.ts           # Bounded graph traversal
-    ├── dynamicSchema.ts        # Runtime record-shape construction
-    ├── localNgEngine.ts        # Browser persistence and synchronization
-    ├── ngSession.ts            # Browser-local ORM session
-    ├── remoteSyncEngine.ts     # Optional vault sync and offline outbox
-    └── runtimeHealth.ts        # Runtime issue reporting and limits
-server/
-└── src/                        # HTTP/SSE ingest, Redis, Neo4j materializer
+├── components/     Block renderer, field controls, record editor, undo control,
+│                   backup, vault pairing, runtime safety, icons
+├── hooks/          Shared metadata subscriptions and the settings singleton
+├── pages/          Tab view plus the schema, tab and block builders
+├── shapes/         ShEx metadata definitions and their generated ORM artifacts
+└── utils/          localNgEngine (store, persistence, cross-tab, undo),
+                    dynamicSchema, remoteSyncEngine, runtimeHealth, blockGraph
+server/src/         HTTP/SSE ingest, the Redis accept script, Neo4j materializer
+tests/              Playwright suites
+server/test/        Node test-runner suites
 ```
 
-## Metadata model
-
-The builder stores five metadata types:
-
-- `Tab`: a navigation destination.
-- `Block`: a layout container or schema-backed data view.
-- `Widget`: rendering and editing configuration for a data block.
-- `SchemaDef`: a user-defined record type.
-- `PropertyDef`: an ordered field belonging to a schema.
-
-`buildShapeType()` converts a schema and its fields into a runtime ORM shape.
-Generated records and builder metadata therefore use the same local graph
-storage and live subscription mechanism.
+[`docs/architecture.md`](docs/architecture.md) covers all of this properly,
+with diagrams: the patch format and key layout, incremental persistence,
+cross-tab replication, shape revisions, undo, the safety limits, and the sync
+tier's write and recovery paths.
 
 ## Regenerating ORM artifacts
 
