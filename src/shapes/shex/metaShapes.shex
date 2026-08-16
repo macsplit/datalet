@@ -60,6 +60,8 @@ ex:SchemaDefShape {
   a [ex:SchemaDef] ;
   ex:name xsd:string
     // rdfs:comment "The user-defined data type's name" ;
+  ex:labelPropertyId IRI ?
+    // rdfs:comment "PropertyDef used as this schema's record display label; omitted means automatic" ;
 }
 
 ex:PropertyDefShape {

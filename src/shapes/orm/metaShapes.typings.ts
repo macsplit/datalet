@@ -224,6 +224,12 @@ export interface SchemaDef {
    * Original IRI: did:ng:z:name
    */
   name: string;
+  /**
+   * PropertyDef used as this schema's record display label; omitted means automatic
+   *
+   * Original IRI: did:ng:z:labelPropertyId
+   */
+  labelPropertyId?: IRI;
 }
 
 /**

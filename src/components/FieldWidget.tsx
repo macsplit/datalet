@@ -96,9 +96,12 @@ function ReferenceField({
     [target?.["@id"], signature],
   );
   const targets = useShape(shapeType, target ? privateNuri : undefined);
-  const labelProperty = properties.find(
-    (item) => item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum",
-  );
+  const eligibleLabelProperty = (item: PropertyDef) =>
+    item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum";
+  const configuredLabelProperty = target?.labelPropertyId
+    ? properties.find((item) => item["@id"] === target.labelPropertyId && eligibleLabelProperty(item))
+    : undefined;
+  const labelProperty = configuredLabelProperty ?? properties.find(eligibleLabelProperty);
   const options = [...targets].sort((a, b) => a["@id"].localeCompare(b["@id"]));
   const recordValue = displayValue ?? record[property.name];
   const [localValue, setLocalValue] = useState(recordValue);

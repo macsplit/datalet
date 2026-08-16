@@ -255,7 +255,7 @@ Five metadata types, all ordinary records in the same graph:
 | `Tab` | A navigation destination. `Home` has a fixed well-known id and is always first. |
 | `Block` | Either a layout container (stack / row / grid, nestable via `parentBlockId`) or a data block bound to a schema. |
 | `Widget` | Rendering and editing configuration belonging to a data block: panel title, add button, one per field, edit/delete actions. |
-| `SchemaDef` | A user-defined record type. |
+| `SchemaDef` | A user-defined record type, optionally naming the property used as its records' display label. |
 | `PropertyDef` | One ordered field of a schema: data type, cardinality, enum options, reference target. |
 
 Their shapes are declared in `src/shapes/shex/metaShapes.shex` and compiled to
@@ -269,6 +269,14 @@ include the schema subject, so two schemas with an identically named field
 never share a predicate. Cardinality maps to min/max counts; enum options
 become literal-constrained data types.
 
+**Record labels.** A schema can select one text or enum property as its
+`labelPropertyId`. When omitted, the first eligible property by schema order is
+used, preserving existing schemas without migration. `lookupRecordLabel()`
+resolves the target record, schema, and selected property directly from the
+already-resident local store; the legacy automatic lookup is cached per schema.
+This display layer never changes the stable `did:ng:…` value stored in a
+reference.
+
 `BlockRenderer` then walks the block tree for a tab. A data block resolves its
 schema and properties, calls `useShape` with the derived shape, and applies the
 reader pipeline in one memo: configured filter, reader search across displayed
@@ -278,8 +286,9 @@ page and is neither stored nor synced.
 
 Each data block also offers export and print, both acting on the whole filtered
 result rather than the page on screen. Export writes every stored property, not
-only the displayed ones. Print mounts a plain black-and-white sheet outside the
-app shell so the print stylesheet can hide the interface entirely.
+only the displayed ones, and represents identities and references with both
+`@label` and the stable `@id`. Print mounts a plain black-and-white sheet outside
+the app shell so the print stylesheet can hide the interface entirely.
 
 ---
 
@@ -511,9 +520,9 @@ These are deliberate, not oversights, but they define where the product stops.
   is no grouping or aggregation.
 - **References have no reverse side.** A field can point at another record, but
   there are no reverse lookups, joins, rollups, relationship constraints or
-  cascading behaviour. Reference fields sort, search, export and print on the
-  stored target id, not the resolved label — resolving a label needs the target
-  schema's own subscription, which only the on-screen control opens.
+  cascading behaviour. Forward references display, sort, search, export and
+  print through the target schema's configured label property without opening
+  another subscription; missing targets deliberately fall back to their id.
 - **A vault token is all-or-nothing.** Whoever holds it has full read/write over
   everything in the vault. No accounts, no roles, no per-record ownership, no
   audit trail, no selective sharing. The sync story is "one person's devices",

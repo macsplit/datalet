@@ -1,7 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: proposed.** Neither track is started. Written 2026-08-16 from the
-code as it stands at `b707800`.
+**Status: active.** B1 and B2 were completed 2026-08-16; Track A and the
+remaining Track B items have not started. Written 2026-08-16 from the code as
+it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -216,7 +217,7 @@ complains.
 
 ## Track B — User-facing identity
 
-### B1. Schema label property and a store-level resolver — **small**
+### B1. Schema label property and a store-level resolver — **completed 2026-08-16**
 
 **Problem.** Reference values render as raw `did:ng:…` in four places: the sort
 comparator, the reader search haystack, per-block JSON export, and the print
@@ -236,8 +237,9 @@ opening a second subscription per data block was deliberately avoided.
 - Surface it in the schema editor as a "Show records as" selector.
 - Add `lookupRecordLabel(graph, id)` to `localNgEngine`, reading the in-memory
   store **directly**. No ORM subscription is involved: the whole store is
-  already resident — that is the defining constraint of the design — so this is
-  an O(1) map hit.
+  already resident — that is the defining constraint of the design. Explicit
+  selections are O(1) map hits; the automatic legacy heuristic is scanned once
+  and cached per schema.
 
 **Trade to state in the code comment.** A label edited in a different block
 will not restyle this one until it re-renders. For a sort key, a search
@@ -245,13 +247,20 @@ haystack, and two point-in-time outputs that staleness is acceptable. The
 editing control keeps the live subscription it already has, because it needs
 reactivity.
 
-### B2. Use the resolver at the four leak sites — **small**
+**Landed detail.** The existing live reference editor also honours
+`labelPropertyId`, so editing and the four non-reactive reader paths cannot
+disagree. Deleting the selected property, or changing it away from text/enum,
+returns the schema to automatic selection.
+
+### B2. Use the resolver at the four leak sites — **completed 2026-08-16**
 
 One resolver, four call sites in `src/components/BlockRenderer.tsx`: the sort
 comparator, the search haystack, `exportRecords()` (`:243`), and the print
 columns. Export keeps `@id` — the comment at `:250` about a silent data-loss
 trap is right, and it is the only stable rejoin key — but leads the row with
-the resolved label.
+the resolved `@label`. Reference-valued export fields carry both `@label` and
+`@id` (or arrays of those pairs), preserving readability without discarding
+the stable relationship key.
 
 ### B3. One pairing field instead of two — **small, client-only**
 

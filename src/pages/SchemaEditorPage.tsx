@@ -291,7 +291,7 @@ function PropertyEditor({
             ))}
           </select>
           <small className="helper-text">
-            Stored values use the referenced record id; labels come from that schema's first text field.
+            Stored values keep the referenced record id; labels use that schema's “Show records as” property.
           </small>
         </div>
       )}
@@ -308,6 +308,9 @@ export function SchemaEditorPage() {
   const { widgets, createWidget, deleteWidget } = useWidgets();
   const schema = schemas.find((candidate) => candidate["@id"] === schemaId);
   const [schemaNameDraft, setSchemaNameDraft] = useState("");
+  const labelProperties = properties.filter(
+    (property) => property.dataType === "did:ng:z:text" || property.dataType === "did:ng:z:enum",
+  );
 
   useEffect(() => {
     setSchemaNameDraft(schema?.name ?? "");
@@ -401,6 +404,30 @@ export function SchemaEditorPage() {
             }}
           />
         </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor="schema-label-property">
+            Show records as
+          </label>
+          <select
+            id="schema-label-property"
+            className="select"
+            value={schema.labelPropertyId ?? ""}
+            onChange={(event) => {
+              if (event.target.value) schema.labelPropertyId = event.target.value;
+              else delete schema.labelPropertyId;
+            }}
+          >
+            <option value="">Automatic (first text or enum property)</option>
+            {labelProperties.map((property) => (
+              <option value={property["@id"]} key={property["@id"]}>
+                {property.name}
+              </option>
+            ))}
+          </select>
+          <small className="helper-text">
+            References, search, sorting, exports, and printouts use this property instead of an internal id.
+          </small>
+        </div>
       </section>
       <section className="panel">
         <header className="panel-header">
@@ -436,11 +463,19 @@ export function SchemaEditorPage() {
                   property.name = next;
                 }}
                 onDisplayTypeChange={() => {
+                  if (
+                    schema.labelPropertyId === property["@id"] &&
+                    property.dataType !== "did:ng:z:text" &&
+                    property.dataType !== "did:ng:z:enum"
+                  ) {
+                    delete schema.labelPropertyId;
+                  }
                   for (const widget of widgetsBoundTo(property.name)) {
                     widget.fieldType = fieldTypeForProperty(property);
                   }
                 }}
                 onDelete={() => {
+                  if (schema.labelPropertyId === property["@id"]) delete schema.labelPropertyId;
                   for (const widget of widgetsBoundTo(property.name)) {
                     deleteWidget(widget);
                   }

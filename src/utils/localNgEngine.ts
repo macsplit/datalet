@@ -240,6 +240,70 @@ function loadStore(): Store {
 }
 
 let store: Store = loadStore();
+const USER_TYPE_PREFIX = "did:ng:z:user:";
+const labelPropertyNameCache = new Map<string, string | undefined>();
+
+function readableLabelValue(value: unknown): string {
+  const values = value instanceof Set ? [...value] : Array.isArray(value) ? value : [value];
+  return values
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function automaticLabelPropertyName(graph: string, schemaId: string): string | undefined {
+  const cacheKey = `${graph}|${schemaId}`;
+  if (labelPropertyNameCache.has(cacheKey)) return labelPropertyNameCache.get(cacheKey);
+  const property = Object.values(store)
+    .filter(
+      (record) =>
+        record["@graph"] === graph &&
+        record["@type"] === "did:ng:z:PropertyDef" &&
+        record.schemaId === schemaId &&
+        (record.dataType === "did:ng:z:text" || record.dataType === "did:ng:z:enum"),
+    )
+    .sort(
+      (left, right) =>
+        Number(left.order ?? 0) - Number(right.order ?? 0) || left["@id"].localeCompare(right["@id"]),
+    )[0]?.name;
+  const name = typeof property === "string" ? property : undefined;
+  labelPropertyNameCache.set(cacheKey, name);
+  return name;
+}
+
+/**
+ * Resolve a stored record id to the schema-configured display label without
+ * opening an ORM subscription. The target record, schema, and explicitly
+ * selected PropertyDef are direct store lookups. Legacy schemas without a
+ * selection use a cached scan for their first ordered text-or-enum property.
+ * A label edited elsewhere becomes visible when its consumer next renders;
+ * this intentionally is not a reactive subscription.
+ */
+export function lookupRecordLabel(graph: string, id: string): string {
+  if (!graph || !id) return id;
+  const record = store[`${graph}|${id}`];
+  const rawType = record?.["@type"];
+  const type = Array.isArray(rawType) ? rawType[0] : rawType;
+  if (!record || typeof type !== "string" || !type.startsWith(USER_TYPE_PREFIX)) return id;
+
+  const schemaId = type.slice(USER_TYPE_PREFIX.length);
+  const schema = store[`${graph}|${schemaId}`];
+  if (!schema) return id;
+  let propertyName: string | undefined;
+  if (typeof schema.labelPropertyId === "string") {
+    const property = store[`${graph}|${schema.labelPropertyId}`];
+    if (
+      property?.["@type"] === "did:ng:z:PropertyDef" &&
+      property.schemaId === schemaId &&
+      (property.dataType === "did:ng:z:text" || property.dataType === "did:ng:z:enum") &&
+      typeof property.name === "string"
+    ) {
+      propertyName = property.name;
+    }
+  }
+  propertyName ??= automaticLabelPropertyName(graph, schemaId);
+  return propertyName ? readableLabelValue(record[propertyName]) || id : id;
+}
 // ORM signals receive the records in `store` by reference and mutate them
 // before reporting a local patch. Keep an engine-owned snapshot so inverse
 // patches can still see the value that preceded that mutation.
@@ -1205,6 +1269,7 @@ function applyPatchesToStore(
   target: Store = store,
   trackDirty = true,
 ) {
+  if (target === store) labelPropertyNameCache.clear();
   for (const patch of patches) {
     if (!patch.path.startsWith("/")) continue;
     const parts = patch.path.slice(1).split("/").filter(Boolean).map(decodePathSegment);

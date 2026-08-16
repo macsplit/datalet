@@ -179,14 +179,13 @@ repo — but if an extension is ever proposed, the prior question is whether the
 personal use case wanted a single process over SQLite. Its maturity is also
 precisely what invites readers to mistake this for a platform.
 
-**Reference fields read as raw ids outside the editing control.** Sorting,
-reader search, export and print all act on the stored target id rather than the
-resolved label, because resolving a label needs the target schema's own
-subscription and only the on-screen control opens one. In the scenario this is
-*best* at — a tracker where a Task points at a Project — the reader-facing
-features therefore show and sort opaque `did:ng:` strings. This is a papercut
-inside the identity, not a missing feature outside it, and it is the one gap
-worth closing on those grounds.
+**Reference labels now stay inside the product's existing model.** A schema
+chooses the property used to represent its records, with an automatic fallback
+for existing data. Sorting, reader search, export and print resolve that label
+directly from the already-resident store rather than opening more subscriptions
+or changing the stable ids. Export retains both forms. This closes the clearest
+reader-facing papercut without adding joins, reverse relationships or another
+identity system.
 
 ## Smaller things worth knowing
 

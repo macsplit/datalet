@@ -78,6 +78,38 @@ function booksFixture(
   ];
 }
 
+function referencedBooksFixture() {
+  const authorSchemaId = "did:ng:z:meta:schema:authors";
+  const bookSchemaId = "did:ng:z:meta:schema:referenced-books";
+  const numericSchemaId = "did:ng:z:meta:schema:numeric-only";
+  const blockId = "block-referenced-books";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    {
+      "@graph": GRAPH,
+      "@id": authorSchemaId,
+      "@type": "did:ng:z:SchemaDef",
+      name: "Authors",
+      labelPropertyId: "property-author-nickname",
+    },
+    { "@graph": GRAPH, "@id": "property-author-name", "@type": "did:ng:z:PropertyDef", schemaId: authorSchemaId, name: "Name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-author-nickname", "@type": "did:ng:z:PropertyDef", schemaId: authorSchemaId, name: "Nickname", order: 1, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "author-a", "@type": `did:ng:z:user:${authorSchemaId}`, Name: "Alpha heuristic", Nickname: "Zulu" },
+    { "@graph": GRAPH, "@id": "author-z", "@type": `did:ng:z:user:${authorSchemaId}`, Name: "Zulu heuristic", Nickname: "Alpha" },
+    { "@graph": GRAPH, "@id": bookSchemaId, "@type": "did:ng:z:SchemaDef", name: "Referenced books" },
+    { "@graph": GRAPH, "@id": "property-reference-title", "@type": "did:ng:z:PropertyDef", schemaId: bookSchemaId, name: "Title", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-reference-author", "@type": "did:ng:z:PropertyDef", schemaId: bookSchemaId, name: "Author", order: 1, dataType: "did:ng:z:reference", cardinality: "did:ng:z:one", enumOptions: [], referenceSchemaId: authorSchemaId },
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId: bookSchemaId, parentTabId: "did:ng:z:HomeTab", searchEnabled: true, sortPropertyName: "Author" },
+    { "@graph": GRAPH, "@id": "widget-reference-title", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Title", label: "Title", fieldType: "did:ng:z:text" },
+    { "@graph": GRAPH, "@id": "widget-reference-author", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:field", propertyName: "Author", label: "Author", fieldType: "did:ng:z:reference" },
+    { "@graph": GRAPH, "@id": "book-first", "@type": `did:ng:z:user:${bookSchemaId}`, Title: "First", Author: "author-a" },
+    { "@graph": GRAPH, "@id": "book-second", "@type": `did:ng:z:user:${bookSchemaId}`, Title: "Second", Author: "author-z" },
+    { "@graph": GRAPH, "@id": numericSchemaId, "@type": "did:ng:z:SchemaDef", name: "Numeric only" },
+    { "@graph": GRAPH, "@id": "property-numeric-value", "@type": "did:ng:z:PropertyDef", schemaId: numericSchemaId, name: "Value", order: 0, dataType: "did:ng:z:number", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "numeric-record", "@type": `did:ng:z:user:${numericSchemaId}`, Value: 42 },
+  ];
+}
+
 function eventsFixture(
   entries: Array<{ name: string; when: string }>,
   fieldType: "did:ng:z:date" | "did:ng:z:dateTime" = "did:ng:z:date",
@@ -681,9 +713,73 @@ test("exports the matching records as JSON, not just the visible page", async ({
   // Both search matches, across both pages -- paging is a screen constraint,
   // not a selection -- and every stored field, not only the displayed ones.
   expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual([
-    { "@id": "book-0", Title: "Dune", Rating: 5 },
-    { "@id": "book-1", Title: "Dusk", Rating: 3 },
+    { "@label": "Dune", "@id": "book-0", Title: "Dune", Rating: 5 },
+    { "@label": "Dusk", "@id": "book-1", Title: "Dusk", Rating: 3 },
   ]);
+});
+
+test("reference labels drive live display, sorting, and reader search", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, referencedBooksFixture());
+  await page.goto("/");
+
+  const cards = page.locator(".record-card");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText("Second");
+  await expect(cards.nth(0)).toContainText("Alpha");
+  await expect(cards.nth(1)).toContainText("First");
+  await expect(cards.nth(1)).toContainText("Zulu");
+
+  await page.getByLabel("Search Referenced books").fill("alpha");
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText("Second");
+  await expect(cards.first()).not.toContainText("First");
+
+  const fallbacks = await page.evaluate(async ({ graph }) => {
+    const engine = await import("/src/utils/localNgEngine.ts");
+    return [
+      engine.lookupRecordLabel(graph, "did:ng:z:missing"),
+      engine.lookupRecordLabel(graph, "numeric-record"),
+    ];
+  }, { graph: GRAPH });
+  expect(fallbacks).toEqual(["did:ng:z:missing", "numeric-record"]);
+});
+
+test("reference exports and printouts include readable labels", async ({ page }) => {
+  await seedSession(page);
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await seedNewFormat(page, referencedBooksFixture());
+  await page.goto("/");
+
+  const download = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Referenced books as JSON" }).click(),
+  ]).then(([event]) => event);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual([
+    {
+      "@label": "Second",
+      "@id": "book-second",
+      Title: "Second",
+      Author: { "@label": "Alpha", "@id": "author-z" },
+    },
+    {
+      "@label": "First",
+      "@id": "book-first",
+      Title: "First",
+      Author: { "@label": "Zulu", "@id": "author-a" },
+    },
+  ]);
+
+  await page.getByRole("button", { name: "Print Referenced books" }).click();
+  const sheet = page.locator(".print-sheet");
+  await expect(sheet.locator("thead th")).toHaveText(["Title", "Author"]);
+  await expect(sheet.locator("tbody tr").nth(0).locator("td")).toHaveText(["Second", "Alpha"]);
+  await expect(sheet.locator("tbody tr").nth(1).locator("td")).toHaveText(["First", "Zulu"]);
 });
 
 test("printing shows only the block's data, without any of the app around it", async ({ page }) => {

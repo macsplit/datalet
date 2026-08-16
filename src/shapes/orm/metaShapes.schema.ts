@@ -391,6 +391,17 @@ export const metaShapesSchema: Schema = {
         iri: "did:ng:z:name",
         readablePredicate: "name",
       },
+      {
+        dataTypes: [
+          {
+            valType: "iri",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:labelPropertyId",
+        readablePredicate: "labelPropertyId",
+      },
     ],
   },
   "did:ng:z:PropertyDefShape": {

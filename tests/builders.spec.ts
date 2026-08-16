@@ -77,6 +77,7 @@ test("creates and edits a schema while preserving property order across reload",
   await names.nth(1).press("Enter");
   await page.getByLabel("Data type").nth(1).selectOption({ label: "Number" });
   await page.getByRole("button", { name: "Move Budget up" }).click();
+  await page.getByLabel("Show records as").selectOption({ label: "Title" });
 
   await expect(names.nth(0)).toHaveValue("Budget");
   await expect(names.nth(1)).toHaveValue("Title");
@@ -84,6 +85,11 @@ test("creates and edits a schema while preserving property order across reload",
   await expect(page.getByLabel("Schema name")).toHaveValue("Projects");
   await expect(page.getByLabel("Name", { exact: true }).nth(0)).toHaveValue("Budget");
   await expect(page.getByLabel("Data type").nth(0)).toHaveValue("did:ng:z:number");
+  await expect(page.getByLabel("Show records as").locator("option:checked")).toHaveText("Title");
+  await page.getByLabel("Data type").nth(1).selectOption({ label: "Number" });
+  await expect(page.getByLabel("Show records as").locator("option:checked")).toContainText("Automatic");
+  await page.reload();
+  await expect(page.getByLabel("Show records as").locator("option:checked")).toContainText("Automatic");
 
   await page.getByRole("link", { name: "← Back to schemas" }).click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();

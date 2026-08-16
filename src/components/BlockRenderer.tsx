@@ -26,6 +26,7 @@ import { RUNTIME_LIMITS } from "../utils/runtimeHealth";
 import {
   getLastUndoRecords,
   getUndoAppliedRevision,
+  lookupRecordLabel,
   subscribeUndoApplied,
 } from "../utils/localNgEngine";
 
@@ -62,22 +63,25 @@ function containsNeedle(raw: unknown, needle: string): boolean {
   );
 }
 
+function referenceStrings(raw: unknown, graph: string): string[] {
+  return valueStrings(raw)
+    .filter(Boolean)
+    .map((id) => lookupRecordLabel(graph, id));
+}
+
 /** A safe, readable file-name stem for a downloaded export. */
 function fileSlug(name: string): string {
   return name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "records";
 }
 
-/**
- * One record property as printed text. Reference fields print the stored
- * target id for the same reason search matches on it: resolving the label
- * needs the target schema's own subscription, which only the on-screen
- * reference control opens.
- */
+/** One record property as readable printed text, including references. */
 function printableValue(
   raw: unknown,
   fieldType: string,
   formatCurrency: (value: number) => string,
+  graph: string,
 ): string {
+  if (fieldType === "did:ng:z:reference") return referenceStrings(raw, graph).join(", ");
   if (raw instanceof Set || Array.isArray(raw)) {
     return valueStrings(raw).filter(Boolean).join(", ");
   }
@@ -156,32 +160,41 @@ function ResolvedDataBlock({
   };
 
   // Only properties actually rendered as fields are searchable, so a reader
-  // never gets hits from data that is not on screen. A reference field matches
-  // on its stored target id rather than the resolved label: resolving a label
-  // needs the target schema's own subscription, which only ReferenceField
-  // mounts, and opening a second subscription per data block to search it
-  // would cost more than the feature is worth.
-  const searchableNames = widgets
+  // never gets hits from hidden data. Reference values use the store-level
+  // resolver: the whole local store is already resident, so this does not add
+  // another ORM subscription per data block.
+  const searchableFields = widgets
     .filter(
       (widget) =>
         widget.widgetType === "did:ng:z:field" &&
         widget.propertyName &&
         properties.some((property) => property.name === widget.propertyName),
     )
-    .map((widget) => widget.propertyName as string);
+    .map((widget) => {
+      const name = widget.propertyName as string;
+      return {
+        name,
+        reference: properties.find((property) => property.name === name)?.dataType === "did:ng:z:reference",
+      };
+    });
   // JSON-encoded so the memo below has a stable primitive dependency;
   // `widgets` is a graph-backed array that is a fresh value on every render.
-  const searchableKey = JSON.stringify(searchableNames);
-  const searchable = useMemo(() => JSON.parse(searchableKey) as string[], [searchableKey]);
+  const searchableKey = JSON.stringify(searchableFields);
+  const searchable = useMemo(
+    () => JSON.parse(searchableKey) as Array<{ name: string; reference: boolean }>,
+    [searchableKey],
+  );
 
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
 
-  const searchEnabled = block.searchEnabled === true && searchableNames.length > 0;
+  const searchEnabled = block.searchEnabled === true && searchableFields.length > 0;
   const needle = searchEnabled ? query.trim().toLocaleLowerCase() : "";
   const filterNeedle = (block.filterValue ?? "").trim().toLocaleLowerCase();
   const filterProperty = block.filterPropertyName ?? "";
   const sortProperty = block.sortPropertyName || "@id";
+  const sortIsReference =
+    properties.find((property) => property.name === sortProperty)?.dataType === "did:ng:z:reference";
   const direction = block.sortDirection === "did:ng:z:descending" ? -1 : 1;
   const pageSize = Math.max(0, Math.trunc(block.pageSize ?? 0));
 
@@ -195,16 +208,25 @@ function ResolvedDataBlock({
         return false;
       }
       if (!needle) return true;
-      return searchable.some((name) => containsNeedle(record[name], needle));
+      return searchable.some((field) =>
+        containsNeedle(
+          field.reference ? referenceStrings(record[field.name], privateNuri ?? "") : record[field.name],
+          needle,
+        ),
+      );
     });
     return matching.sort((left, right) => {
-      const a = left[sortProperty];
-      const b = right[sortProperty];
+      const a = sortIsReference
+        ? referenceStrings(left[sortProperty], privateNuri ?? "").join(", ")
+        : left[sortProperty];
+      const b = sortIsReference
+        ? referenceStrings(right[sortProperty], privateNuri ?? "").join(", ")
+        : right[sortProperty];
       if (typeof a === "number" && typeof b === "number") return (a - b) * direction;
       if (typeof a === "boolean" && typeof b === "boolean") return (Number(a) - Number(b)) * direction;
       return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true }) * direction;
     });
-  }, [records, filterProperty, filterNeedle, needle, searchable, sortProperty, direction]);
+  }, [records, filterProperty, filterNeedle, needle, searchable, sortProperty, sortIsReference, direction, privateNuri]);
 
   const total = visibleRecords.length;
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
@@ -240,10 +262,23 @@ function ResolvedDataBlock({
   // screen. Paging is a screen constraint, not a selection.
   const exportRecords = () => {
     const rows = visibleRecords.map((record) => {
-      const row: Record<string, unknown> = { "@id": record["@id"] };
+      const row: Record<string, unknown> = {
+        "@label": lookupRecordLabel(record["@graph"], record["@id"]),
+        "@id": record["@id"],
+      };
       for (const property of properties) {
         const raw = record[property.name];
-        row[property.name] = raw instanceof Set ? [...raw] : raw;
+        if (property.dataType === "did:ng:z:reference") {
+          const references = valueStrings(raw).filter(Boolean).map((id) => ({
+            "@label": lookupRecordLabel(record["@graph"], id),
+            "@id": id,
+          }));
+          row[property.name] = property.cardinality === "did:ng:z:many"
+            ? references
+            : references[0] ?? null;
+        } else {
+          row[property.name] = raw instanceof Set ? [...raw] : raw;
+        }
       }
       return row;
     });
@@ -329,7 +364,7 @@ function ResolvedDataBlock({
             className="input"
             type="search"
             value={query}
-            placeholder={`Search ${searchableNames.join(", ")}`}
+            placeholder={`Search ${searchableFields.map((field) => field.name).join(", ")}`}
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
@@ -411,7 +446,7 @@ function ResolvedDataBlock({
                 <tr key={`${record["@graph"]}|${record["@id"]}`}>
                   {printColumns.map((column) => (
                     <td key={column.name}>
-                      {printableValue(record[column.name], column.fieldType, format)}
+                      {printableValue(record[column.name], column.fieldType, format, record["@graph"])}
                     </td>
                   ))}
                 </tr>
