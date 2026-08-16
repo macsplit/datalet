@@ -35,6 +35,9 @@ try {
   await firstPage.getByRole("button", { name: "Show" }).click();
   const pairingCode = await firstPage.getByLabel("Pairing code").inputValue();
   ({ vaultId, vaultToken } = decodePairingCode(pairingCode));
+  await firstPage.getByRole("button", { name: "Create temporary code" }).click();
+  const temporaryCode = await firstPage.getByLabel("Temporary pair code").inputValue();
+  expect(temporaryCode).toMatch(/^PAIR-/);
 
   // Pairing reloads immediately, while the deterministic Settings singleton
   // is created after its ORM subscription becomes ready. Wait for that real
@@ -95,7 +98,7 @@ try {
   const secondDevice = await browser.newContext();
   const secondPage = await secondDevice.newPage();
   await secondPage.goto(`${baseUrl}/settings`);
-  await secondPage.getByLabel("Pairing code").fill(pairingCode);
+  await secondPage.getByLabel("Pairing code").fill(temporaryCode);
   await secondPage.getByRole("button", { name: "Join vault" }).click();
   await expect(secondPage.getByText("Connected", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(secondPage.getByLabel("Shown in the nav bar and browser tab")).toHaveValue(
@@ -107,7 +110,7 @@ try {
   await secondDevice.close();
   console.log(JSON.stringify({
     ok: true,
-    path: "browser-1 -> sync -> Redis -> materializer -> Neo4j snapshot -> browser-2",
+    path: "browser-1 -> sync -> Redis -> materializer -> Neo4j snapshot -> one-time pair code -> browser-2",
     vaultId,
   }));
 } finally {

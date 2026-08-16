@@ -21,6 +21,9 @@ built when, and the defects found doing it, see
 - A connected device displays that code as a QR. A joining device can scan it
   when the browser provides `BarcodeDetector` over HTTPS or localhost; the
   manual code field remains available everywhere, including plain-HTTP LANs.
+- For remote pairing, a connected device can create a `PAIR-XXXX-XXXX-X` code
+  that expires after ten minutes and works once. Redeeming it returns the same
+  durable vault credentials; rotation invalidates any outstanding codes.
 - Pairing switches the active graph; it does not automatically migrate an
   existing unpaired graph. Export before pairing and import afterward to seed
   a new vault with existing local data.
@@ -102,14 +105,18 @@ built when, and the defects found doing it, see
 | `GET /sync/health` | liveness check |
 | `POST /sync/vaults` | create a vault, returns `{ vaultId, vaultToken }` once |
 | `POST /sync/vaults/rotate?vault=` | issue a new token, invalidate the old one |
+| `POST /sync/pair-code?vault=` | issue an authenticated, one-use ten-minute pairing code |
+| `POST /sync/pair-redeem` | rate-limited exchange of a temporary code for vault credentials |
 | `POST /sync/patches?vault=` | submit a patch batch |
 | `GET /sync/snapshot?vault=` | full current state, from Neo4j |
 | `POST /sync/stream-ticket?vault=` | exchange bearer auth for a one-hour stream-only ticket |
 | `GET /sync/stream?vault=&since=&ticket=` | live + replayed patches, SSE |
 
-All endpoints except `/sync/health` and vault creation are protected. HTTP
-requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint accepts
-only the short-lived ticket returned by `/sync/stream-ticket`.
+All endpoints except `/sync/health`, vault creation, and temporary-code
+redemption are bearer-protected. Redemption is protected by the temporary
+credential itself, exact-once consumption, expiry, and a per-IP rate limit.
+Other HTTP requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint
+accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 
 ---
 
@@ -140,6 +147,9 @@ only the short-lived ticket returned by `/sync/stream-ticket`.
 - Vault creation is rate-limited per client IP (abuse/DoS mitigation —
   it's the one endpoint with no auth, since it's what issues the
   credential).
+- Temporary-code redemption is limited to ten attempts per client IP per
+  minute by default. Codes carry 40 random bits plus a check symbol, expire in
+  ten minutes, work once, and stop redeeming after token rotation.
 - TLS is terminated at the reverse proxy, not in the app itself.
 - Explicitly out of scope: user accounts, per-record permissions,
   multi-user sharing, encryption at rest.

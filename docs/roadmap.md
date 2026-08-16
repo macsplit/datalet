@@ -41,7 +41,8 @@ plans two pieces of work identified after this roadmap was written:
   replacing the two-field pairing credential with one checksummed string plus
   QR and short-lived pairing codes. The label resolver, its four reader
   integrations, the single checksummed pairing field, and QR display/scanning
-  are complete; short-lived pairing codes remain open.
+  are complete; short-lived, one-use pairing codes are also complete. Readable
+  tab URLs are the remaining Track B item.
 
 Both include a testing strategy. The endurance run above should be re-scoped
 to multi-tenant once the first two items of that plan land.

@@ -16,6 +16,7 @@ import { REDIS_URL } from "./config.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const APPLY_BATCH_LUA = readFileSync(join(moduleDir, "applyBatch.lua"), "utf8");
+const REDEEM_PAIR_CODE_LUA = readFileSync(join(moduleDir, "redeemPairCode.lua"), "utf8");
 
 declare module "ioredis" {
   interface RedisCommander<Context> {
@@ -45,6 +46,10 @@ declare module "ioredis" {
       acceptedCount: number,
       submittedCount: number,
     ], Context>;
+    redeemPairCode(
+      pairCodeKey: string,
+      vaultMetaKey: string,
+    ): Result<[vaultId: string, vaultToken: string] | null, Context>;
   }
 }
 
@@ -55,6 +60,7 @@ export function redis(): Redis {
   if (!sharedClient) {
     sharedClient = new Redis(REDIS_URL);
     sharedClient.defineCommand("applyBatch", { numberOfKeys: 6, lua: APPLY_BATCH_LUA });
+    sharedClient.defineCommand("redeemPairCode", { numberOfKeys: 2, lua: REDEEM_PAIR_CODE_LUA });
   }
   return sharedClient;
 }

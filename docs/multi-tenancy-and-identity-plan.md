@@ -1,6 +1,6 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** B1 through B4 were completed 2026-08-16; Track A and the
+**Status: active.** B1 through B5 were completed 2026-08-16; Track A and the
 remaining Track B items have not started. Written 2026-08-16 from the code as
 it stood at `b707800` and kept current as work lands.
 
@@ -324,7 +324,7 @@ available; otherwise it explains the HTTPS/localhost constraint and leaves the
 manual pairing field visible. The QR test independently reads the matrix,
 validates all Reed-Solomon syndromes, and reconstructs the original code.
 
-### B5. Short-lived pairing exchange code — **medium**
+### B5. Short-lived pairing exchange code — **completed 2026-08-16**
 
 For devices that are not in the same room, make the typed thing disposable
 instead of durable:
@@ -334,7 +334,8 @@ instead of durable:
 - Store as `vault:pair-code:<hash>` with a 10-minute TTL, redeemed exactly once
   (atomically, via `GETDEL` or a small script).
 - Code format: 8 Crockford base32 characters (40 bits) plus a check symbol —
-  `PAIR-K3RM-9T7A` — short enough to read over a phone call.
+  `PAIR-K3RM-9T7A-X` — short enough to read over a phone call. (The original
+  eight-character example omitted the ninth check character.)
 
 **This is machinery that already exists.** `vault:<id>:stream-ticket:<hash>`
 is the same pattern — a short-lived, single-purpose credential bound to the
@@ -344,6 +345,14 @@ current token generation — pointed at a different purpose.
 valuable guessing target than a stream ticket. Rate-limit redemption hard per
 IP with `checkRateLimit`, and invalidate outstanding codes on token rotation,
 exactly as stream tickets already are.
+
+**Landed detail.** A connected device explicitly creates the temporary code;
+the ordinary join field accepts either `LG1` or `PAIR`. Redis stores the
+credentials under a SHA-256 hash of the code for ten minutes. A Lua redemption
+deletes the entry and compares its token-generation hash atomically, so it is
+single-use and rotation-safe. Redemption defaults to ten attempts per IP per
+minute. The live two-browser smoke pairs its second browser through this
+exchange rather than transferring the durable token directly.
 
 ### B6. Readable tab URLs — **small**
 

@@ -461,6 +461,12 @@ per-user records. Concretely:
   Settings (`SyncSettings.tsx`). Any other device still holding the old
   token gets 401s until it's manually given the new one — inherent to a
   shared-secret scheme with no per-device identity, not a bug.
+- An authenticated device can create a ten-minute `PAIR-XXXX-XXXX-X` exchange
+  credential through `POST /sync/pair-code`. `POST /sync/pair-redeem` consumes
+  it exactly once and returns the vault id and durable token. The Redis Lua
+  redemption compares the stored token-generation hash atomically, so rotation
+  invalidates outstanding codes without scanning keys. Redemption is limited
+  per client IP (ten attempts/minute by default).
 - Every `/sync/patches`, `/sync/snapshot`, and `/sync/vaults/rotate` call
   requires `Authorization: Bearer <vaultToken>`, scoped to the `vault` query
   parameter. Browser `EventSource` cannot set request headers, so the client
@@ -470,7 +476,7 @@ per-user records. Concretely:
   Tickets are bound to the current token hash, so rotating the vault token
   also invalidates them for subsequent connections; an already-open SSE socket
   naturally remains open until it disconnects.
-- Tokens are stored server-side as a SHA-256 hash (not plaintext) in
+- Durable token metadata is stored server-side as a SHA-256 hash (not plaintext) in
   Redis's per-vault `meta` hash and a durable Neo4j `:VaultMeta` node
   (`vaultStore.ts`), verified with a
   constant-time compare. No separate per-token salt: the token itself is
@@ -478,7 +484,10 @@ per-user records. Concretely:
   practical guarantee a salt exists to provide for low-entropy secrets
   like passwords — a precomputed rainbow table over a 192-bit space isn't
   a real attack. Neo4j mirroring closes the Redis-only identity-loss gap
-  found during hard-kill testing.
+  found during hard-kill testing. The explicit exception is a temporary pair
+  exchange: its Redis value must contain the durable token so redemption can
+  return it, but its key is a hash of a 40-bit random code, it has a ten-minute
+  TTL, and atomic redemption deletes it before returning.
 - `POST /sync/vaults` is rate-limited per client IP (`VAULT_CREATE_RATE_LIMIT`,
   default 10/hour) — the one endpoint with no auth at all (it *creates* the
   credential), so it's the one open abuse/storage-exhaustion vector a

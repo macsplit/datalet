@@ -33,3 +33,7 @@ export const BATCH_DEDUP_TTL_SECONDS = 24 * 60 * 60;
 // trivially bypassable.
 export const VAULT_CREATE_RATE_LIMIT = Number(process.env.VAULT_CREATE_RATE_LIMIT ?? 10);
 export const VAULT_CREATE_RATE_WINDOW_SECONDS = Number(process.env.VAULT_CREATE_RATE_WINDOW_SECONDS ?? 60 * 60);
+
+export const PAIR_CODE_TTL_SECONDS = Number(process.env.PAIR_CODE_TTL_SECONDS ?? 10 * 60);
+export const PAIR_REDEEM_RATE_LIMIT = Number(process.env.PAIR_REDEEM_RATE_LIMIT ?? 10);
+export const PAIR_REDEEM_RATE_WINDOW_SECONDS = Number(process.env.PAIR_REDEEM_RATE_WINDOW_SECONDS ?? 60);

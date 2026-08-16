@@ -22,7 +22,8 @@
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { redis } from "./redis/client.js";
 import { watchVaultStream } from "./redis/streamWatcher.js";
-import { BATCH_DEDUP_TTL_SECONDS, STREAM_MAXLEN } from "./redis/config.js";
+import { BATCH_DEDUP_TTL_SECONDS, PAIR_CODE_TTL_SECONDS, STREAM_MAXLEN } from "./redis/config.js";
+import { generatePairCode, normalizePairCode } from "./pairCode.js";
 import {
   deleteVaultMeta,
   purgeExpiredTombstones,
@@ -66,6 +67,8 @@ const tombstoneKey = (vaultId: string) => `vault:${vaultId}:tombstones`;
 const streamTicketKey = (vaultId: string, ticketHash: string) =>
   `vault:${vaultId}:stream-ticket:${ticketHash}`;
 const STREAM_TICKET_TTL_SECONDS = 60 * 60;
+const pairCodeKey = (code: string) =>
+  `vault:pair-code:${createHash("sha256").update(code).digest("hex")}`;
 
 export async function createVault(): Promise<{ vaultId: string; vaultToken: string }> {
   const vaultId = randomUUID();
@@ -166,6 +169,42 @@ export async function checkStreamTicket(vaultId: string, ticket: string): Promis
     redis().hget(metaKey(vaultId), "token"),
   ]);
   return Boolean(ticketGeneration && currentGeneration && ticketGeneration === currentGeneration);
+}
+
+export async function createPairCode(
+  vaultId: string,
+  vaultToken: string,
+  ttlSeconds = PAIR_CODE_TTL_SECONDS,
+): Promise<{ code: string; expiresAt: number }> {
+  const tokenHash = createHash("sha256").update(vaultToken).digest("hex");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generatePairCode();
+    const expiresAt = Date.now() + ttlSeconds * 1000;
+    const stored = await redis().set(
+      pairCodeKey(code),
+      JSON.stringify({ vaultId, vaultToken, tokenHash }),
+      "EX",
+      ttlSeconds,
+      "NX",
+    );
+    if (stored === "OK") return { code, expiresAt };
+  }
+  throw new Error("Could not allocate a unique temporary pair code.");
+}
+
+export async function redeemPairCode(
+  input: string,
+): Promise<{ vaultId: string; vaultToken: string } | undefined> {
+  const code = normalizePairCode(input);
+  const serialized = await redis().get(pairCodeKey(code));
+  if (!serialized) return undefined;
+  const parsed = JSON.parse(serialized) as { vaultId?: string };
+  if (!parsed.vaultId) {
+    await redis().del(pairCodeKey(code));
+    return undefined;
+  }
+  const redeemed = await redis().redeemPairCode(pairCodeKey(code), metaKey(parsed.vaultId));
+  return redeemed ? { vaultId: redeemed[0], vaultToken: redeemed[1] } : undefined;
 }
 
 /** Backfill durable metadata for vaults created before Neo4j mirroring existed. */

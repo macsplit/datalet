@@ -14,9 +14,11 @@ import {
   checkVaultToken,
   checkStreamTicket,
   createStreamTicket,
+  createPairCode,
   createVault,
   entriesSince,
   rotateVaultToken,
+  redeemPairCode,
   snapshot,
   subscribeLive,
   vaultExists,
@@ -24,7 +26,12 @@ import {
 } from "./vaultStore.js";
 import { serveStatic } from "./staticServer.js";
 import { checkRateLimit } from "./redis/rateLimit.js";
-import { VAULT_CREATE_RATE_LIMIT, VAULT_CREATE_RATE_WINDOW_SECONDS } from "./redis/config.js";
+import {
+  PAIR_REDEEM_RATE_LIMIT,
+  PAIR_REDEEM_RATE_WINDOW_SECONDS,
+  VAULT_CREATE_RATE_LIMIT,
+  VAULT_CREATE_RATE_WINDOW_SECONDS,
+} from "./redis/config.js";
 import type { Patch } from "./patchApply.js";
 
 const MAX_BODY_BYTES = 2_000_000;
@@ -136,6 +143,51 @@ export function createSyncServer(staticDir: string) {
         }
         const vaultToken = await rotateVaultToken(vaultId);
         sendJson(res, 200, { vaultId, vaultToken });
+        return;
+      }
+
+      if (url.pathname === "/sync/pair-code" && req.method === "POST") {
+        const vaultId = url.searchParams.get("vault") ?? "";
+        if (!(await vaultExists(vaultId))) {
+          sendJson(res, 404, { reason: "unknown vault" });
+          return;
+        }
+        const token = bearerToken(req);
+        if (!token || !(await checkVaultToken(vaultId, token))) {
+          sendJson(res, 401, { reason: "invalid token" });
+          return;
+        }
+        const issued = await createPairCode(vaultId, token);
+        sendJson(res, 200, { code: issued.code, expiresAt: new Date(issued.expiresAt).toISOString() });
+        return;
+      }
+
+      if (url.pathname === "/sync/pair-redeem" && req.method === "POST") {
+        const ip = clientIp(req);
+        const withinLimit = await checkRateLimit(
+          `rate:pair-redeem:${ip}`,
+          PAIR_REDEEM_RATE_LIMIT,
+          PAIR_REDEEM_RATE_WINDOW_SECONDS,
+        );
+        if (!withinLimit) {
+          sendJson(res, 429, { reason: "too many pairing attempts from this address - try again later" });
+          return;
+        }
+        const body = (await readJsonBody(req)) as { code?: unknown };
+        if (typeof body.code !== "string") {
+          sendJson(res, 400, { reason: "a temporary pair code is required" });
+          return;
+        }
+        try {
+          const credentials = await redeemPairCode(body.code);
+          if (!credentials) {
+            sendJson(res, 404, { reason: "temporary pair code is invalid, expired, or already used" });
+            return;
+          }
+          sendJson(res, 200, credentials);
+        } catch (error) {
+          sendJson(res, 400, { reason: error instanceof Error ? error.message : "invalid temporary pair code" });
+        }
         return;
       }
 

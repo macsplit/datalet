@@ -12,10 +12,12 @@ import {
   applyBatch,
   checkVaultToken,
   checkStreamTicket,
+  createPairCode,
   createStreamTicket,
   createVault,
   entriesSince,
   rotateVaultToken,
+  redeemPairCode,
   snapshot,
   streamKey,
   sweepVaultTombstones,
@@ -52,12 +54,22 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
   const { vaultId, vaultToken } = await createVault();
   createdVaults.push(vaultId);
   assert.equal(await checkVaultToken(vaultId, vaultToken), true);
+  const oneTimePair = await createPairCode(vaultId, vaultToken);
+  assert.deepEqual(await redeemPairCode(oneTimePair.code), { vaultId, vaultToken });
+  assert.equal(await redeemPairCode(oneTimePair.code), undefined);
+
+  const expiringPair = await createPairCode(vaultId, vaultToken, 1);
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  assert.equal(await redeemPairCode(expiringPair.code), undefined);
+
   const preRotationTicket = await createStreamTicket(vaultId);
+  const preRotationPair = await createPairCode(vaultId, vaultToken);
   assert.equal(await checkStreamTicket(vaultId, preRotationTicket), true);
   const rotated = await rotateVaultToken(vaultId);
   assert.equal(await checkVaultToken(vaultId, vaultToken), false);
   assert.equal(await checkVaultToken(vaultId, rotated), true);
   assert.equal(await checkStreamTicket(vaultId, preRotationTicket), false);
+  assert.equal(await redeemPairCode(preRotationPair.code), undefined);
   const streamTicket = await createStreamTicket(vaultId);
   assert.equal(await checkStreamTicket(vaultId, streamTicket), true);
   assert.equal(await checkStreamTicket(vaultId, rotated), false);

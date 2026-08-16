@@ -142,6 +142,81 @@ test("manual pairing remains available when QR scanning is unsupported", async (
   await expect(page.getByText(/QR scanning needs HTTPS or localhost/i)).toBeVisible();
 });
 
+test("a connected device can issue a one-use temporary pair code", async ({ page }) => {
+  await page.addInitScript(({ configKey, vaultId, vaultToken }) => {
+    localStorage.clear();
+    localStorage.setItem(configKey, JSON.stringify({ vaultId, vaultToken, nodeId: "temporary-code-node" }));
+  }, { configKey: CONFIG_KEY, vaultId: VAULT_ID, vaultToken: VAULT_TOKEN });
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: "temporary-code-ticket" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+  await page.route("**/sync/pair-code?*", async (route) => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${VAULT_TOKEN}`);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "PAIR-K3RM-9T7A-X", expiresAt: "2026-08-17T00:00:00.000Z" }),
+    });
+  });
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Create temporary code" }).click();
+
+  await expect(page.getByLabel("Temporary pair code")).toHaveValue("PAIR-K3RM-9T7A-X");
+  await expect(page.getByText(/expires at/i)).toBeVisible();
+});
+
+test("a joining device redeems a temporary pair code", async ({ page }) => {
+  await page.route("**/sync/pair-redeem", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ code: "PAIR-K3RM-9T7A-X" });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ vaultId: VAULT_ID, vaultToken: VAULT_TOKEN }),
+    });
+  });
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: "redeemed-ticket" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+
+  await page.goto("/settings");
+  await page.getByLabel("Pairing code").fill("PAIR-K3RM-9T7A-X");
+  await page.getByRole("button", { name: "Join vault" }).click();
+
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+});
+
+test("a redeemed code survives an initial snapshot failure as a durable retry", async ({ page }) => {
+  await page.route("**/sync/pair-redeem", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ vaultId: VAULT_ID, vaultToken: VAULT_TOKEN }),
+  }));
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ reason: "temporarily unavailable" }),
+  }));
+
+  await page.goto("/settings");
+  await page.getByLabel("Pairing code").fill("PAIR-K3RM-9T7A-X");
+  await page.getByRole("button", { name: "Join vault" }).click();
+
+  await expect(page.getByText(/retry with the durable pairing code now shown/i)).toBeVisible();
+  await expect(page.getByLabel("Pairing code")).toHaveValue(/^LG1-/);
+});
+
 test("joining primes remote settings before reloading into the vault", async ({ page }) => {
   const graph = `did:ng:${VAULT_ID}`;
   const settingsId = "did:ng:z:SettingsSingleton";

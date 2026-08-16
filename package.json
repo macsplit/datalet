@@ -18,7 +18,7 @@
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:materializer": "ROLE=materializer tsx watch server/src/index.ts",
-    "build:server": "tsc -p server/tsconfig.json && mkdir -p server-dist/redis && cp server/src/redis/applyBatch.lua server-dist/redis/applyBatch.lua",
+    "build:server": "tsc -p server/tsconfig.json && mkdir -p server-dist/redis && cp server/src/redis/*.lua server-dist/redis/",
     "start:server": "node server-dist/index.js",
     "start:materializer": "ROLE=materializer node server-dist/index.js"
   },

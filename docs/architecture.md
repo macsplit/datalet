@@ -313,6 +313,10 @@ unchanged. The same code is rendered as an in-app QR with no third-party
 service or runtime dependency. Camera scanning uses the browser's
 `BarcodeDetector` only where it is available in a secure context; plain-HTTP
 LAN clients retain the manual field and receive an explanation instead.
+For devices that are elsewhere, an authenticated device can issue a checked
+`PAIR-XXXX-XXXX-X` exchange code. It expires after ten minutes, redeems once,
+and is bound to the current token generation; the same join field accepts it
+and receives the durable credentials from the server.
 
 ![System topology](diagrams/topology.png)
 

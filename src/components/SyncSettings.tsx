@@ -35,6 +35,9 @@ export function SyncSettings() {
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState<string | undefined>();
+  const [generatingTemporary, setGeneratingTemporary] = useState(false);
+  const [temporaryCode, setTemporaryCode] = useState<string>();
+  const [temporaryExpiresAt, setTemporaryExpiresAt] = useState<string>();
 
   async function handleCreate() {
     setCreating(true);
@@ -80,10 +83,63 @@ export function SyncSettings() {
   async function handleCodeJoin() {
     if (!joinCode.trim()) return;
     try {
+      if (joinCode.trim().toUpperCase().startsWith("PAIR")) {
+        setJoining(true);
+        setError(undefined);
+        const response = await fetch("/sync/pair-redeem", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: joinCode }),
+        });
+        const body = (await response.json()) as {
+          vaultId?: string;
+          vaultToken?: string;
+          reason?: string;
+        };
+        if (!response.ok || !body.vaultId || !body.vaultToken) {
+          throw new Error(body.reason ?? `Pairing failed with status ${response.status}.`);
+        }
+        // Redemption is deliberately one-shot. Preserve the returned durable
+        // credential in the field before fetching the initial snapshot, so a
+        // transient snapshot failure can be retried without issuing a new code.
+        setJoinCode(encodePairingCode(body.vaultId, body.vaultToken));
+        try {
+          await applyAndReload(body.vaultId, body.vaultToken);
+        } catch {
+          throw new Error(
+            "The temporary code was redeemed, but the vault could not be loaded. " +
+              "Retry with the durable pairing code now shown.",
+          );
+        }
+        return;
+      }
       const credentials = decodePairingCode(joinCode);
       await join(credentials.vaultId, credentials.vaultToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That pairing code is not valid.");
+      setJoining(false);
+    }
+  }
+
+  async function handleGenerateTemporary() {
+    if (!config) return;
+    setGeneratingTemporary(true);
+    setRotateError(undefined);
+    try {
+      const response = await fetch(`/sync/pair-code?vault=${encodeURIComponent(config.vaultId)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.vaultToken}` },
+      });
+      const body = (await response.json()) as { code?: string; expiresAt?: string; reason?: string };
+      if (!response.ok || !body.code || !body.expiresAt) {
+        throw new Error(body.reason ?? `Temporary code request failed with status ${response.status}.`);
+      }
+      setTemporaryCode(body.code);
+      setTemporaryExpiresAt(body.expiresAt);
+    } catch (err) {
+      setRotateError(err instanceof Error ? err.message : "Could not create a temporary pair code.");
+    } finally {
+      setGeneratingTemporary(false);
     }
   }
 
@@ -172,6 +228,32 @@ export function SyncSettings() {
           </p>
         </div>
         {showPairingCode && <PairingQr value={pairingCode} />}
+        <div className="field-group">
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={handleGenerateTemporary}
+            disabled={generatingTemporary}
+          >
+            {generatingTemporary ? "Creating temporary code…" : "Create temporary code"}
+          </button>
+          <p className="helper-text">
+            For a device elsewhere: this short code expires after 10 minutes and works once.
+          </p>
+          {temporaryCode && (
+            <div className="layout-row">
+              <input className="input" aria-label="Temporary pair code" readOnly value={temporaryCode} />
+              <button type="button" className="secondary-btn" onClick={() => handleCopy(temporaryCode)}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          )}
+          {temporaryExpiresAt && (
+            <p className="helper-text">
+              Expires at {new Date(temporaryExpiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+            </p>
+          )}
+        </div>
         {rotateError && <p className="helper-text danger-text">{rotateError}</p>}
         <div className="layout-row">
           <button type="button" className="secondary-btn" onClick={handleRotate} disabled={rotating}>
@@ -215,7 +297,7 @@ export function SyncSettings() {
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="LG1-…"
+            placeholder="LG1-… or PAIR-…"
             onChange={(event) => setJoinCode(event.target.value)}
           />
         </div>
