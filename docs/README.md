@@ -6,7 +6,8 @@
 | --- | --- |
 | [`architecture.md`](architecture.md) | **How the whole thing works today** — the browser engine, the metadata model, the optional sync tier, and where the constraints are. Read this first. |
 | [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
-| [`product-assessment.md`](product-assessment.md) | What the project is good and bad at. Kept accurate as work lands. |
+| [`product-assessment.md`](product-assessment.md) | What the project *is*, what it is good for, and which additions would cost it that. Kept accurate as work lands. |
+| [`multi-tenancy-and-identity-plan.md`](multi-tenancy-and-identity-plan.md) | **Proposed, not started.** Implementation plan for multi-tenant hosting and for user-facing identity (labels instead of `did:ng:` ids, single-field pairing). Includes the testing strategy. |
 
 ## Sync tier
 

@@ -1,59 +1,95 @@
 # Product Assessment
 
-**Status: current.** What this project is well suited to and what it is not.
-Kept accurate as work lands; the plan for what remains is
-[`roadmap.md`](roadmap.md).
+**Status: current.** What this project is, what it is well suited to, and which
+additions would cost it that. Kept accurate as work lands; the plan for what
+remains is [`roadmap.md`](roadmap.md).
 
-First written 2026-08-08 (as `product-evaluation-2026-08-08.md`), last reviewed
+First written 2026-08-08 (as `product-evaluation-2026-08-08.md`), reframed
 2026-08-16. Based on reading the application source, the sync tier and the
 design documents — not on user research or a field deployment.
 
 ## What it actually is
 
-Two products stacked, and worth separating:
+It is tempting to describe this as two products stacked — a no-code record-app
+builder, plus an optional sync tier. That framing is accurate and unhelpful,
+because "no-code app builder" is a category, and in that category this loses to
+Airtable, Notion, Baserow and NocoDB on every axis, permanently and by
+construction.
 
-1. **A browser-local, no-code record-app builder.** Schemas and fields are
-   defined in a Settings UI and arranged into tabs, layout blocks and data
-   blocks, producing working CRUD screens. Everything — user records *and* the
-   builder's own configuration — lives as graph data in `localStorage`,
-   mirrored across tabs via `BroadcastChannel`. No accounts, no install, no
-   backend.
-2. **An optional sync tier.** Pairing a vault replicates the same graph across
+The narrower and truer statement is:
+
+> **The app definition is stored as ordinary records in the same graph as the
+> user's data, through the same subscription mechanism.**
+
+Everything distinctive follows from that one decision:
+
+- Screens sync because they *are* data. Build a tab on a laptop, it appears on
+  the phone. Nothing special-cases it.
+- The builder needs no persistence, migration story or export format of its
+  own. A backup is the app *and* its contents, in one JSON file.
+- A schema edit is a live, non-destructive event rather than a migration:
+  `buildShapeType()` hashes the property list into the runtime shape IRI, so
+  the subscription reopens while the stable record type keeps existing records
+  loading.
+
+That is not a builder feature. It is a claim about what an application is.
+Treating it as a builder feature — "we should also have X, since builders have
+X" — trades away the only property here that is not available elsewhere.
+
+Mechanically, the system is still two tiers, and they are worth keeping
+separate when reasoning about it:
+
+1. **The browser-local tier.** Schemas, fields, tabs, layout blocks, data
+   blocks and widgets defined in a Settings UI and stored as graph data in
+   `localStorage`, mirrored across tabs via `BroadcastChannel`. No accounts, no
+   install, no backend.
+2. **The optional sync tier.** Pairing a vault replicates the same graph across
    devices via HTTP POST up and SSE down, with Redis for sequencing and fanout
    and Neo4j as the system of record.
 
-The genuinely distinctive property is that the builder's metadata is stored in
-the same graph as the user data, through the same subscription mechanism. When
-you sync, your *app design* travels with your data — build a screen on the
-laptop and it appears on the phone. That falls out of the architecture rather
-than being special-cased.
-
 ## What it is good for
 
-**Personal and small-team trackers where the shape of the data is yours to
-define.** Inventories, collections, habit and reading logs, lightweight CRM,
-expense lists, project checklists. The loop from "I need a field" to "the field
-is on screen" is seconds, with no code and no deploy.
+**1. One person's tracker, where the schema is unstable.** Not "CRUD over a few
+hundred records" — everything does that. The win is the loop from "I need a
+field" to "the field is on screen and old records still load," in seconds, with
+no code and no deploy. Collections, reading and training logs, a job search, a
+renovation punch list, a small research corpus. The value scales with *how
+often the shape changes*, not with row count.
 
-**Privacy by construction.** Unpaired, there is no network surface at all —
-data physically cannot leave the browser profile. For someone who wants a
-tracker that is not a SaaS account, that is the whole pitch, and it is honest
-here rather than marketing.
+**2. Data that should not be in anyone's SaaS.** Unpaired, there is no network
+code on any path — verifiable by reading the source, not by trusting a privacy
+policy. Almost nothing else in this space can say that. Medication logs,
+therapy notes, a legal-matter chronology, salary and finance notes, anything
+about other people that is not yours to hand to a vendor. Two conditions belong
+to the use case rather than beside it: it holds only while **unpaired** (paired,
+the server reads plaintext), and durability rests entirely on the user's own
+JSON exports. Backup discipline is part of this scenario's definition.
 
-**Fast data-model prototyping.** Sketching a schema plus screens with a
-stakeholder in a meeting, before committing to a real build.
+**3. Schema elicitation with a stakeholder in the room.** Build the model live
+while they talk, put working screens in front of them in the same meeting,
+export the JSON as the artifact. Rough edges do not matter here, because the
+output is agreement rather than software.
 
-**A reference implementation to learn from or fork.** The sync layer is
-well-built for its size: HLC-ordered last-write-wins for scalars, commutative
-merge for set fields, tombstones with retention purging, `batchId` idempotency,
-stateless ingest behind a proxy, snapshot fallback when a resume cursor falls
-outside the retained stream, and an offline outbox that persists across
-reloads. [`build-history.md`](build-history.md) is an unusually honest record —
-it keeps the bugs found (Neo4j nodes keyed by the wrong id creating silent
-orphans; Redis running without AOF despite the docs claiming otherwise) rather
-than presenting a clean story. The extension seam is narrow by design: the
-whole engine is two functions, which is why sync bolted on without rewriting
-the app.
+**4. A specimen of local-first architecture at readable size.** Roughly 9.5k
+lines total, and the pedagogy is the point: the entire engine is two functions,
+so the substitution for the real NextGraph wasm/broker engine is legible; the
+same patch algebra exists three times (`src/utils/localNgEngine.ts`,
+`server/src/patchApply.ts`, `server/src/redis/applyBatch.lua`) with the docs
+stating plainly that all three move together;
+[`build-history.md`](build-history.md) keeps the defects — Neo4j nodes keyed by
+the wrong id creating silent orphans, Redis running without AOF while the docs
+claimed otherwise — instead of laundering them. People tend to learn more from
+an artifact this size than from a production codebase.
+
+**5. A fork base for one domain-specific local-first app.** The two-function
+seam is real leverage, and the strongest available evidence that it holds is
+that the whole sync tier attached through `onLocalPatch` /
+`applyRemoteSyncPatches` without a single component changing. The sync layer
+itself is well built for its size: HLC-ordered last-write-wins for scalars,
+commutative merge for set fields, tombstones with retention purging, `batchId`
+idempotency, stateless ingest behind a proxy, snapshot fallback when a resume
+cursor falls outside the retained stream, and an offline outbox that survives
+reloads.
 
 ## What it is not good for
 
@@ -69,11 +105,11 @@ displayed in the browser locale.
 sorting, and readers get an optional search box and pagination over the
 displayed fields. Grouping and aggregation are absent, and search is a linear
 scan of the in-memory store rather than an index. Underneath, the entire store
-is held in memory with a hard 4 MB cap
-(`RUNTIME_LIMITS.storedBytes`). Persistence is incremental per touched record,
-but startup still loads every record and subscriptions still scan the full
-store. Realistic ceiling: hundreds to low thousands of small records. It
-degrades on the UX and performance axes at the same time.
+is held in memory with a hard 4 MB cap (`RUNTIME_LIMITS.storedBytes`).
+Persistence is incremental per touched record, but startup still loads every
+record and subscriptions still scan the full store. Realistic ceiling: hundreds
+to low thousands of small records. It degrades on the UX and performance axes
+at the same time.
 
 **Multi-user work.** The vault token is all-or-nothing: whoever holds it has
 full read/write over everything in the vault. No accounts, no per-record
@@ -101,6 +137,57 @@ path, Redis-loss snapshot recovery and tombstone purging, and run in CI. That
 is meaningful workflow coverage, not a comprehensive unit or visual test
 matrix.
 
+## The additions that would cost it its identity
+
+[`roadmap.md`](roadmap.md) already refuses most of these; this is why, ranked by
+how reasonable the ask sounds against how much damage it does.
+
+- **"Just raise the ceiling."** IndexedDB, windowed subscriptions, a search
+  index, grouping and aggregation. Each is individually defensible; together
+  they turn a tool that is excellent at 300 records into a mediocre one at
+  50,000, and the block builder becomes the bottleneck long before the storage
+  does. The 4 MB cap is not a limitation awaiting removal — it is what keeps
+  startup, subscriptions and the sync payload simple at the same time.
+- **"Make it work for my team."** The most likely ask and the most expensive
+  one. The all-or-nothing vault token is why the server fits in ~1,300 lines
+  and why the trust model fits in one sentence. Authorization would have to
+  reach every patch in `applyBatch.lua`, and that is a different project.
+- **Formulas, scripting, plugins.** Nobody has asked yet. This is how every
+  tool in this category becomes generic, and the one path that would turn a
+  five-type metadata model into a language runtime.
+- **Files and images.** The deferral holds. If avatars or thumbnails turn out
+  to be the real ask, the small-inline-image option (hard ~64 KB cap, downscale
+  on selection, explicit refusal above it) is the only one that stays inside
+  the identity; a blob endpoint breaks "no network surface at all," which is
+  one of very few claims here that is literally true.
+- **Joins, reverse lookups, rollups.** Asking for these is asking it to be a
+  database product.
+
+## Two criticisms of the current state
+
+**The sync tier is the part already drifting toward the generic thing.** It is
+the best-engineered code in the repository — atomic Lua accept, HLC ordering,
+`batchId` idempotency, consumer-group materialization, tombstone retention,
+stateless ingest behind a proxy. It serves "one person's two or three devices,
+hundreds of small records." Redis plus Neo4j plus a materializer process plus a
+stream-ticket exchange is substantial operational surface for that workload,
+and the operator is the same person who chose this tool partly to avoid running
+things. `remote-sync-architecture.md` justifies each decision individually; the
+aggregate ratio of ceremony to workload is the honest weak point. Nothing here
+argues for rewriting it — it works, and it is the most instructive code in the
+repo — but if an extension is ever proposed, the prior question is whether the
+personal use case wanted a single process over SQLite. Its maturity is also
+precisely what invites readers to mistake this for a platform.
+
+**Reference fields read as raw ids outside the editing control.** Sorting,
+reader search, export and print all act on the stored target id rather than the
+resolved label, because resolving a label needs the target schema's own
+subscription and only the on-screen control opens one. In the scenario this is
+*best* at — a tracker where a Task points at a Project — the reader-facing
+features therefore show and sort opaque `did:ng:` strings. This is a papercut
+inside the identity, not a missing feature outside it, and it is the one gap
+worth closing on those grounds.
+
 ## Smaller things worth knowing
 
 - Conflict resolution is field-level last-write-wins with no shared history and
@@ -126,22 +213,24 @@ matrix.
 
 ## Summary judgment
 
-This is a well-engineered, well-documented prototype whose **sync architecture
-is more mature than its application layer**. The server side reads like
-production thinking — sequencing, idempotency, tombstones, horizontal scaling,
-soak tests under hard kills. The app layer stays deliberately small, but now
-covers references, configured filtering and sorting, reader search and
-pagination, per-block export and print, undo, and portable backups.
+A personal, privacy-by-construction tracker for small self-defined datasets
+whose shape keeps changing — and a well-documented specimen of how to build
+one. The application layer stays deliberately small while covering references,
+configured filtering and sorting, reader search and pagination, per-block
+export and print, undo, and portable backups; the sync architecture is more
+mature than the application layer it serves.
 
-So: strong as a personal tool for small self-defined datasets, as a
-demonstration of local-first architecture, or as a foundation to build on. Not
-ready for team use, complex relational workflows, meaningful volume, or
-sensitive information.
+The list of things it will not do — team use, complex relational workflows,
+meaningful volume, sensitive information once synced — is a list of decisions
+rather than a list of deficits. Every entry on it is what buys the five things
+above. It is already at roughly the right size, and the main risk to it is
+incremental reasonableness: a sequence of individually defensible additions
+that ends with a worse version of a product other people already ship.
 
-The high-leverage product gaps this document originally identified —
-export/import, data-block filter and sort, reference fields, end-user search
-and pagination, date/time fields, URL/email/long-text controls, undo, visible
-discarded writes, non-destructive cursor recovery, an offline shell, and
-builder regression coverage — are now implemented. File and image fields remain
-intentionally absent pending a storage design that keeps binary data out of the
-4 MB JSON path. The remaining plan is [`roadmap.md`](roadmap.md).
+The high-leverage gaps this document originally identified — export/import,
+data-block filter and sort, reference fields, end-user search and pagination,
+date/time fields, URL/email/long-text controls, undo, visible discarded writes,
+non-destructive cursor recovery, an offline shell, and builder regression
+coverage — are all implemented. File and image fields remain intentionally
+absent pending a storage design that keeps binary data out of the 4 MB JSON
+path. The remaining plan is [`roadmap.md`](roadmap.md).

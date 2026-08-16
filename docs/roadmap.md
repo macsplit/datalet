@@ -25,6 +25,25 @@ ruled out from a run that short.
 This needs a deployment-focused session with real hours available. It gates
 nothing else.
 
+### Two proposed tracks, not started
+
+[`multi-tenancy-and-identity-plan.md`](multi-tenancy-and-identity-plan.md)
+plans two pieces of work identified after this roadmap was written:
+
+- **Multi-tenant hosting** — carrying thousands of separate vaults on one
+  backend deployment. This is *not* the multi-user work listed as out of scope
+  below: a vault stays all-or-nothing and single-world, and the vault-token
+  scheme is unchanged. The blockers are concrete (the materializer opens a
+  permanent Redis connection per vault; Neo4j mints a label per schema per
+  tenant; there is no per-vault quota or write rate limit).
+- **User-facing identity** — resolving `did:ng:` ids to labels in the four
+  places they leak (reference sort, reader search, export, print), and
+  replacing the two-field pairing credential with one checksummed string plus
+  QR and short-lived pairing codes.
+
+Both include a testing strategy. The endurance run above should be re-scoped
+to multi-tenant once the first two items of that plan land.
+
 ---
 
 ## Deferred by decision
