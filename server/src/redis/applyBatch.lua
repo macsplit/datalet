@@ -12,6 +12,7 @@
 -- KEYS[4] streamKey     (stream: entry id "<seq>-0")
 -- KEYS[5] batchKey       (string: batchId's assigned seq, for idempotency)
 -- KEYS[6] tombstoneKey   (hash: subjectId -> deletedAtHlc, for a whole-record remove)
+-- KEYS[7] bytesKey       (string: exact bytes of JSON values in storeKey)
 --
 -- ARGV[1] nodeId
 -- ARGV[2] hlc
@@ -20,13 +21,14 @@
 -- ARGV[5] batch dedup key TTL, seconds
 -- ARGV[6] stream MAXLEN (approximate trim)
 -- ARGV[7] batchId
+-- ARGV[8] vault quota in serialized store bytes
 --
 -- Returns {accepted (0/1), seq, reason, accepted patch count, submitted patch count}
 
-local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey =
-  KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
-local nodeId, hlc, shape, patchesJson, batchTtl, streamMaxLen, batchId =
-  ARGV[1], ARGV[2], ARGV[3], ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7]
+local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey, bytesKey =
+  KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6], KEYS[7]
+local nodeId, hlc, shape, patchesJson, batchTtl, streamMaxLen, batchId, vaultQuotaBytes =
+  ARGV[1], ARGV[2], ARGV[3], ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8])
 
 local function currentSeq()
   local s = redis.call('GET', seqKey)
@@ -95,14 +97,17 @@ local STRUCTURAL = { ['@id'] = true, ['@graph'] = true, ['@type'] = true }
 
 -- Lazily loaded per-subject record cache. `false` means "confirmed absent".
 local storeCache = {}
+local storeRawLength = {}
 local function loadRecord(subjectId)
   local cached = storeCache[subjectId]
   if cached ~= nil then return cached end
   local raw = redis.call('HGET', storeKey, subjectId)
   if raw then
     storeCache[subjectId] = cjson.decode(raw)
+    storeRawLength[subjectId] = #raw
   else
     storeCache[subjectId] = false
+    storeRawLength[subjectId] = 0
   end
   return storeCache[subjectId]
 end
@@ -127,6 +132,9 @@ local anySupersededRejected = false
 -- vault as a bare removal. Within a batch the last patch for a field wins,
 -- matching how the same list applies locally.
 local claimedThisBatch = {}
+-- HLC writes are part of the commit. Applying them during acceptance would
+-- leave a rejected quota-crossing batch able to supersede a later valid edit.
+local pendingHlc = {}
 local anyMalformedTarget = false
 
 for i = 1, #patches do
@@ -158,9 +166,10 @@ for i = 1, #patches do
         take = true -- whole-record remove, unconditional for now
       else
         local hkey = subjectId .. ' ' .. propKey
-        local prevHlc = redis.call('HGET', hlcKey, hkey)
+        local prevHlc = pendingHlc[hkey]
+        if prevHlc == nil then prevHlc = redis.call('HGET', hlcKey, hkey) end
         if prevHlc == false or prevHlc < hlc or claimedThisBatch[hkey] then
-          redis.call('HSET', hlcKey, hkey, hlc)
+          pendingHlc[hkey] = hlc
           claimedThisBatch[hkey] = true
           take = true
         end
@@ -225,6 +234,7 @@ for i = 1, #accepted do
       end
       tombstoneState[subjectId] = 'clear'
     elseif patch.op == 'remove' then
+      loadRecord(subjectId)
       storeCache[subjectId] = false
       tombstoneState[subjectId] = hlc
     end
@@ -272,13 +282,43 @@ for i = 1, #accepted do
   end
 end
 
+local currentBytes = tonumber(redis.call('GET', bytesKey))
+if currentBytes == nil then
+  currentBytes = 0
+  local existingRecords = redis.call('HVALS', storeKey)
+  for i = 1, #existingRecords do currentBytes = currentBytes + #existingRecords[i] end
+end
+
+local projectedBytes = currentBytes
+local serializedRecords = {}
 for i = 1, #touchedOrder do
   local subjectId = touchedOrder[i]
   local record = storeCache[subjectId]
-  if record == false then
+  local serialized = false
+  if record ~= false then serialized = cjson.encode(record) end
+  serializedRecords[subjectId] = serialized
+  projectedBytes = projectedBytes - (storeRawLength[subjectId] or 0)
+  if serialized ~= false then projectedBytes = projectedBytes + #serialized end
+end
+
+-- Existing deployments can begin above a newly configured lower quota. Let
+-- them delete/compact data progressively, but reject every batch that grows
+-- an already-over-quota vault or crosses the limit from below.
+if projectedBytes > vaultQuotaBytes and projectedBytes > currentBytes then
+  return { 0, currentSeq(), 'vault storage quota exceeded', 0, #patches }
+end
+
+for hkey, nextHlc in pairs(pendingHlc) do
+  redis.call('HSET', hlcKey, hkey, nextHlc)
+end
+
+for i = 1, #touchedOrder do
+  local subjectId = touchedOrder[i]
+  local serialized = serializedRecords[subjectId]
+  if serialized == false then
     redis.call('HDEL', storeKey, subjectId)
   else
-    redis.call('HSET', storeKey, subjectId, cjson.encode(record))
+    redis.call('HSET', storeKey, subjectId, serialized)
   end
   local tstate = tombstoneState[subjectId]
   if tstate == 'clear' then
@@ -287,6 +327,7 @@ for i = 1, #touchedOrder do
     redis.call('HSET', tombstoneKey, subjectId, tstate)
   end
 end
+redis.call('SET', bytesKey, projectedBytes)
 
 local seq = redis.call('INCR', seqKey)
 local entry = {

@@ -311,6 +311,11 @@ Use **Redis Streams**, not bare Pub/Sub, for the vault's patch log:
   vault's stream is trimmed past a node's cursor, that node is told to
   `/sync/snapshot` instead (§4.4) — the snapshot is always a correct
   fallback, so trimming aggressively is safe, just shifts cost to Neo4j.
+- The same atomic Lua transaction maintains `vault:<id>:bytes` from exact
+  serialized store-value deltas and refuses a whole batch before any commit if
+  it would grow the vault past `VAULT_QUOTA_BYTES`. Record removal credits its
+  bytes back. Existing stores without a counter are measured on their first
+  write.
 - Also used for: idempotency dedupe (`SET batch:<id> 1 NX EX 300` before
   commit), per-vault sequence counter, lightweight presence
   (`SETEX vault:<id>:node:<nodeId> 30 <ts>`, refreshed on each SSE
@@ -352,9 +357,9 @@ write throughput becomes the bottleneck) that:
 
 ### 6.4 Neo4j data model
 
-- One node per record: labeled `:Record:<TypeLocalName>` (derived from the
-  `@type` IRI, mirroring how `dynamicSchema.ts` already derives a
-  per-schema type IRI) with properties `id`, `graph` (= vaultId), and one
+- One node per record: labeled `:Record` plus one of six bounded metadata
+  labels or `:Type_User`; the exact `@type` IRI remains in the `type` property.
+  Nodes also carry `id`, `graph` (= vaultId), and one
   property per scalar predicate. Multi-value (`set`) predicates map to a
   Neo4j array property directly — Neo4j natively supports primitive arrays
   as node properties, no extra relationship modeling needed for this app's

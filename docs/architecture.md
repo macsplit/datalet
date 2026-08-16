@@ -378,6 +378,10 @@ The accept rules, in the order the script applies them:
    write-once. Two offline nodes creating the same well-known record converge
    on one, rather than one overwriting the other.
 5. **Everything else** is per-field last-write-wins on the HLC.
+6. **Vault quota.** The script applies accepted patches to an in-memory
+   projection, measures the exact serialized record bytes, and refuses the
+   entire batch if it would grow the vault past `VAULT_QUOTA_BYTES` (8 MiB by
+   default). Only after that check does it commit records and field HLCs.
 
 One subtlety in rule 5 that took a real bug to find: every patch in a batch
 carries the batch's single HLC, so a strict `prevHlc < hlc` test makes the
@@ -391,7 +395,8 @@ The response carries accepted and submitted counts. A partially accepted batch
 is a 200 with a reason; a wholly rejected one is a 409. Either way the client
 stops retrying — under last-write-wins a rejection is terminal, and the winning
 value arrives over SSE — but raises a visible warning naming the dropped count
-and the reason.
+and the reason. A quota refusal is likewise terminal and all-or-nothing; no
+patch, HLC, sequence, stream entry or dedupe record from that batch is retained.
 
 ### 3.3 Redis's role
 
@@ -402,6 +407,7 @@ Redis is the ingest and fanout tier, not the durable store. Per vault:
 | `vault:<id>:meta` | Token hash, created/rotated timestamps |
 | `vault:<id>:seq` | Monotonic sequence counter |
 | `vault:<id>:store` | Materialized current record per subject |
+| `vault:<id>:bytes` | Exact serialized bytes in `store`, atomically maintained for quota enforcement |
 | `vault:<id>:hlc` | Per-field last-write HLC |
 | `vault:<id>:stream` | The ordered accepted-patch log, trimmed to ~5,000 entries |
 | `vault:<id>:tombstones` | Deleted subject → deletion HLC |

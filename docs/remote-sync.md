@@ -91,9 +91,11 @@ built when, and the defects found doing it, see
 ## Data model
 
 - **Redis**, per vault: `meta` (token hash), `seq` (counter), `store`
-  (current record per subject), `hlc` (per-field last-write timestamps),
-  `stream` (the ordered patch log), `tombstones` (deleted-subject →
-  deletion timestamp). A global `vaults:index` set lists all vault ids.
+  (current record per subject), `bytes` (the atomically maintained store-byte
+  total), `hlc` (per-field last-write timestamps), `stream` (the ordered patch
+  log), `tombstones` (deleted-subject → deletion timestamp). A global
+  `vaults:index` set lists all vault ids. A write that would grow `store` past
+  the configured 8 MiB default quota is refused as a whole.
 - **Neo4j**: one `:Record` node per `(graph, subject)`. Six metadata types keep
   shared labels and every user-defined type shares `Type_User`; the exact type
   remains in the indexed `r.type` property. A deleted record keeps its node

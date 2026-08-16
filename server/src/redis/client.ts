@@ -33,6 +33,7 @@ declare module "ioredis" {
       streamKey: string,
       batchKey: string,
       tombstoneKey: string,
+      bytesKey: string,
       nodeId: string,
       hlc: string,
       shape: string,
@@ -40,6 +41,7 @@ declare module "ioredis" {
       batchTtlSeconds: string,
       streamMaxLen: string,
       batchId: string,
+      vaultQuotaBytes: string,
     ): Result<[
       accepted: number,
       seq: number,
@@ -65,7 +67,7 @@ let sharedClient: Redis | undefined;
 export function redis(): Redis {
   if (!sharedClient) {
     sharedClient = new Redis(REDIS_URL);
-    sharedClient.defineCommand("applyBatch", { numberOfKeys: 6, lua: APPLY_BATCH_LUA });
+    sharedClient.defineCommand("applyBatch", { numberOfKeys: 7, lua: APPLY_BATCH_LUA });
     sharedClient.defineCommand("redeemPairCode", { numberOfKeys: 2, lua: REDEEM_PAIR_CODE_LUA });
     sharedClient.defineCommand("manageShardLease", { numberOfKeys: 1, lua: MANAGE_SHARD_LEASE_LUA });
   }

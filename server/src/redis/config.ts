@@ -22,6 +22,16 @@ export const STREAM_MAXLEN = 5_000;
 // (safe: patch application is itself idempotent per-field via HLC).
 export const BATCH_DEDUP_TTL_SECONDS = 24 * 60 * 60;
 
+// Counts the exact UTF-8 bytes of serialized record values in the vault's
+// Redis store hash. This is intentionally twice the browser's 4 MiB safety
+// ceiling, leaving room for builder metadata while placing a server-enforced
+// bound on modified clients and direct API callers.
+const configuredVaultQuotaBytes = Number(process.env.VAULT_QUOTA_BYTES ?? 8 * 1024 * 1024);
+if (!Number.isInteger(configuredVaultQuotaBytes) || configuredVaultQuotaBytes < 1) {
+  throw new Error("VAULT_QUOTA_BYTES must be a positive integer.");
+}
+export const VAULT_QUOTA_BYTES = configuredVaultQuotaBytes;
+
 // POST /sync/vaults has no other gate (no accounts - anyone who can reach
 // the server can create a vault), so it's rate-limited per client IP as
 // basic abuse/storage-exhaustion mitigation (remote-sync-architecture.md

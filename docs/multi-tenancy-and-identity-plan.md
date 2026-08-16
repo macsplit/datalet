@@ -1,7 +1,7 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) and Track A1 through A3 were
-completed 2026-08-17; A4 through A7 have not started. Written 2026-08-16 from
+**Status: active.** Track B (B1 through B6) and Track A1 through A4 were
+completed 2026-08-17; A5 through A7 have not started. Written 2026-08-16 from
 the code as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
@@ -180,7 +180,7 @@ identifiers only. Unit coverage fixes the complete mapping and rejects hostile
 input; the Neo4j integration test creates 50 unique schema types across 10
 vaults, proves label growth is bounded, and reads every original type back.
 
-### A4. Per-vault storage quota — **medium**
+### A4. Per-vault storage quota — **completed 2026-08-17**
 
 **Problem.** `MAX_BODY_BYTES` (`server/src/httpServer.ts:30`) caps a single
 request at 2 MB; nothing caps a vault's total size. The 4 MB ceiling is a
@@ -205,6 +205,20 @@ atomic, which is `server/src/redis/applyBatch.lua`:
 partially rejected batches and surfaces the server's reason in a visible
 warning. A quota rejection reuses that path with a new reason string; no new
 client mechanism is needed.
+
+**Landed detail.** `applyBatch.lua` now projects the final serialized record
+values for every touched subject, compares their exact UTF-8 byte delta with
+`VAULT_QUOTA_BYTES`, and commits `vault:<id>:bytes` in the same Redis script as
+the store, sequence, stream, tombstone and dedupe changes. New vaults start at
+zero; an existing vault with no counter is measured once from its store hash.
+A vault already above a newly lowered quota may still shrink progressively but
+cannot grow. Field-HLC writes were moved out of the decision pass into the
+commit pass, so a quota refusal leaves no hidden supersession state. The
+default is 8 MiB. Integration coverage proves under-limit writes, whole-batch
+refusal with every Redis surface unchanged, byte credit on deletion, and
+exactly one winner between concurrent individually-fitting batches whose sum
+would exceed the quota. Playwright proves the existing discarded-changes
+warning carries the quota reason.
 
 ### A5. Per-vault write rate limit — **small, with one sharp edge**
 

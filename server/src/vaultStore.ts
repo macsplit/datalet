@@ -22,7 +22,12 @@
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { redis } from "./redis/client.js";
 import { watchVaultStream } from "./redis/streamWatcher.js";
-import { BATCH_DEDUP_TTL_SECONDS, PAIR_CODE_TTL_SECONDS, STREAM_MAXLEN } from "./redis/config.js";
+import {
+  BATCH_DEDUP_TTL_SECONDS,
+  PAIR_CODE_TTL_SECONDS,
+  STREAM_MAXLEN,
+  VAULT_QUOTA_BYTES,
+} from "./redis/config.js";
 import { generatePairCode, normalizePairCode } from "./pairCode.js";
 import {
   deleteVaultMeta,
@@ -61,6 +66,7 @@ const metaKey = (vaultId: string) => `vault:${vaultId}:meta`;
 const seqKey = (vaultId: string) => `vault:${vaultId}:seq`;
 const storeKey = (vaultId: string) => `vault:${vaultId}:store`;
 const hlcKey = (vaultId: string) => `vault:${vaultId}:hlc`;
+const bytesKey = (vaultId: string) => `vault:${vaultId}:bytes`;
 export const streamKey = (vaultId: string) => `vault:${vaultId}:stream`;
 const batchKey = (vaultId: string, batchId: string) => `vault:${vaultId}:batch:${batchId}`;
 const tombstoneKey = (vaultId: string) => `vault:${vaultId}:tombstones`;
@@ -78,11 +84,12 @@ export async function createVault(): Promise<{ vaultId: string; vaultToken: stri
   await upsertVaultMeta({ vaultId, tokenHash, createdAt });
   try {
     await redis().hset(metaKey(vaultId), { token: tokenHash, createdAt });
+    await redis().set(bytesKey(vaultId), "0");
     // Lets the materializer (materializer.ts) discover this vault's stream
     // without scanning Redis's whole keyspace - see its doc comment.
     await redis().sadd(VAULTS_INDEX_KEY, vaultId);
   } catch (error) {
-    await redis().del(metaKey(vaultId)).catch(() => undefined);
+    await redis().del(metaKey(vaultId), bytesKey(vaultId)).catch(() => undefined);
     await redis().srem(VAULTS_INDEX_KEY, vaultId).catch(() => undefined);
     await deleteVaultMeta(vaultId).catch(() => undefined);
     throw error;
@@ -225,7 +232,14 @@ export async function mirrorVaultMetadataToNeo4j(): Promise<number> {
   return mirrored;
 }
 
-export async function applyBatch(vaultId: string, input: PatchBatchInput): Promise<ApplyResult> {
+export async function applyBatch(
+  vaultId: string,
+  input: PatchBatchInput,
+  vaultQuotaBytes = VAULT_QUOTA_BYTES,
+): Promise<ApplyResult> {
+  if (!Number.isInteger(vaultQuotaBytes) || vaultQuotaBytes < 1) {
+    throw new Error("vault quota must be a positive integer");
+  }
   const [accepted, seq, reason, acceptedCount, submittedCount] = await redis().applyBatch(
     seqKey(vaultId),
     storeKey(vaultId),
@@ -233,6 +247,7 @@ export async function applyBatch(vaultId: string, input: PatchBatchInput): Promi
     streamKey(vaultId),
     batchKey(vaultId, input.batchId),
     tombstoneKey(vaultId),
+    bytesKey(vaultId),
     input.nodeId,
     input.hlc,
     input.shape,
@@ -240,6 +255,7 @@ export async function applyBatch(vaultId: string, input: PatchBatchInput): Promi
     String(BATCH_DEDUP_TTL_SECONDS),
     String(STREAM_MAXLEN),
     input.batchId,
+    String(vaultQuotaBytes),
   );
   return accepted === 1
     ? {

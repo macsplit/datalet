@@ -60,6 +60,26 @@ test("an all-rejected sync batch raises the server reason", async ({ page }) => 
   await expect(warning).toContainText("superseded by a newer edit to the same field");
 });
 
+test("a vault quota refusal reaches the discarded-changes warning", async ({ page }) => {
+  await seedPendingSync(page, 2);
+  await page.route("**/sync/patches?*", (route) => route.fulfill({
+    status: 409,
+    contentType: "application/json",
+    body: JSON.stringify({
+      accepted: false,
+      acceptedCount: 0,
+      submittedCount: 2,
+      reason: "vault storage quota exceeded",
+    }),
+  }));
+  await page.goto("/");
+
+  const warning = page.getByRole("alert");
+  await expect(warning).toContainText("Remote sync discarded changes");
+  await expect(warning).toContainText("2 of 2 local changes were not applied");
+  await expect(warning).toContainText("vault storage quota exceeded");
+});
+
 test("a partially accepted sync batch reports its dropped count", async ({ page }) => {
   await seedPendingSync(page, 3);
   await page.route("**/sync/patches?*", (route) => route.fulfill({

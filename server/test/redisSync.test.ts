@@ -208,3 +208,134 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
   assert.equal(await readRecord(vaultId, expiredSubject), undefined);
   assert.equal(await redis().hget(`vault:${vaultId}:tombstones`, expiredSubject), null);
 });
+
+test("vault quota is atomic, credits deletion, and serializes concurrent writers", async (t) => {
+  try {
+    await Promise.all([redis().ping(), neo4jDriver().verifyConnectivity()]);
+    await ensureNeo4jSchema();
+  } catch (error) {
+    if (process.env.REQUIRE_SYNC_INTEGRATION === "1") throw error;
+    t.skip(`Redis/Neo4j unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+
+  const first = await createVault();
+  createdVaults.push(first.vaultId);
+  const subject = "quota-subject";
+  const initial = await applyBatch(first.vaultId, {
+    nodeId: "quota-node",
+    batchId: "quota-initial",
+    hlc: "000000000010000-000000-quota-node",
+    shape: "quota-shape",
+    patches: [
+      { op: "add", path: `/${subject}` },
+      { op: "add", path: `/${subject}/@id`, value: subject },
+      { op: "add", path: `/${subject}/@graph`, value: first.vaultId },
+      { op: "add", path: `/${subject}/value`, value: "under quota" },
+    ],
+  }, 1_024);
+  assert.equal(initial.accepted, true);
+  const initialBytes = Number(await redis().get(`vault:${first.vaultId}:bytes`));
+  assert.ok(initialBytes > 0 && initialBytes < 1_024);
+
+  const underQuota = await applyBatch(first.vaultId, {
+    nodeId: "quota-node",
+    batchId: "quota-under",
+    hlc: "000000000011000-000000-quota-node",
+    shape: "quota-shape",
+    patches: [{ op: "add", path: `/${subject}/small`, value: "still fits 🌍" }],
+  }, initialBytes + 100);
+  assert.equal(underQuota.accepted, true);
+
+  const beforeBytes = Number(await redis().get(`vault:${first.vaultId}:bytes`));
+  const exactStoreBytes = (await redis().hvals(`vault:${first.vaultId}:store`))
+    .reduce((total, raw) => total + Buffer.byteLength(raw), 0);
+  assert.equal(beforeBytes, exactStoreBytes);
+  await redis().del(`vault:${first.vaultId}:bytes`);
+  const backfilled = await applyBatch(first.vaultId, {
+    nodeId: "quota-node",
+    batchId: "quota-backfill",
+    hlc: "000000000011500-000000-quota-node",
+    shape: "quota-shape",
+    patches: [{ op: "add", path: `/${subject}/backfilled`, value: true }],
+  }, beforeBytes + 100);
+  assert.equal(backfilled.accepted, true);
+
+  const projectedBytes = Number(await redis().get(`vault:${first.vaultId}:bytes`));
+  assert.equal(
+    projectedBytes,
+    (await redis().hvals(`vault:${first.vaultId}:store`))
+      .reduce((total, raw) => total + Buffer.byteLength(raw), 0),
+  );
+  const beforeStore = await redis().hgetall(`vault:${first.vaultId}:store`);
+  const beforeHlc = await redis().hgetall(`vault:${first.vaultId}:hlc`);
+  const beforeSeq = Number(await redis().get(`vault:${first.vaultId}:seq`));
+  const beforeStreamLength = await redis().xlen(streamKey(first.vaultId));
+  const crossing = await applyBatch(first.vaultId, {
+    nodeId: "quota-node",
+    batchId: "quota-crossing",
+    hlc: "000000000012000-000000-quota-node",
+    shape: "quota-shape",
+    patches: [
+      { op: "add", path: `/${subject}/large-a`, value: "a".repeat(200) },
+      { op: "add", path: `/${subject}/large-b`, value: "b".repeat(200) },
+    ],
+  }, projectedBytes + 10);
+  assert.equal(crossing.accepted, false);
+  assert.equal(crossing.acceptedCount, 0);
+  assert.equal(crossing.submittedCount, 2);
+  assert.match(crossing.reason, /vault storage quota exceeded/);
+  assert.deepEqual(await redis().hgetall(`vault:${first.vaultId}:store`), beforeStore);
+  assert.deepEqual(await redis().hgetall(`vault:${first.vaultId}:hlc`), beforeHlc);
+  assert.equal(Number(await redis().get(`vault:${first.vaultId}:bytes`)), projectedBytes);
+  assert.equal(Number(await redis().get(`vault:${first.vaultId}:seq`)), beforeSeq);
+  assert.equal(await redis().xlen(streamKey(first.vaultId)), beforeStreamLength);
+  assert.equal(await redis().exists(`vault:${first.vaultId}:batch:quota-crossing`), 0);
+
+  const removed = await applyBatch(first.vaultId, {
+    nodeId: "quota-node",
+    batchId: "quota-delete",
+    hlc: "000000000013000-000000-quota-node",
+    shape: "quota-shape",
+    patches: [{ op: "remove", path: `/${subject}` }],
+  }, 1);
+  assert.equal(removed.accepted, true);
+  assert.equal(await redis().hlen(`vault:${first.vaultId}:store`), 0);
+  assert.equal(Number(await redis().get(`vault:${first.vaultId}:bytes`)), 0);
+
+  const concurrent = await createVault();
+  createdVaults.push(concurrent.vaultId);
+  const payload = "x".repeat(220);
+  const makeBatch = (suffix: string) => ({
+    nodeId: `quota-${suffix}`,
+    batchId: `quota-concurrent-${suffix}`,
+    hlc: `000000000020000-000000-quota-${suffix}`,
+    shape: "quota-shape",
+    patches: [
+      { op: "add" as const, path: `/subject-${suffix}` },
+      { op: "add" as const, path: `/subject-${suffix}/@id`, value: `subject-${suffix}` },
+      { op: "add" as const, path: `/subject-${suffix}/@graph`, value: concurrent.vaultId },
+      { op: "add" as const, path: `/subject-${suffix}/value`, value: payload },
+    ],
+  });
+  const recordBytes = ["a", "b"].map((suffix) => Buffer.byteLength(JSON.stringify({
+    "@id": `subject-${suffix}`,
+    "@graph": concurrent.vaultId,
+    value: payload,
+  })));
+  const concurrentQuota = Math.max(...recordBytes) + 10;
+  assert.ok(recordBytes.every((bytes) => bytes <= concurrentQuota));
+  assert.ok(recordBytes[0] + recordBytes[1] > concurrentQuota);
+
+  const concurrentResults = await Promise.all([
+    applyBatch(concurrent.vaultId, makeBatch("a"), concurrentQuota),
+    applyBatch(concurrent.vaultId, makeBatch("b"), concurrentQuota),
+  ]);
+  assert.equal(concurrentResults.filter((result) => result.accepted).length, 1);
+  const refused = concurrentResults.find((result) => !result.accepted);
+  assert.match(refused?.reason ?? "", /vault storage quota exceeded/);
+  assert.equal(await redis().hlen(`vault:${concurrent.vaultId}:store`), 1);
+  assert.equal(await redis().xlen(streamKey(concurrent.vaultId)), 1);
+  assert.equal(Number(await redis().get(`vault:${concurrent.vaultId}:seq`)), 1);
+  assert.ok(Number(await redis().get(`vault:${concurrent.vaultId}:bytes`)) <= concurrentQuota);
+});

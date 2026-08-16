@@ -82,6 +82,7 @@ services:
       NEO4J_URL: "bolt://neo4j:7687"
       NEO4J_USER: "neo4j"
       NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      VAULT_QUOTA_BYTES: "${VAULT_QUOTA_BYTES:-8388608}"
       PORT: "3000"
       NODE_ENV: "production"
     networks: [backend]
@@ -229,6 +230,7 @@ the `vaultToken` bearer secret (architecture doc §9).
 NEO4J_PASSWORD=change-me-to-a-long-random-value
 SYNC_DOMAIN=sync.example.org
 MATERIALIZER_SHARD_COUNT=1
+VAULT_QUOTA_BYTES=8388608
 ```
 
 Copy to `.env`, fill in real values, never commit `.env` (already covered
@@ -502,6 +504,7 @@ them; the cleanup command filters those inert tokens out.
 | `VAULT_CREATE_RATE_LIMIT` / `VAULT_CREATE_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/vaults` abuse limit (default 10 per hour per client IP — see architecture doc §9); trusts `X-Forwarded-For`, so only meaningful behind a reverse proxy that sets it truthfully |
 | `PAIR_CODE_TTL_SECONDS` | sync-server | temporary pair-code lifetime (default 600 seconds) |
 | `PAIR_REDEEM_RATE_LIMIT` / `PAIR_REDEEM_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/pair-redeem` guessing limit (default 10 per minute per client IP; the same trusted-proxy requirement applies) |
+| `VAULT_QUOTA_BYTES` | sync-server | maximum exact serialized bytes in one vault's Redis record store (default 8388608 / 8 MiB); lowering it below current usage blocks growth but still permits deletions |
 | `MATERIALIZER_STREAMS_PER_CONNECTION` | materializer | maximum vault streams multiplexed into one blocking Redis read (default 64); lower it to reduce cross-vault head-of-line latency at the cost of more connections |
 | `MATERIALIZER_SHARD_COUNT` / `MATERIALIZER_SHARD_INDEX` | materializer | common worker count and this process's zero-based index (defaults 1 and 0); every index must run exactly once |
 | `MATERIALIZER_SHARD_LEASE_SECONDS` / `MATERIALIZER_SHARD_HEARTBEAT_MS` | materializer | duplicate-index lease TTL and refresh interval (defaults 15 seconds and 5000 ms; heartbeat must be shorter than TTL) |
