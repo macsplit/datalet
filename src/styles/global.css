@@ -354,6 +354,23 @@ a {
     flex: 1 0 min(360px, 100%);
 }
 
+.pairing-qr {
+    width: min(18rem, 100%);
+    height: auto;
+    align-self: center;
+    border-radius: var(--radius-md);
+}
+
+.pairing-scanner {
+    gap: var(--space-3);
+}
+
+.pairing-video {
+    width: min(28rem, 100%);
+    border-radius: var(--radius-md);
+    background: #000;
+}
+
 /* ---------- Panel / card primitives ---------- */
 
 .panel {

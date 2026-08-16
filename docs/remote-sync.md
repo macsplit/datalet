@@ -18,6 +18,9 @@ built when, and the defects found doing it, see
 - Pairing a **sync vault** with one checksummed `LG1` code makes a browser also
   push/pull patches to a shared server. The client decodes it locally to the
   vault id and secret token the unchanged API uses.
+- A connected device displays that code as a QR. A joining device can scan it
+  when the browser provides `BarcodeDetector` over HTTPS or localhost; the
+  manual code field remains available everywhere, including plain-HTTP LANs.
 - Pairing switches the active graph; it does not automatically migrate an
   existing unpaired graph. Export before pairing and import afterward to seed
   a new vault with existing local data.

@@ -116,7 +116,9 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   await page.goto("/settings");
   await page.getByRole("button", { name: "Create sync vault" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Pairing QR code" })).toHaveCount(0);
   await page.getByRole("button", { name: "Show" }).click();
+  await expect(page.getByRole("img", { name: "Pairing QR code" })).toBeVisible();
   await expect(page.getByLabel("Pairing code")).toHaveValue(/^LG1-/);
   await expect.poll(() => submitted).toBeTruthy();
 
@@ -124,6 +126,20 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   expect(submitted?.nodeId).toMatch(uuid);
   expect(submitted?.batchId).toMatch(uuid);
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("manual pairing remains available when QR scanning is unsupported", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis, "BarcodeDetector", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
+  await page.goto("/settings");
+
+  await expect(page.getByLabel("Pairing code")).toBeVisible();
+  await expect(page.getByText(/QR scanning needs HTTPS or localhost/i)).toBeVisible();
 });
 
 test("joining primes remote settings before reloading into the vault", async ({ page }) => {

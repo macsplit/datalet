@@ -1,6 +1,6 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** B1 through B3 were completed 2026-08-16; Track A and the
+**Status: active.** B1 through B4 were completed 2026-08-16; Track A and the
 remaining Track B items have not started. Written 2026-08-16 from the code as
 it stood at `b707800` and kept current as work lands.
 
@@ -299,7 +299,7 @@ after `LG1`. The primary create/join/rotate UI uses that single code; the old
 two fields remain in a collapsed legacy fallback. The full-stack smoke now
 pairs its second real browser through the LG1 code.
 
-### B4. QR pairing — **medium**
+### B4. QR pairing — **completed 2026-08-16**
 
 `remote-sync-architecture.md` §9 already says the token is shown "to copy/scan
 onto each additional device". Only the copy half was built. In the common case
@@ -316,6 +316,13 @@ see the comment in `src/utils/randomId.ts`. So *displaying* a QR works
 everywhere; *scanning* one works only over HTTPS or on localhost. The manual
 field must therefore stay, and the UI should say why scanning is unavailable
 rather than hiding the control.
+
+**Landed detail.** The connected-vault view renders the exact `LG1` value as
+a dependency-free Version 4-L QR SVG. The join view offers camera scanning
+only in a secure context when `BarcodeDetector` and `getUserMedia` are both
+available; otherwise it explains the HTTPS/localhost constraint and leaves the
+manual pairing field visible. The QR test independently reads the matrix,
+validates all Reed-Solomon syndromes, and reconstructs the original code.
 
 ### B5. Short-lived pairing exchange code — **medium**
 

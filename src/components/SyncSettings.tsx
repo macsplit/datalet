@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
 import { decodePairingCode, encodePairingCode } from "../utils/pairingCode";
+import { PairingQr, PairingScanner } from "./PairingQr";
 
 /**
  * Pairing/unpairing switches which graph the whole app reads from
@@ -170,6 +171,7 @@ export function SyncSettings() {
             {copied ? "Copied." : "Anyone with this code can read and write this vault — share it only with your own devices."}
           </p>
         </div>
+        {showPairingCode && <PairingQr value={pairingCode} />}
         {rotateError && <p className="helper-text danger-text">{rotateError}</p>}
         <div className="layout-row">
           <button type="button" className="secondary-btn" onClick={handleRotate} disabled={rotating}>
@@ -225,6 +227,7 @@ export function SyncSettings() {
         >
           {joining ? "Joining…" : "Join vault"}
         </button>
+        <PairingScanner onCode={setJoinCode} />
         <details>
           <summary>Use legacy vault ID and token</summary>
           <div className="section-stack">

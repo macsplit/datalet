@@ -309,7 +309,10 @@ single-character substitutions and adjacent transpositions before any network
 request. Decoding is case-insensitive and accepts Crockford's `0/O` and
 `1/I/L` aliases. Existing installations can still join through the collapsed
 legacy two-field form; the HTTP API and stored sync configuration are
-unchanged.
+unchanged. The same code is rendered as an in-app QR with no third-party
+service or runtime dependency. Camera scanning uses the browser's
+`BarcodeDetector` only where it is available in a secure context; plain-HTTP
+LAN clients retain the manual field and receive an explanation instead.
 
 ![System topology](diagrams/topology.png)
 

@@ -436,8 +436,10 @@ e.g. `src/utils/remoteSyncEngine.ts`, that:
 4. Pairing UI: the Settings page calls `POST /sync/vaults`, then encodes the
    returned UUID and token as one versioned, checksummed `LG1` Crockford-base32
    string. Joining decodes that string locally before using the unchanged API;
-   a collapsed legacy vaultId + token form remains available. QR display and
-   scanning are a later presentation layer over the same LG1 value.
+   a collapsed legacy vaultId + token form remains available. The client also
+   renders that LG1 value as a dependency-free QR and scans it with
+   `BarcodeDetector` when the browser is in a secure context. The manual field
+   remains the fallback on plain-HTTP LAN origins and unsupported browsers.
 
 ## 9. Security posture — decided: shared vault-token bearer scheme
 
