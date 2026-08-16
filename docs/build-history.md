@@ -35,6 +35,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 11 | Durable vault metadata, stream tickets, automated regression suites in CI. |
 | 12 | Multi-tenant A1: materializer stream multiplexing, multi-stream pending recovery, and a reusable 200-vault connection/lag/memory harness. |
 | 13 | Multi-tenant A2: deterministic vault sharding, stable per-shard consumers, Redis lease/heartbeat conflict detection, and two-shard integration coverage. |
+| 14 | Multi-tenant A3: a closed Neo4j record-label set, exact indexed type preservation, a dry-run-first legacy-label cleanup, and 50-schema/10-vault coverage. |
 
 ---
 

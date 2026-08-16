@@ -34,6 +34,7 @@
 
 import type { Session } from "neo4j-driver";
 import { neo4jSession } from "./client.js";
+import { BOUNDED_RECORD_TYPE_LABELS, sanitizeLabel } from "./labels.js";
 import type { OrmRecord, Store } from "../patchApply.js";
 
 // Internal Neo4j property names, reserved so a user-defined schema property
@@ -97,19 +98,6 @@ export async function deleteVaultMeta(vaultId: string): Promise<void> {
 }
 
 /**
- * Cypher has no parameterized labels, so a dynamic per-type label has to be
- * spliced into the query text. Safe here only because this strips the
- * input to a whitelisted [A-Za-z0-9_] identifier first - never splice a
- * value into Cypher text without an equivalent whitelist.
- */
-function sanitizeLabel(typeIri: string | undefined): string {
-  if (!typeIri) return "Type";
-  const lastSegment = typeIri.split(/[/:#]/).filter(Boolean).pop() ?? typeIri;
-  const cleaned = lastSegment.replace(/[^A-Za-z0-9_]/g, "").slice(0, 100);
-  return cleaned.length > 0 ? `Type_${cleaned}` : "Type";
-}
-
-/**
  * Container-creation placeholders (an empty plain object standing in for a
  * not-yet-populated set field - see patchApply.ts's applyPatchesToStore)
  * are the only non-primitive, non-array value this app's records ever end
@@ -167,10 +155,12 @@ export async function upsertRecord(
 ): Promise<void> {
   const s = session ?? neo4jSession();
   const label = sanitizeLabel(record["@type"] as string | undefined);
+  const boundedLabels = [...BOUNDED_RECORD_TYPE_LABELS].map((name) => `\`${name}\``).join(":");
   try {
     await s.run(
       `MERGE (r:Record {graph: $graph, id: $id})
        SET r = $props
+       REMOVE r:${boundedLabels}
        SET r:\`${label}\`
        REMOVE r:Deleted`,
       { graph, id: subjectId, props: toNeo4jProps(graph, subjectId, record) },

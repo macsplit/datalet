@@ -16,6 +16,7 @@
     "test:server": "tsx --test server/test/**/*.test.ts",
     "test:smoke:sync": "tsx --env-file-if-exists=.env.local server/test/fullStackSmoke.ts",
     "test:multi-tenant": "tsx --env-file-if-exists=.env.local server/test/multiTenant.ts",
+    "cleanup:neo4j-labels": "tsx --env-file-if-exists=.env.local server/src/cleanupNeo4jLabels.ts",
     "build:orm": "rdf-orm build --input ./src/shapes/shex --output ./src/shapes/orm",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:materializer": "ROLE=materializer tsx watch server/src/index.ts",

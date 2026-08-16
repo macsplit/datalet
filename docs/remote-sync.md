@@ -94,9 +94,10 @@ built when, and the defects found doing it, see
   (current record per subject), `hlc` (per-field last-write timestamps),
   `stream` (the ordered patch log), `tombstones` (deleted-subject →
   deletion timestamp). A global `vaults:index` set lists all vault ids.
-- **Neo4j**: one `:Record` node per `(graph, subject)`, carrying a dynamic
-  label derived from the record's type (e.g. `Type_Task`). A deleted
-  record keeps its node with a `:Deleted` label instead of being removed.
+- **Neo4j**: one `:Record` node per `(graph, subject)`. Six metadata types keep
+  shared labels and every user-defined type shares `Type_User`; the exact type
+  remains in the indexed `r.type` property. A deleted record keeps its node
+  with a `:Deleted` label instead of being removed.
 
 ## Endpoints
 

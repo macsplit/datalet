@@ -1,8 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) and Track A1/A2 were completed
-2026-08-17; A3 through A7 have not started. Written 2026-08-16 from the code
-as it stood at `b707800` and kept current as work lands.
+**Status: active.** Track B (B1 through B6) and Track A1 through A3 were
+completed 2026-08-17; A4 through A7 have not started. Written 2026-08-16 from
+the code as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -139,7 +139,7 @@ shard. The deployment guide documents distinct-index rollout and the required
 pending-work drain before changing shard count or upgrading from the old
 single `materializer-1` consumer.
 
-### A3. Bound Neo4j label cardinality — **small**
+### A3. Bound Neo4j label cardinality — **completed 2026-08-17**
 
 **Problem.** `sanitizeLabel()` (`server/src/neo4j/materialize.ts:105`) derives
 a label from the last segment of the type IRI. User records carry
@@ -166,6 +166,19 @@ harmless (extra labels on nodes that also get `Type_User`), so the default is
 to stop minting new ones and leave old ones. Ship an *optional* cleanup script
 that enumerates `CALL db.labels()`, filters `Type_`-prefixed labels not in the
 whitelist, and removes each via the same spliced-whitelist mechanism.
+
+**Landed detail.** Record type labels are now a closed seven-label set: the six
+metadata labels above plus `Type_User` for every other or absent type. Exact
+type IRIs remain unchanged in `r.type`, which continues to back the
+`record_graph_type` index and round-trips through snapshots. Upsert removes a
+node's previous bounded type label before setting the current one, while
+legacy per-schema labels remain harmless until explicitly cleaned. The
+`pnpm cleanup:neo4j-labels` command enumerates Neo4j labels but reports only
+safe stale `Type_*` labels still attached to `:Record` nodes; it is a dry run
+unless passed `--apply`. Its interpolation accepts exact `[A-Za-z0-9_]`
+identifiers only. Unit coverage fixes the complete mapping and rejects hostile
+input; the Neo4j integration test creates 50 unique schema types across 10
+vaults, proves label growth is bounded, and reads every original type back.
 
 ### A4. Per-vault storage quota — **medium**
 

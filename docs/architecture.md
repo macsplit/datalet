@@ -451,11 +451,13 @@ duplicate index fails startup loudly; loss of an acquired lease stops that
 materializer so it fails closed instead of continuing as a second owner.
 
 Neo4j holds one `:Record` node per `(graph, subjectId)`, where `graph` is the
-vault id, carrying a dynamic label derived from the record's type — the type's
-last identifier segment, whitelisted to `[A-Za-z0-9_]` and prefixed, so
-`did:ng:z:Tab` becomes `Type_Tab`. Cypher cannot parameterize a label, so that
-whitelist is what makes splicing it into the query text safe; never do the
-equivalent without one. The record's own `@id`/`@graph` are stored separately as
+vault id. Its type label comes from a closed set: `Type_Tab`, `Type_Block`,
+`Type_Widget`, `Type_SchemaDef`, `Type_PropertyDef`, `Type_Settings`, or
+`Type_User` for every other type. The exact IRI stays in `r.type`; this property,
+not the label, backs type queries and the `(graph, type)` index. Cypher cannot
+parameterize labels, so even these application-owned names pass through the
+`[A-Za-z0-9_]` whitelist before interpolation; never splice unchecked text into
+a query. The record's own `@id`/`@graph` are stored separately as
 `recordId`/`recordGraph` so they round-trip even when they differ from the
 lookup identity. Upserts use `SET r = $props` (full replace, not `+=`) so a
 removed property actually disappears. A deletion keeps the node and adds
@@ -465,6 +467,8 @@ that never existed, which retention purging needs.
 Vault identity is mirrored here too (`:VaultMeta`, token hash only, never the
 plaintext). If Redis loses a vault's metadata, the next authenticated request
 reconstructs the Redis entry and the vault index from Neo4j before serving.
+Legacy deployments may retain harmless per-schema labels on existing nodes;
+the optional dry-run-first cleanup is documented in the deployment guide.
 
 Tombstones are purged from both stores after 30 days by a sweep on the
 materializer. Neo4j decides what has expired and Redis mirrors the decision, so

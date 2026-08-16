@@ -468,6 +468,29 @@ Ship `/var/backups/neo4j` off-box on the same schedule (rsync/rclone to
 remote storage) — a same-disk backup only survives Neo4j-level corruption,
 not disk/host loss.
 
+### 2.6 Optional legacy Neo4j label cleanup
+
+New materialization uses only six shared metadata type labels plus
+`Type_User`. Deployments that previously materialized user schemas may still
+have harmless per-schema `Type_*` labels attached to records. Inspect them
+without changing data:
+
+```bash
+# source/native checkout (loads .env.local when present)
+pnpm cleanup:neo4j-labels
+
+# built Docker image
+docker compose run --rm materializer node server-dist/cleanupNeo4jLabels.js
+```
+
+The JSON output lists only stale, safely named labels that are still attached
+to `:Record` nodes and the number of affected nodes. Review it, back up Neo4j,
+then opt in to removal with `--apply` (append it to either command). The script
+removes labels only; it does not change records or their exact indexed `type`
+property. Neo4j may retain unused label tokens internally after removal, so a
+raw `CALL db.labels()` can still show historical names even when no node carries
+them; the cleanup command filters those inert tokens out.
+
 ## 3. Configuration reference
 
 | Variable | Where | Purpose |

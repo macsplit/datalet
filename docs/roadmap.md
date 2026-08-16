@@ -33,10 +33,11 @@ plans two pieces of work identified after this roadmap was written:
 - **Multi-tenant hosting** — carrying thousands of separate vaults on one
   backend deployment. This is *not* the multi-user work listed as out of scope
   below: a vault stays all-or-nothing and single-world, and the vault-token
-  scheme is unchanged. A1 and A2 are complete: the materializer multiplexes 64
-  vault streams per blocking connection and deterministically shards vaults
-  across leased worker indexes. Remaining work includes bounding Neo4j labels,
-  per-vault quota/write limits, lifecycle, and observability.
+  scheme is unchanged. A1 through A3 are complete: the materializer multiplexes
+  64 vault streams per blocking connection, deterministically shards vaults
+  across leased worker indexes, and keeps Neo4j record labels bounded across
+  user schemas. Remaining work includes per-vault quota/write limits,
+  lifecycle, and observability.
 - **User-facing identity** — resolving `did:ng:` ids to labels in the four
   places they leak (reference sort, reader search, export, print), and
   replacing the two-field pairing credential with one checksummed string plus
