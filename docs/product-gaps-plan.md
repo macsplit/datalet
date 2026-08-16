@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–8 and 9a — reader tools, fields, offline shell, sync UX, undo, builder coverage |
+| **Done** | Steps 1–8, 9a and 9b — reader tools, fields, offline shell, sync UX, undo, builder coverage |
 | **Next** | Step 10 — deferred multi-hour endurance run |
 | **Decision** | Step 9 — file/image fields deferred until blob storage is designed |
 
@@ -439,6 +439,62 @@ as before, and resynchronize when the record prop supplies a genuinely newer
 value. Persistence, cross-tab broadcast, and remote sync remain unchanged.
 The behavior is covered by a Playwright regression that verifies both the live
 input and the per-record persisted bytes.
+
+## 9b. Reported after step 9a: undo granularity and two defects behind it — DONE
+
+Reported from use, not from the evaluation. Three findings, one visible and two
+underneath it.
+
+**Symptom 1 — an undo per keystroke.** Every character typed into a field is a
+separate write, so each one became its own undo entry. Reversing a mistyped
+word meant pressing undo once per letter.
+
+**Resolution.** A run of writes to the same single scalar property coalesces
+into one undo entry: the entry already on the stack restores the value from
+before the run began, which is what undoing an edit means, so a continuing run
+only widens that entry's origin shapes. A gap longer than
+`UNDO_COALESCE_MS` (1.2 s), a different field, or an undo itself ends the run.
+Set-valued properties are excluded — each checkbox in a multi-select is its own
+deliberate action, unlike the characters of a word.
+
+**Symptom 2 — undo raised "Remote sync discarded changes: 1 of 2 local changes
+were not applied: superseded by a newer edit to the same field."**
+
+**Cause.** Genuine server-side data loss, not a spurious warning. An undo
+restores a field by removing it and re-adding the previous value in one batch.
+Every patch in a batch carries the batch's single HLC, and `applyBatch.lua`
+tested each one with a strict `prevHlc < hlc`, so the removal stored the HLC
+and the re-add that followed it failed against the HLC its own batch had just
+written. The vault kept the deletion and dropped the restore: an undo synced to
+another device as "field cleared". Confirmed by a failing integration
+assertion before the fix (`acceptedCount` 1 of 2) and green after.
+
+**Resolution.** Patches within one batch are an ordered sequence, not
+competitors. The script now records the fields a batch has claimed and lets a
+later patch for the same field proceed, so within a batch the last write wins —
+matching how the same list applies locally and in `patchApply.ts`.
+
+**Symptom 3 — editing a field again after undoing it froze the tab.** Found
+while writing the coverage for symptom 1, and pre-existing.
+
+**Cause.** The ORM tears an old shape's signal down well after its replacement
+opens, so two subscriptions over the same records is a routine transient state.
+Both observe the same mutable record branch, so each saw the other's write,
+reported it as a fresh local edit, and rebroadcast it. The exchange never
+settled — the value was already what both sides wanted — and the resulting
+microtask loop starved the event loop. Diagnosed by pausing the hung page over
+CDP and logging subscription lifecycle: two live Books subscriptions under
+different shape revisions, ping-ponging one identical patch indefinitely.
+
+**Resolution.** `graph_orm_update` drops a batch whose net effect the engine has
+already recorded. The comparison is against `undoSnapshotStore`, not `store` —
+ORM signal objects share `store`'s record branches, so a real edit has already
+mutated `store` by the time it is reported and would otherwise look inert. Net
+effect, not patch by patch: an undo's `remove`-then-`add` pair must not have
+only its matching half dropped, which would turn a restore into a deletion.
+
+This does not fix the upstream lifecycle race, which remains tracked; it makes
+the app's write path indifferent to it.
 
 ## 10. Deferred: multi-hour endurance run
 

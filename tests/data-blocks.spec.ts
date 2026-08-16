@@ -427,6 +427,51 @@ test("undo reverts an edit on screen and in persisted bytes", async ({ page }) =
   await expect(undo).toBeDisabled();
 });
 
+test("typing a value is one undo, and a pause starts the next one", async ({ page }) => {
+  await seedSession(page);
+  const records = booksFixture([{ title: "Dune", rating: 5 }]);
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-actions",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 2,
+    widgetType: "did:ng:z:editDeleteActions",
+  });
+  await seedNewFormat(page, records);
+  await page.goto("/");
+
+  const undo = page.getByRole("button", { name: "Undo" });
+  const persistedTitle = () => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.Title,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|book-0` },
+  );
+  await page.getByRole("button", { name: "Edit record" }).click();
+  const title = page.getByLabel("Title");
+
+  // Every keystroke writes to the record. Twelve of them plus the clear are
+  // one editing gesture, so one undo has to take all of them back.
+  await title.fill("");
+  await title.pressSequentially("Dune Messiah");
+  await expect.poll(persistedTitle).toBe("Dune Messiah");
+  await undo.click();
+  await expect.poll(persistedTitle).toBe("Dune");
+  await expect(title).toHaveValue("Dune");
+  await expect(undo).toBeDisabled();
+
+  // A gap longer than the coalescing window means a separate action, so two
+  // edits either side of one stay separately undoable.
+  await title.fill("Children of Dune");
+  await page.waitForTimeout(1_500);
+  await title.fill("God Emperor of Dune");
+  await expect.poll(persistedTitle).toBe("God Emperor of Dune");
+  await undo.click();
+  await expect.poll(persistedTitle).toBe("Children of Dune");
+  await undo.click();
+  await expect.poll(persistedTitle).toBe("Dune");
+  await expect(undo).toBeDisabled();
+});
+
 test("undo is session-local and Ctrl/Cmd+Z removes a newly created record", async ({ page }) => {
   await seedSession(page);
   const records = booksFixture([{ title: "Dune", rating: 5 }]);

@@ -113,7 +113,9 @@ New data blocks receive the standard title, add, edit/delete, and field widgets.
 If a schema later gains fields, **Add missing fields** adds widgets for them.
 
 The navigation bar's **Undo** control (or `Ctrl/Cmd+Z`) reverses recent local
-edits and record creation. Up to 50 actions are kept for the current page
+edits and record creation. A continuous run of typing into one field is a
+single undo rather than one per keystroke; pausing, moving to another field, or
+undoing ends the run. Up to 50 actions are kept for the current page
 session; reloading intentionally starts with an empty undo stack. An undo is a
 new edit, so it persists and follows the same cross-tab and optional remote-sync
 paths as any other change.

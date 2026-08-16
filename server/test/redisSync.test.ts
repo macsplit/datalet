@@ -112,6 +112,28 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
     ],
   }), partial);
 
+  // An undo restores a field by removing it and re-adding the previous
+  // value in one batch. Both patches carry the batch's single hlc, so the
+  // re-add must not be rejected as superseded by the removal ahead of it --
+  // that would leave the vault holding a bare deletion of the field.
+  const undoShaped = await applyBatch(vaultId, {
+    ...initial,
+    batchId: "batch-undo",
+    hlc: "000000000001800-000000-node-a",
+    patches: [
+      { op: "remove", path: `/${subject}/title` },
+      { op: "add", path: `/${subject}/title`, value: "initial" },
+    ],
+  });
+  assert.equal(undoShaped.accepted, true);
+  assert.equal(undoShaped.acceptedCount, 2);
+  assert.equal(undoShaped.submittedCount, 2);
+  assert.equal(undoShaped.reason ?? "", "");
+  // Read Redis directly: snapshot() serves Neo4j, which only catches up once
+  // the materializer has drained the stream, and no materializer runs here.
+  const afterUndo = await redis().hget(`vault:${vaultId}:store`, subject);
+  assert.equal(JSON.parse(afterUndo ?? "{}").title, "initial");
+
   const deleted = await applyBatch(vaultId, {
     ...initial,
     batchId: "batch-delete",
@@ -144,7 +166,7 @@ test("Redis sync path enforces token rotation, idempotency, LWW, and tombstones"
   assert.ok(replay);
   assert.deepEqual(
     replay.map((entry) => entry.batchId),
-    ["batch-initial", "batch-partial", "batch-delete", "batch-fresh-revival"],
+    ["batch-initial", "batch-partial", "batch-undo", "batch-delete", "batch-fresh-revival"],
   );
 
   const durableSubject = "durable-subject";

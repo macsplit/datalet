@@ -42,8 +42,16 @@ function recordKey(id: string): string {
 const recordByteLengths = new Map<string, number>();
 const dirtyIds = new Set<string>();
 const UNDO_LIMIT = 50;
+// A run of edits to one field is one undoable action. Every keystroke in a
+// text input writes to the record, so without this an undo per keystroke is
+// all a reader ever gets. The window is generous enough to span an ordinary
+// typing pause but short enough that a deliberate second action (picking
+// another enum value, toggling a checkbox again) starts its own entry.
+const UNDO_COALESCE_MS = 1_200;
 type UndoEntry = { patches: Patch[]; shapes: string[] };
 const undoStack: UndoEntry[] = [];
+let undoRunTarget: string | undefined;
+let undoRunAt = 0;
 const undoListeners = new Set<() => void>();
 const undoAppliedListeners = new Set<() => void>();
 let undoAppliedRevision = 0;
@@ -454,6 +462,78 @@ function inversePatchesFor(patches: Patch[]): Patch[] {
   });
 }
 
+function sameStoredValue(current: unknown, next: unknown): boolean {
+  if (current === next) return true;
+  if (current === undefined || next === undefined) return false;
+  if (typeof current !== "object" || typeof next !== "object") return false;
+  return JSON.stringify(current) === JSON.stringify(next);
+}
+
+/**
+ * Whether `patch` asks for a value the engine has already recorded.
+ *
+ * Two live subscriptions over the same records is a routine transient state:
+ * the ORM tears an old shape's signal down well after the replacement opens,
+ * and the old signal keeps reporting edits meanwhile. Both of them observe
+ * the same mutable record branch, so each one sees the other's write, reports
+ * it as a fresh local edit, and rebroadcasts it -- an exchange that never
+ * settles because the value is already what both sides want. Ignoring writes
+ * that change nothing ends it after a single hop.
+ *
+ * The comparison is against `undoSnapshotStore`, not `store`: ORM signal
+ * objects share `store`'s record branches, so an edit has already mutated
+ * `store` by the time it is reported here and every real write would look
+ * inert. The shadow copy only moves when the engine itself applies a patch.
+ */
+function isNoOpPatch(patch: Patch): boolean {
+  const key = patchRootKey(patch);
+  if (!key) return false;
+  const record = undoSnapshotStore[key];
+  const parts = patch.path.slice(1).split("/").filter(Boolean).map(decodePathSegment);
+  // A whole-record patch: only a remove of an already-absent record is inert.
+  // Creations are left to omitDuplicateCreations, which knows about replays.
+  if (parts.length === 1) return patch.op === "remove" && record === undefined;
+  if (parts.length !== 2 || record === undefined) return false;
+  const property = parts[1];
+  const current = record[property];
+  if (patch.type === "set" || patch.valType === "set") {
+    if (!Array.isArray(current)) return false;
+    const incoming = Array.isArray(patch.value)
+      ? patch.value
+      : patch.value === undefined
+        ? []
+        : [patch.value];
+    return patch.op === "add"
+      ? incoming.every((value) => current.includes(value))
+      : incoming.every((value) => !current.includes(value));
+  }
+  if (patch.op === "remove") {
+    return !Object.prototype.hasOwnProperty.call(record, property);
+  }
+  return sameStoredValue(current, patch.value);
+}
+
+/**
+ * Whether the batch as a whole would change nothing. Judged on the batch's
+ * net effect rather than patch by patch: an undo sends `remove` then `add`
+ * for one field, and dropping only the half that matches would turn a
+ * restore into a deletion.
+ */
+function batchIsInert(patches: Patch[]): boolean {
+  // Within a batch the last patch for a path wins, exactly as
+  // applyPatchesToStore applies them in order. Set patches accumulate
+  // instead of replacing, so they are judged individually.
+  const net = new Map<string, Patch>();
+  for (const patch of patches) {
+    if (patch.type === "set" || patch.valType === "set") {
+      if (!isNoOpPatch(patch)) return false;
+      continue;
+    }
+    net.set(patch.path, patch);
+  }
+  return [...net.values()].every(isNoOpPatch);
+}
+
 function isAutomaticSingletonCreation(patches: Patch[]): boolean {
   const keys = [...new Set(
     patches.map(patchRootKey).filter((key): key is string => Boolean(key)),
@@ -490,7 +570,47 @@ export function clearUndoDisplayForRecord(key: string) {
   for (const listener of undoAppliedListeners) listener();
 }
 
-function pushUndo(entry: UndoEntry) {
+/**
+ * The single record property a patch batch edits, or `undefined` if the batch
+ * is anything else — a creation or removal, a multi-property write, or a set
+ * field. Set fields are excluded deliberately: each checkbox in a multi-select
+ * is its own deliberate action, unlike the characters of a typed word.
+ */
+function singleFieldTarget(patches: Patch[]): string | undefined {
+  const targets = new Set<string>();
+  for (const patch of patches) {
+    if (patch.type === "set" || patch.valType === "set") return undefined;
+    const key = patchRootKey(patch);
+    if (!key) return undefined;
+    const parts = patch.path.slice(1).split("/").filter(Boolean).map(decodePathSegment);
+    const property = parts[1];
+    if (parts.length !== 2 || !property || property === "@id" || property === "@graph") {
+      return undefined;
+    }
+    targets.add(`${key}|${property}`);
+    if (targets.size > 1) return undefined;
+  }
+  return targets.size === 1 ? [...targets][0] : undefined;
+}
+
+function pushUndo(entry: UndoEntry, target: string | undefined) {
+  const now = Date.now();
+  const continuesRun =
+    target !== undefined &&
+    target === undoRunTarget &&
+    now - undoRunAt < UNDO_COALESCE_MS &&
+    undoStack.length > 0;
+  undoRunTarget = target;
+  undoRunAt = now;
+  if (continuesRun) {
+    // The entry already on top restores the value from before the run began,
+    // which is what undoing the whole edit means. Only its origin shapes need
+    // widening, in case the run crossed a subscription boundary.
+    const top = undoStack[undoStack.length - 1];
+    top.shapes = [...new Set([...top.shapes, ...entry.shapes])];
+    emitUndoChange();
+    return;
+  }
   undoStack.push(entry);
   if (undoStack.length > UNDO_LIMIT) undoStack.shift();
   emitUndoChange();
@@ -523,6 +643,9 @@ export function getCanUndoSnapshot(): boolean {
 }
 
 export function undoLastLocalChange(): boolean {
+  // Whatever run was open is over: the next edit must not merge into the
+  // entry now exposed underneath the one being undone.
+  undoRunTarget = undefined;
   const entry = undoStack.pop();
   if (!entry) return false;
   if (!validPatchBatch(entry.patches, "undo update")) {
@@ -1328,6 +1451,7 @@ async function graph_orm_update(
   }
   patches = omitDuplicateCreations(patches);
   if (patches.length === 0) return;
+  if (batchIsInert(patches)) return;
   const automaticSingletonCreation = isAutomaticSingletonCreation(patches);
   const inversePatches = inversePatchesFor(patches);
   const activeOriginShape = subscriptions.get(subscriptionId)?.shapeType.shape;
@@ -1352,7 +1476,10 @@ async function graph_orm_update(
   }
 
   if (originShapes.size > 0 && inversePatches.length > 0 && !automaticSingletonCreation) {
-    pushUndo({ patches: inversePatches, shapes: [...originShapes] });
+    pushUndo(
+      { patches: inversePatches, shapes: [...originShapes] },
+      singleFieldTarget(patches),
+    );
   }
 
   for (const originShape of originShapes) {

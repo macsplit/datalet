@@ -118,6 +118,15 @@ local touchedSet = {}
 local tombstoneState = {}
 local anyTombstoneRejected = false
 local anySupersededRejected = false
+-- Fields this batch has already claimed. Patches inside one batch are an
+-- ordered sequence, not competitors: they all carry the batch's single hlc,
+-- so once the first one stores that hlc every later patch for the same field
+-- would fail the strict `prevHlc < hlc` test and be dropped as "superseded"
+-- by its own batch. An undo sends exactly that shape -- remove the field,
+-- then add the previous value back -- which would otherwise arrive at the
+-- vault as a bare removal. Within a batch the last patch for a field wins,
+-- matching how the same list applies locally.
+local claimedThisBatch = {}
 local anyMalformedTarget = false
 
 for i = 1, #patches do
@@ -150,8 +159,9 @@ for i = 1, #patches do
       else
         local hkey = subjectId .. ' ' .. propKey
         local prevHlc = redis.call('HGET', hlcKey, hkey)
-        if prevHlc == false or prevHlc < hlc then
+        if prevHlc == false or prevHlc < hlc or claimedThisBatch[hkey] then
           redis.call('HSET', hlcKey, hkey, hlc)
+          claimedThisBatch[hkey] = true
           take = true
         end
       end

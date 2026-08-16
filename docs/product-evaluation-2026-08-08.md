@@ -114,7 +114,7 @@ unit or visual test matrix.
 
 - Conflict resolution is field-level LWW with no shared history or merge UI.
   A bounded page-session undo stack can reverse recent local edits by emitting
-  a fresh write. Fully and partially superseded writes now raise a visible
+  a fresh write, at one entry per editing gesture rather than per keystroke. Fully and partially superseded writes now raise a visible
   warning with the server's reason and dropped-patch count; the winning value
   still converges through SSE without a second rollback path.
 - Recovery from a stale cursor reconciles the snapshot into mounted
