@@ -100,6 +100,13 @@ target id rather than its resolved label. **Records per page** splits the list
 into pages, defaulting to showing everything. A search query lives only in the
 open page — it is neither stored in the graph nor synced.
 
+Every data block also offers **export** and **print**, as icon buttons in its
+header. Both act on the whole filtered and searched result rather than the page
+on screen. Export downloads JSON containing every stored field of those
+records, not only the displayed ones. Print produces a plain black-and-white
+document of the block's heading and a table of its displayed fields, with the
+navigation, search box, pagination, and record controls left off the page.
+
 Data blocks can contain these widgets:
 
 - **Panel title** displays the block heading.

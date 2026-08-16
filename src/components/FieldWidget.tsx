@@ -36,7 +36,7 @@ function dateTimeInputValue(value: unknown): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function displayDate(value: unknown, includeTime: boolean): string {
+export function displayDate(value: unknown, includeTime: boolean): string {
   if (typeof value !== "string" || !value) return "Not set";
   const date = includeTime
     ? new Date(value)

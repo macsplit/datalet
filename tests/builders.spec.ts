@@ -108,8 +108,14 @@ test("creates, renames, reorders, and deletes navigation tabs", async ({ page })
   await expect(names.nth(1)).toHaveValue("Projects");
   await page.reload();
   await expect(page.getByLabel("Tab name").nth(0)).toHaveValue("Archive");
-  const navLabels = await page.locator(".app-nav-links a").allTextContents();
-  expect(navLabels.slice(0, 3)).toEqual(["Home", "Archive", "Projects"]);
+  // Home and Settings are icon links, so their names live on the label
+  // rather than in the text; user tabs in between still read as text.
+  const navLabels = await page
+    .locator(".app-nav-links a")
+    .evaluateAll((links) =>
+      links.map((link) => link.getAttribute("aria-label") ?? link.textContent),
+    );
+  expect(navLabels).toEqual(["Home", "Archive", "Projects", "Settings"]);
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Archive" }).click();

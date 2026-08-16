@@ -11,7 +11,7 @@ import {
   reportRuntimeIssue,
   subscribeRuntimeIssues,
 } from "../utils/runtimeHealth";
-import { CloseIcon } from "./icons";
+import { CloseIcon, ReloadIcon } from "./icons";
 
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
@@ -80,12 +80,20 @@ export function RuntimeIssueBanner() {
         <span>{issue.message}</span>
         {issue.count > 1 && <small>Repeated {issue.count} times</small>}
       </div>
-      <button type="button" className="secondary-btn" onClick={() => location.reload()}>
-        Reload
-      </button>
       <button
         type="button"
         className="icon-btn"
+        aria-label="Reload"
+        title="Reload the page"
+        onClick={() => location.reload()}
+      >
+        <ReloadIcon />
+      </button>
+      <button
+        type="button"
+        // Quiet, now that reload beside it is also a filled icon button:
+        // two identical circles would give no clue which one acts.
+        className="icon-btn icon-btn-quiet"
         aria-label="Dismiss error"
         title="Dismiss error"
         onClick={() => dismissRuntimeIssue(issue.id)}

@@ -28,6 +28,7 @@ import { useTabs } from "./hooks/useTabs";
 import { RuntimeIssueBanner } from "./components/RuntimeSafety";
 import { MetaStoreProvider } from "./hooks/MetaStoreContext";
 import { UndoControl } from "./components/UndoControl";
+import { GearIcon, HouseIcon } from "./components/icons";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
@@ -49,8 +50,18 @@ function RootLayout() {
           <span className="app-nav-brand">{appTitle}</span>
           <div className="app-nav-links">
             <UndoControl />
-            <Link to="/" activeOptions={{ exact: true }} activeProps={{ className: "active" }}>
-              {homeTab?.title || "Home"}
+            {/* Home and Settings are fixed destinations, so they read as
+                icons with the name on hover. User tabs keep their titles:
+                there is no icon that could stand for an arbitrary one. */}
+            <Link
+              to="/"
+              className="nav-icon-link"
+              activeOptions={{ exact: true }}
+              activeProps={{ className: "nav-icon-link active" }}
+              aria-label={homeTab?.title || "Home"}
+              title={homeTab?.title || "Home"}
+            >
+              <HouseIcon />
             </Link>
             {userTabs.map((tab) => (
               <Link
@@ -62,8 +73,14 @@ function RootLayout() {
                 {tab.title}
               </Link>
             ))}
-            <Link to="/settings" activeProps={{ className: "active" }}>
-              Settings
+            <Link
+              to="/settings"
+              className="nav-icon-link"
+              activeProps={{ className: "nav-icon-link active" }}
+              aria-label="Settings"
+              title="Settings"
+            >
+              <GearIcon />
             </Link>
           </div>
         </div>

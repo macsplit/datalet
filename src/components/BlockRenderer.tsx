@@ -1,4 +1,5 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useShape } from "@ng-org/orm/react";
 import type {
   Block,
@@ -17,6 +18,9 @@ import {
   type DynamicRecord,
 } from "../utils/dynamicSchema";
 import { RecordCard } from "./RecordCard";
+import { displayDate } from "./FieldWidget";
+import { DownloadIcon, PrinterIcon } from "./icons";
+import { useSettings } from "../hooks/useSettings";
 import { RuntimeCircuitNotice } from "./RuntimeSafety";
 import { RUNTIME_LIMITS } from "../utils/runtimeHealth";
 import {
@@ -58,6 +62,35 @@ function containsNeedle(raw: unknown, needle: string): boolean {
   );
 }
 
+/** A safe, readable file-name stem for a downloaded export. */
+function fileSlug(name: string): string {
+  return name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "records";
+}
+
+/**
+ * One record property as printed text. Reference fields print the stored
+ * target id for the same reason search matches on it: resolving the label
+ * needs the target schema's own subscription, which only the on-screen
+ * reference control opens.
+ */
+function printableValue(
+  raw: unknown,
+  fieldType: string,
+  formatCurrency: (value: number) => string,
+): string {
+  if (raw instanceof Set || Array.isArray(raw)) {
+    return valueStrings(raw).filter(Boolean).join(", ");
+  }
+  if (fieldType === "did:ng:z:date" || fieldType === "did:ng:z:dateTime") {
+    return raw ? displayDate(raw, fieldType === "did:ng:z:dateTime") : "";
+  }
+  if (fieldType === "did:ng:z:currency") {
+    return formatCurrency(typeof raw === "number" ? raw : 0);
+  }
+  if (typeof raw === "boolean") return raw ? "Yes" : "No";
+  return raw === undefined || raw === null ? "" : String(raw);
+}
+
 function defaultValue(property: PropertyDef): string | number | boolean | Set<string> {
   if (property.cardinality === "did:ng:z:many") return new Set<string>();
   switch (property.dataType) {
@@ -88,6 +121,7 @@ function ResolvedDataBlock({
   widgets: Widget[];
 }) {
   const { privateNuri } = useMetaStore();
+  const { format } = useSettings();
   const signature = propertySignature(properties);
   const shapeType = useMemo(
     () => buildShapeType(schema, properties),
@@ -200,25 +234,91 @@ function ResolvedDataBlock({
   const pageRecords =
     pageSize > 0 ? visibleRecords.slice(pageStart, pageStart + pageSize) : visibleRecords;
 
+  const heading = titleWidget?.label || block.title || schema.name;
+  // Both utilities act on everything the reader is currently looking at --
+  // every page of the filtered and searched result, not just the page on
+  // screen. Paging is a screen constraint, not a selection.
+  const exportRecords = () => {
+    const rows = visibleRecords.map((record) => {
+      const row: Record<string, unknown> = { "@id": record["@id"] };
+      for (const property of properties) {
+        const raw = record[property.name];
+        row[property.name] = raw instanceof Set ? [...raw] : raw;
+      }
+      return row;
+    });
+    // Every schema property, not only the displayed ones: a file called an
+    // export that silently dropped stored fields would be a data-loss trap.
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileSlug(schema.name)}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Revoking in the same tick can cancel the download that was just started.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const printColumns = widgets
+    .filter(
+      (widget) =>
+        widget.widgetType === "did:ng:z:field" &&
+        widget.propertyName &&
+        properties.some((property) => property.name === widget.propertyName),
+    )
+    .map((widget) => ({
+      name: widget.propertyName as string,
+      label: widget.label || (widget.propertyName as string),
+      fieldType: widget.fieldType ?? "did:ng:z:text",
+    }));
+
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (!printing) return;
+    // The sheet has to be in the DOM before the dialog opens, so the print
+    // call waits for this commit rather than running in the click handler.
+    const finish = () => setPrinting(false);
+    window.addEventListener("afterprint", finish);
+    window.print();
+    return () => window.removeEventListener("afterprint", finish);
+  }, [printing]);
+
   return (
     <section className="panel">
-      {(titleWidget || addWidget || block.title) && (
-        <header className="panel-header">
-          <div>
-            <p className="label-accent">{schema.name}</p>
-            {(titleWidget || block.title) && (
-              <h2 className="title">
-                {titleWidget?.label || block.title || schema.name}
-              </h2>
-            )}
-          </div>
+      <header className="panel-header">
+        <div>
+          <p className="label-accent">{schema.name}</p>
+          {(titleWidget || block.title) && <h2 className="title">{heading}</h2>}
+        </div>
+        <div className="panel-header-actions">
           {addWidget && (
             <button type="button" className="primary-btn" onClick={createRecord}>
               + {addWidget.label || `Add ${schema.name}`}
             </button>
           )}
-        </header>
-      )}
+          <button
+            type="button"
+            className="icon-btn icon-btn-quiet"
+            aria-label={`Export ${schema.name} as JSON`}
+            title={`Export ${schema.name} as JSON`}
+            onClick={exportRecords}
+          >
+            <DownloadIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn-quiet"
+            aria-label={`Print ${schema.name}`}
+            title={`Print ${schema.name}`}
+            onClick={() => setPrinting(true)}
+          >
+            <PrinterIcon />
+          </button>
+        </div>
+      </header>
       {searchEnabled && (
         <div className="field-group">
           <label className="field-label" htmlFor={`${block["@id"]}-search`}>
@@ -286,6 +386,40 @@ function ResolvedDataBlock({
             </button>
           </div>
         </div>
+      )}
+      {printing && createPortal(
+        // Mounted only while printing: outside .app-shell so the print
+        // stylesheet can hide the whole application and leave just this
+        // block's sheet, and never a second copy of every record sitting in
+        // the document the rest of the time.
+        <div className="print-sheet" aria-hidden="true">
+          <h1>{heading}</h1>
+          <p className="print-meta">
+            {total} {total === 1 ? "record" : "records"}
+            {needle ? ` matching “${query.trim()}”` : ""}
+          </p>
+          <table>
+            <thead>
+              <tr>
+                {printColumns.map((column) => (
+                  <th key={column.name}>{column.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRecords.map((record) => (
+                <tr key={`${record["@graph"]}|${record["@id"]}`}>
+                  {printColumns.map((column) => (
+                    <td key={column.name}>
+                      {printableValue(record[column.name], column.fieldType, format)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+        document.body,
       )}
     </section>
   );

@@ -4,6 +4,7 @@ import {
   subscribeUndo,
   undoLastLocalChange,
 } from "../utils/localNgEngine";
+import { UndoIcon } from "./icons";
 
 export function UndoControl() {
   const canUndo = useSyncExternalStore(
@@ -34,9 +35,12 @@ export function UndoControl() {
       className="nav-undo"
       disabled={!canUndo}
       onClick={undoLastLocalChange}
+      // The tooltip carries the full explanation; the accessible name stays
+      // the short word so it reads well in a screen reader's control list.
+      aria-label="Undo"
       title="Undo last local change (Ctrl/Cmd+Z)"
     >
-      Undo
+      <UndoIcon />
     </button>
   );
 }

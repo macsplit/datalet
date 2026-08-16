@@ -653,3 +653,69 @@ test("the builder writes search and page size onto the block", async ({ page }) 
   await expect(page.locator(".record-card")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
 });
+
+test("exports the matching records as JSON, not just the visible page", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, booksFixture(
+    [
+      { title: "Dune", rating: 5 },
+      { title: "Dusk", rating: 3 },
+      { title: "Emma", rating: 4 },
+    ],
+    { searchEnabled: true, pageSize: 1 },
+  ));
+  await page.goto("/");
+
+  await page.getByLabel(SEARCH_LABEL).fill("du");
+  await expect(page.locator(".record-card")).toHaveCount(1);
+
+  const download = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Books as JSON" }).click(),
+  ]).then(([event]) => event);
+  expect(download.suggestedFilename()).toMatch(/^books-\d{4}-\d{2}-\d{2}\.json$/);
+
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  // Both search matches, across both pages -- paging is a screen constraint,
+  // not a selection -- and every stored field, not only the displayed ones.
+  expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual([
+    { "@id": "book-0", Title: "Dune", Rating: 5 },
+    { "@id": "book-1", Title: "Dusk", Rating: 3 },
+  ]);
+});
+
+test("printing shows only the block's data, without any of the app around it", async ({ page }) => {
+  await seedSession(page);
+  // Stub print so the sheet stays mounted: the real call blocks on the
+  // dialog and then fires afterprint, which unmounts it.
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await seedNewFormat(page, booksFixture(
+    [
+      { title: "Dune", rating: 5 },
+      { title: "Emma", rating: 4 },
+    ],
+    { title: "Reading list", searchEnabled: true },
+  ));
+  await page.goto("/");
+
+  await page.getByLabel(SEARCH_LABEL).fill("dune");
+  await page.getByRole("button", { name: "Print Books" }).click();
+
+  const sheet = page.locator(".print-sheet");
+  await expect(sheet.locator("h1")).toHaveText("Reading list");
+  await expect(sheet.locator(".print-meta")).toHaveText("1 record matching “dune”");
+  await expect(sheet.locator("thead th")).toHaveText(["Title", "Rating"]);
+  await expect(sheet.locator("tbody tr")).toHaveCount(1);
+  await expect(sheet.locator("tbody td")).toHaveText(["Dune", "5"]);
+
+  await page.emulateMedia({ media: "print" });
+  await expect(sheet).toBeVisible();
+  // The application itself, and with it every control, is off the page.
+  await expect(page.locator(".app-shell")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Print Books" })).toBeHidden();
+  await expect(sheet).toHaveCSS("color", "rgb(0, 0, 0)");
+});

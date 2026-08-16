@@ -74,6 +74,135 @@ export function TrashIcon() {
   );
 }
 
+/** A counter-clockwise arrow: undo, distinct from the reload circle below. */
+export function UndoIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M4 9h11a5 5 0 0 1 0 10h-6" />
+      <polyline points="8 5 4 9 8 13" />
+    </svg>
+  );
+}
+
+/** A closed circular arrow: reload. Deliberately unlike UndoIcon's open hook. */
+export function ReloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+      <polyline points="20 4 20 9 15 9" />
+    </svg>
+  );
+}
+
+export function HouseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M3.6 11.2 12 4.4l8.4 6.8" />
+      <path d="M5.8 10v9.6h12.4V10" />
+    </svg>
+  );
+}
+
+/**
+ * A gear: a hub ring with eight short teeth standing off it. The teeth stop
+ * well short of the hub so the two never merge into one dark blob at the
+ * ~20px the nav actually renders this at.
+ */
+export function GearIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {/* Each tooth is its own short stub reaching just inside the rim, so
+          nothing crosses the hub and the middle stays open. */}
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+        <line
+          key={angle}
+          x1="12"
+          y1="6"
+          x2="12"
+          y2="2.6"
+          transform={`rotate(${angle} 12 12)`}
+          strokeWidth="2.2"
+        />
+      ))}
+      <circle cx="12" cy="12" r="6.5" />
+      <circle cx="12" cy="12" r="2.4" />
+    </svg>
+  );
+}
+
+/** A download tray: export the block's records as a file. */
+export function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M12 3v11" />
+      <polyline points="7 10 12 15 17 10" />
+      <path d="M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+    </svg>
+  );
+}
+
+export function PrinterIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path d="M7 8V3h10v5" />
+      <path d="M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
+      <rect x="7" y="15" width="10" height="6" />
+    </svg>
+  );
+}
+
 /** A balanced close glyph for circular dismiss buttons. */
 export function CloseIcon() {
   return (

@@ -261,6 +261,31 @@ a {
     opacity: 0.4;
 }
 
+/* Undo and the two fixed destinations are icon-only, so they need a hit
+   target of their own rather than the text links' line box. Sized to match
+   each other exactly: they sit side by side in the same row. */
+.nav-undo,
+.app-nav-links a.nav-icon-link {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    border-bottom: 2px solid transparent;
+}
+
+.nav-undo svg,
+.app-nav-links a.nav-icon-link svg {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.app-nav-links a.nav-icon-link.active {
+    color: var(--color-accent-text);
+    border-bottom-color: var(--color-accent-text);
+}
+
 .app-nav-links a {
     color: var(--color-text-muted);
     text-decoration: none;
@@ -347,6 +372,12 @@ a {
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-4);
+}
+
+.panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
 }
 
 .cards-grid {
@@ -595,6 +626,25 @@ a {
     transform: translateY(1px);
 }
 
+/* Export and print sit beside the add button without competing with it:
+   smaller, unfilled, and tinted only on hover. */
+.icon-btn-quiet {
+    width: 2.2rem;
+    height: 2.2rem;
+    background: transparent;
+    color: var(--color-text-subtle);
+}
+
+.icon-btn-quiet:hover {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+}
+
+.icon-btn-quiet svg {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
 /* A visually quieter variant for secondary/destructive actions that
    shouldn't compete with the primary edit action - transparent until
    hovered, then tinted with the danger color rather than filled solid. */
@@ -797,5 +847,87 @@ select:focus-visible {
 
     .builder-compact-select {
         width: 100%;
+    }
+}
+
+/* ---------- Printing a data block ----------
+   Pressing print on a data block mounts a sheet of its records outside the
+   app shell; this hides the application and leaves only that sheet, so the
+   page that comes out of the printer is the data and its heading -- no
+   navigation, no search box, no pagination, no edit or delete controls.
+   Deliberately plain black on white with a serif face: this is a document,
+   not a screenshot of the app. */
+.print-sheet {
+    display: none;
+}
+
+@media print {
+    @page {
+        margin: 16mm;
+    }
+
+    .app-shell,
+    .runtime-banner {
+        display: none !important;
+    }
+
+    html,
+    body {
+        background: #fff;
+    }
+
+    .print-sheet {
+        display: block;
+        color: #000;
+        background: #fff;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 11pt;
+        line-height: 1.45;
+    }
+
+    /* The screen theme gives every heading level its own accent hue; a
+       printout wants ink, so the color is stated rather than inherited. */
+    .print-sheet h1 {
+        margin: 0 0 1mm;
+        color: #000;
+        font-family: inherit;
+        font-size: 18pt;
+        font-weight: 700;
+    }
+
+    .print-sheet .print-meta {
+        margin: 0 0 6mm;
+        font-size: 9pt;
+        color: #333;
+    }
+
+    .print-sheet table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    /* Repeat the column headings on every sheet of a long list. */
+    .print-sheet thead {
+        display: table-header-group;
+    }
+
+    .print-sheet tr {
+        break-inside: avoid;
+    }
+
+    .print-sheet th,
+    .print-sheet td {
+        padding: 1.6mm 2mm 1.6mm 0;
+        border-bottom: 0.4pt solid #000;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .print-sheet th {
+        border-bottom-width: 1pt;
+        font-size: 9pt;
+        font-family: Arial, Helvetica, sans-serif;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
     }
 }

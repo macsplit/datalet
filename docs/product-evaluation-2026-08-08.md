@@ -121,7 +121,9 @@ unit or visual test matrix.
   subscriptions without navigation, then reconnects the stream and flushes
   the untouched outbox. Import and pairing still reload intentionally.
 - JSON export/import now provides an explicit local backup path containing
-  both records and builder metadata.
+  both records and builder metadata. Each data block additionally exports its
+  own matching records as JSON and prints them as a plain black-and-white
+  table with the interface left off the page.
 - Production builds include a manifest and service worker. After one online
   load, the shell and local records cold-start offline; paired edits continue
   using the existing persistent outbox. Sync endpoints are always bypassed by

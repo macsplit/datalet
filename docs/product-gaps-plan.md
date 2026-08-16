@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Done** | Steps 1–8, 9a and 9b — reader tools, fields, offline shell, sync UX, undo, builder coverage |
+| **Done** | Steps 1–8 and 9a–9c — reader tools, fields, offline shell, sync UX, undo, export/print, builder coverage |
 | **Next** | Step 10 — deferred multi-hour endurance run |
 | **Decision** | Step 9 — file/image fields deferred until blob storage is designed |
 
@@ -495,6 +495,38 @@ only its matching half dropped, which would turn a restore into a deletion.
 
 This does not fix the upstream lifecycle race, which remains tracked; it makes
 the app's write path indifferent to it.
+
+## 9c. Requested after 9b: navigation icons, per-block export and print — DONE
+
+Requested from use, not from the evaluation.
+
+**Navigation.** Undo, Home, and Settings are fixed controls, so they now render
+as icons — a counter-clockwise arrow, a house, a gear — with the full name in
+the tooltip and as the accessible name. Reload in the error banner became a
+circular-arrow icon, and the dismiss button beside it went quiet: two identical
+filled circles would have given no clue which one acts. User tabs keep their
+titles; no icon can stand for an arbitrary one.
+
+**Export.** A per-block download that writes the matching records as JSON.
+Scope decisions, both deliberate: it covers every page of the filtered and
+searched result, because paging is a screen constraint rather than a selection;
+and it writes every schema property rather than only the displayed ones,
+because a file called an export that silently dropped stored fields would be a
+data-loss trap.
+
+**Print.** A per-block print that mounts a sheet outside the app shell and
+hides the application, so what reaches the printer is the block heading, a
+record count, and a table of the displayed fields — no navigation, search box,
+pagination, or edit and delete controls. Black on white with a serif body and
+sans-serif column headings, `@page` margins, headings repeated on every sheet,
+and rows kept off page breaks. The sheet mounts only while printing rather than
+sitting hidden in the document, which also keeps a second copy of every record
+out of the DOM.
+
+Both act on `visibleRecords`, so they agree with what search and filtering
+currently show. Reference fields print their stored target id, for the same
+reason search matches on it: resolving the label needs the target schema's own
+subscription, which only the on-screen reference control opens.
 
 ## 10. Deferred: multi-hour endurance run
 
