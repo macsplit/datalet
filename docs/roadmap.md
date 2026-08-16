@@ -39,10 +39,10 @@ plans two pieces of work identified after this roadmap was written:
 - **User-facing identity** — resolving `did:ng:` ids to labels in the four
   places they leak (reference sort, reader search, export, print), and
   replacing the two-field pairing credential with one checksummed string plus
-  QR and short-lived pairing codes. The label resolver, its four reader
-  integrations, the single checksummed pairing field, and QR display/scanning
-  are complete; short-lived, one-use pairing codes are also complete. Readable
-  tab URLs are the remaining Track B item.
+  QR and short-lived pairing codes. **Track B is complete:** labels cover all
+  four reader surfaces, durable and one-use pairing flows are implemented,
+  and user tabs use readable derived URLs while permanent raw-id bookmarks
+  continue to resolve.
 
 Both include a testing strategy. The endurance run above should be re-scoped
 to multi-tenant once the first two items of that plan land.

@@ -278,6 +278,13 @@ already-resident local store; the legacy automatic lookup is cached per schema.
 This display layer never changes the stable `did:ng:…` value stored in a
 reference.
 
+**Tab URLs.** User-tab links derive a normalized slug from the display title
+at render time; no slug is stored or synced. The first tab by order owns a
+colliding slug and later collisions fall back to their stable `@id`. Route
+resolution checks raw ids first, so existing bookmarks remain valid even when
+a tab is renamed or reordered. Those changes can alter the preferred slug,
+but never the permanent raw-id route.
+
 `BlockRenderer` then walks the block tree for a tab. A data block resolves its
 schema and properties, calls `useShape` with the derived shape, and applies the
 reader pipeline in one memo: configured filter, reader search across displayed

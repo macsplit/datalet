@@ -18,6 +18,7 @@ import { TrashIcon } from "../components/icons";
 import { RuntimeCircuitNotice } from "../components/RuntimeSafety";
 import { collectDescendantBlockIds } from "../utils/blockGraph";
 import { reportRuntimeIssue, RUNTIME_LIMITS } from "../utils/runtimeHealth";
+import { tabRouteSegment } from "../utils/tabRoutes";
 
 const WIDGET_TYPES: Array<{
   value: Widget["widgetType"];
@@ -879,7 +880,7 @@ function BlockListEditor({
 
 export function BlocksBuilderPage() {
   const { tabId } = useParams({ from: "/settings/tabs/$tabId/blocks" });
-  const { tabs } = useTabs();
+  const { tabs, userTabs } = useTabs();
   const { schemas } = useSchemas();
   const { blocks: allBlocks, deleteBlock } = useBlocks();
   const { widgets: allWidgets, deleteWidget } = useWidgets();
@@ -946,7 +947,7 @@ export function BlocksBuilderPage() {
           <Link
             className="primary-btn button-link"
             to="/tab/$tabId"
-            params={{ tabId }}
+            params={{ tabId: tabRouteSegment(tab, userTabs) }}
           >
             View tab →
           </Link>

@@ -129,6 +129,33 @@ test("creates, renames, reorders, and deletes navigation tabs", async ({ page })
   await expect(page.getByRole("link", { name: "Archive" })).toHaveCount(0);
 });
 
+test("tab URLs use readable slugs while raw ids and collisions still resolve", async ({ page }) => {
+  const firstId = "did:ng:z:meta:tab:project-notes-first";
+  const secondId = "did:ng:z:meta:tab:project-notes-second";
+  await seedSession(page);
+  await seedRecords(page, [
+    ...singletonRecords,
+    { "@graph": GRAPH, "@id": firstId, "@type": "did:ng:z:Tab", title: "Project Notes", order: 1 },
+    { "@graph": GRAPH, "@id": secondId, "@type": "did:ng:z:Tab", title: "Project--Notes", order: 2 },
+  ]);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Project Notes", exact: true }).click();
+  await expect(page).toHaveURL(/\/tab\/project-notes$/);
+  await expect(page.getByRole("main").getByText("Project Notes", { exact: true })).toBeVisible();
+
+  await page.goto(`/tab/${encodeURIComponent(firstId)}`);
+  await expect(page.getByRole("main").getByText("Project Notes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Project Notes", exact: true })).toHaveClass(/active/);
+
+  await page.getByRole("link", { name: "Project--Notes", exact: true }).click();
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe(`/tab/${secondId}`);
+  await expect(page.getByRole("main").getByText("Project--Notes", { exact: true })).toBeVisible();
+
+  await page.goto("/tab/does-not-exist");
+  await expect(page.getByText("Tab not found.", { exact: true })).toBeVisible();
+});
+
 test("builds nested blocks and supports widget add, reorder, delete, and cascade cleanup", async ({ page }) => {
   const schemaId = "schema-projects";
   const tabId = "tab-projects";

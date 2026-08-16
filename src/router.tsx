@@ -15,6 +15,7 @@ import {
   createRouter,
   Outlet,
   Link,
+  useLocation,
   useParams,
 } from "@tanstack/react-router";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -29,11 +30,25 @@ import { RuntimeIssueBanner } from "./components/RuntimeSafety";
 import { MetaStoreProvider } from "./hooks/MetaStoreContext";
 import { UndoControl } from "./components/UndoControl";
 import { GearIcon, HouseIcon } from "./components/icons";
+import { resolveTabRouteSegment, tabRouteSegment } from "./utils/tabRoutes";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
   const { appTitle } = useSettings();
   const { homeTab, userTabs } = useTabs();
+  const pathname = useLocation().pathname;
+  let currentTabSegment: string | undefined;
+  if (pathname.startsWith("/tab/")) {
+    const rawSegment = pathname.slice("/tab/".length);
+    try {
+      currentTabSegment = decodeURIComponent(rawSegment);
+    } catch {
+      currentTabSegment = rawSegment;
+    }
+  }
+  const currentTab = currentTabSegment
+    ? resolveTabRouteSegment(currentTabSegment, userTabs)
+    : undefined;
 
   // The nav brand reflects this reactively already (plain render), but the
   // browser tab title is outside React's tree - has to be pushed to it
@@ -67,8 +82,8 @@ function RootLayout() {
               <Link
                 key={tab["@id"]}
                 to="/tab/$tabId"
-                params={{ tabId: tab["@id"] }}
-                activeProps={{ className: "active" }}
+                params={{ tabId: tabRouteSegment(tab, userTabs) }}
+                className={currentTab?.["@id"] === tab["@id"] ? "active" : undefined}
               >
                 {tab.title}
               </Link>
@@ -112,7 +127,9 @@ const homeRoute = createRoute({
 
 function RoutedTabPage() {
   const { tabId } = useParams({ from: "/tab/$tabId" });
-  return <TabPage tabId={tabId} />;
+  const { tabs, userTabs } = useTabs();
+  const tab = resolveTabRouteSegment(tabId, tabs, userTabs);
+  return <TabPage tabId={tab?.["@id"] ?? tabId} />;
 }
 
 const tabRoute = createRoute({

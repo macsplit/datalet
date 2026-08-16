@@ -1,8 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** B1 through B5 were completed 2026-08-16; Track A and the
-remaining Track B items have not started. Written 2026-08-16 from the code as
-it stood at `b707800` and kept current as work lands.
+**Status: active.** Track B (B1 through B6) was completed 2026-08-17; Track A
+has not started. Written 2026-08-16 from the code as it stood at `b707800` and
+kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -354,7 +354,7 @@ single-use and rotation-safe. Redemption defaults to ten attempts per IP per
 minute. The live two-browser smoke pairs its second browser through this
 exchange rather than transferring the durable token directly.
 
-### B6. Readable tab URLs — **small**
+### B6. Readable tab URLs — **completed 2026-08-17**
 
 `/tab/$tabId` (`src/router.tsx:120`) produces roughly 80 characters of
 percent-escaped `did:ng:…`. Accept either a slug or a raw id: derive the slug
@@ -365,6 +365,14 @@ working forever, so existing bookmarks do not break.
 
 Deriving rather than storing avoids a `metaShapes.shex` change and avoids two
 devices independently creating conflicting slugs offline.
+
+**Landed detail.** `tabRoutes.ts` derives normalized slugs from the live,
+already ordered user-tab list. The first tab owns a colliding slug; later
+tabs, empty slugs, and slugs shadowing another raw id use their permanent id.
+Resolution checks every raw id before considering slugs, preserving old
+bookmarks. Renaming or reordering may change the preferred generated URL, but
+the raw-id form remains permanent and unknown segments use the existing
+not-found view.
 
 ---
 
