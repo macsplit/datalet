@@ -48,6 +48,11 @@ With the full stack running, `pnpm test:smoke:sync` performs a short
 browser-to-Redis-to-Neo4j-to-second-browser verification and cleans up its
 temporary vault afterward.
 
+With Redis and Neo4j available, `pnpm test:multi-tenant` runs the standalone
+200-vault materializer harness. It reports blocking-connection growth, Redis
+memory, per-vault correctness, and materialization lag percentiles, then cleans
+up every generated vault.
+
 ## Documentation
 
 [`docs/architecture.md`](docs/architecture.md) explains how the whole system

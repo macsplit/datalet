@@ -430,6 +430,15 @@ vault's stream through a Redis Streams consumer group and replays it into
 Neo4j. Being a consumer group means multiple materializer processes can divide
 the work safely without a redesign; one is enough at this write volume.
 
+One blocking `XREADGROUP` carries up to 64 vault streams rather than opening a
+connection per vault. The limit is configurable with
+`MATERIALIZER_STREAMS_PER_CONNECTION`. Discovery fills an existing batch
+before opening another connection, and a newly added stream drains this stable
+consumer's pending entries before joining the live read. Rows returned for a
+batch are applied sequentially: this bounds Redis connections but means a slow
+Neo4j write can delay other vaults in the same batch. A smaller configured
+batch trades more connections for less head-of-line coupling.
+
 The consumer name is stable across restarts, not process-id-based. That matters
 because a consumer group only redelivers a crashed consumer's pending entries
 to a later read *under the same consumer name*; a name that changed per restart
@@ -458,8 +467,10 @@ the two cannot disagree.
 
 Materialization is decoupled on purpose: `/sync/patches` never touches Neo4j,
 so a slow or down Neo4j cannot block accepting writes or fanning them out. The
-cost is that the durable copy trails the live copy — about 130 records/s with
-one consumer, so a few seconds behind under a burst.
+cost is that the durable copy trails the live copy — about 130 records/s in the
+original single-vault measurement, so a few seconds behind under a burst. The
+200-vault harness is the current cross-tenant measurement and reports lag as
+p50/p95/p99/max rather than hiding coupling in an average.
 
 ### 3.5 Recovery paths
 

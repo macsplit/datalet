@@ -33,6 +33,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 9 | Hard-kill soak testing and sustained load. Found the durability gap below. |
 | 10 | Plain-language reference doc with rendered diagrams. |
 | 11 | Durable vault metadata, stream tickets, automated regression suites in CI. |
+| 12 | Multi-tenant A1: materializer stream multiplexing, multi-stream pending recovery, and a reusable 200-vault connection/lag/memory harness. |
 
 ---
 

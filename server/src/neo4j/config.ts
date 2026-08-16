@@ -26,3 +26,12 @@ export const MATERIALIZER_GROUP = "materializer";
 // compared to patch traffic, so a cheap poll is fine - no need for a
 // pub/sub "new vault" signal at this scale.
 export const VAULT_DISCOVERY_INTERVAL_MS = 3_000;
+
+// Redis XREADGROUP accepts many streams in one blocking call. Keeping this
+// bounded avoids one permanent connection per vault while limiting the
+// head-of-line coupling of sequential Neo4j writes within a shared read.
+const configuredStreamsPerConnection = Number(process.env.MATERIALIZER_STREAMS_PER_CONNECTION ?? 64);
+export const MATERIALIZER_STREAMS_PER_CONNECTION =
+  Number.isInteger(configuredStreamsPerConnection) && configuredStreamsPerConnection > 0
+    ? configuredStreamsPerConnection
+    : 64;

@@ -330,6 +330,12 @@ write throughput becomes the bottleneck) that:
 
 - Is a Redis Streams **consumer group** member reading each vault's stream
   in order.
+- Multiplexes up to 64 vault stream keys into each blocking `XREADGROUP` call
+  (`MATERIALIZER_STREAMS_PER_CONNECTION`), filling under-full batches as new
+  vaults are discovered. Pending-entry recovery uses the same multi-stream
+  read before a newly attached stream joins the live tail. Responses are
+  applied sequentially, accepting bounded head-of-line coupling in exchange
+  for reducing connection growth from one per vault to `ceil(vaults / 64)`.
 - For each patch batch: resolves LWW per §5 (reads current HLC per field
   from Neo4j or a Redis-cached shadow of it — cache the shadow in Redis to
   avoid a Neo4j round trip per field on the hot path, since the ingest tier

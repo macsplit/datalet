@@ -444,6 +444,7 @@ not disk/host loss.
 | `VAULT_CREATE_RATE_LIMIT` / `VAULT_CREATE_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/vaults` abuse limit (default 10 per hour per client IP — see architecture doc §9); trusts `X-Forwarded-For`, so only meaningful behind a reverse proxy that sets it truthfully |
 | `PAIR_CODE_TTL_SECONDS` | sync-server | temporary pair-code lifetime (default 600 seconds) |
 | `PAIR_REDEEM_RATE_LIMIT` / `PAIR_REDEEM_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/pair-redeem` guessing limit (default 10 per minute per client IP; the same trusted-proxy requirement applies) |
+| `MATERIALIZER_STREAMS_PER_CONNECTION` | materializer | maximum vault streams multiplexed into one blocking Redis read (default 64); lower it to reduce cross-vault head-of-line latency at the cost of more connections |
 | `TOMBSTONE_RETENTION_MS` / `TOMBSTONE_SWEEP_INTERVAL_MS` | materializer | how long a deleted record's tombstone is kept before purging, and how often the sweep runs (architecture doc §5) |
 
 Vault tokens themselves need no server-side secret to configure: each is a

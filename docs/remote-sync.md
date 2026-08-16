@@ -158,9 +158,9 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 
 - `sync-server` is stateless — proven with 2 instances behind a
   round-robin proxy sharing one Redis, no per-instance state.
-- The materializer is a Redis Streams consumer group — more workers can
-  be added later to shard one vault's stream across them, without a
-  redesign.
+- The materializer multiplexes up to 64 vault streams onto each blocking Redis
+  connection. The batch size is tunable; deterministic process sharding is the
+  next scaling step.
 
 **Performance (measured on a dev box, not a production SLA)**
 
@@ -168,6 +168,9 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 - Materialization: ~130 records/s with a single materializer consumer
   (one sequential Neo4j read + write per touched subject) — a burst's
   *durable* copy trails its *live* copy by a few seconds under load.
+- Multi-tenant materialization: the A1 completion run used four blocking
+  connections for 200 vaults and materialized all 50 active vaults, with
+  243 ms p95 observed lag on that development run.
 - Sustained load (1,790 writes over 3 minutes, 50 idle SSE connections
   held open): zero errors, memory usage plateaued rather than growing.
 

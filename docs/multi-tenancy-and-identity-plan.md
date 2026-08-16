@@ -1,8 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) was completed 2026-08-17; Track A
-has not started. Written 2026-08-16 from the code as it stood at `b707800` and
-kept current as work lands.
+**Status: active.** Track B (B1 through B6) was completed 2026-08-17; Track A1
+was completed 2026-08-17 and A2 through A7 have not started. Written 2026-08-16
+from the code as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -42,7 +42,7 @@ one file in that trio it touches, and it changes acceptance, not application.
 
 ## Track A — Multi-tenant hosting
 
-### A1. Multiplex the materializer's stream consumers  — **blocking, large**
+### A1. Multiplex the materializer's stream consumers — **completed 2026-08-17**
 
 **Problem.** `discoverAndWatch()` (`server/src/materializer.ts:130`) walks
 every vault in `vaults:index` and starts `runVaultConsumer()` for each, which
@@ -82,6 +82,18 @@ product at low hundreds of tenants.
 **Complementary, optional.** Idle teardown — drop a vault from its batch after
 N minutes with no entries and re-add on discovery. Only worth doing if the
 registered-to-active ratio turns out to be extreme.
+
+**Landed detail.** `MaterializerService` groups up to 64 stream keys per named
+blocking Redis connection, with `MATERIALIZER_STREAMS_PER_CONNECTION` as the
+tuning knob. Newly discovered vaults occupy an under-full batch and carry an
+explicit unrecovered state; the batch drains every such stream with one
+multiplexed `"0"` read before adding it to the live `">"` read. A stoppable
+service lifecycle supports real integration testing. The new multi-tenant
+harness measured 200 vaults on four blocking connections, materialized all 50
+active vaults, and observed 243 ms p95 lag on the completion run. Entries in a
+batch are deliberately processed sequentially, retaining the documented
+head-of-line tradeoff. Idle teardown remains deferred pending evidence that it
+would help.
 
 ### A2. Shard materializer processes; fix the consumer name — **medium**
 

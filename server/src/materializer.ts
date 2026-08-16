@@ -28,7 +28,11 @@ import { listVaultIds, parseLogEntry, streamKey, sweepVaultTombstones, type LogE
 import { applyPatchesToStore, patchTarget, type Store } from "./patchApply.js";
 import { ensureNeo4jSchema } from "./neo4j/client.js";
 import { readRecord, tombstoneRecord, upsertRecord } from "./neo4j/materialize.js";
-import { MATERIALIZER_GROUP, VAULT_DISCOVERY_INTERVAL_MS } from "./neo4j/config.js";
+import {
+  MATERIALIZER_GROUP,
+  MATERIALIZER_STREAMS_PER_CONNECTION,
+  VAULT_DISCOVERY_INTERVAL_MS,
+} from "./neo4j/config.js";
 import { TOMBSTONE_SWEEP_INTERVAL_MS } from "./config.js";
 
 // Stable across restarts (unlike process.pid) - a consumer group only
@@ -38,6 +42,10 @@ import { TOMBSTONE_SWEEP_INTERVAL_MS } from "./config.js";
 const CONSUMER_NAME = process.env.MATERIALIZER_CONSUMER_ID ?? "materializer-1";
 
 type StreamEntryRow = [string, string[] | null];
+type StreamResponse = Array<[string, StreamEntryRow[]]> | null;
+type WatchedVault = { vaultId: string; key: string; recovered: boolean };
+const READ_COUNT = 50;
+const BLOCK_MS = 5_000;
 
 async function ensureConsumerGroup(key: string): Promise<void> {
   try {
@@ -85,63 +93,92 @@ async function processRows(vaultId: string, key: string, rows: StreamEntryRow[])
   }
 }
 
-/** One dedicated blocking connection per actively-materialized vault, mirroring redis/streamWatcher.ts's pattern. */
-async function runVaultConsumer(vaultId: string): Promise<void> {
-  const key = streamKey(vaultId);
-  await ensureConsumerGroup(key);
-  const connection = newBlockingConnection();
-  try {
-    // Crash recovery: replay this consumer's own previously-delivered but
-    // never-acked entries (ID "0") before joining the live tail (ID ">").
-    // A prior run that died mid-batch resumes exactly where it left off.
-    for (;;) {
-      const pending = await connection.xreadgroup(
-        "GROUP",
-        MATERIALIZER_GROUP,
-        CONSUMER_NAME,
-        "COUNT",
-        "50",
-        "STREAMS",
-        key,
-        "0",
-      );
-      const rows = pending?.[0]?.[1] ?? [];
-      if (rows.length === 0) break;
-      await processRows(vaultId, key, rows);
-    }
+class MaterializerStreamBatch {
+  private readonly connection = newBlockingConnection();
+  private readonly vaults: WatchedVault[] = [];
+  private running = true;
+  private loopPromise: Promise<void> | undefined;
 
-    for (;;) {
-      const response = await connection.xreadgroup(
-        "GROUP",
-        MATERIALIZER_GROUP,
-        CONSUMER_NAME,
-        "COUNT",
-        "50",
-        "BLOCK",
-        "5000",
-        "STREAMS",
-        key,
-        ">",
-      );
-      const rows = response?.[0]?.[1] ?? [];
-      if (rows.length > 0) await processRows(vaultId, key, rows);
-    }
-  } finally {
-    connection.disconnect();
+  constructor(
+    readonly id: number,
+    readonly capacity: number,
+    private readonly blockMs: number,
+    private readonly onFailure: (batch: MaterializerStreamBatch, error: unknown) => void,
+  ) {}
+
+  get size(): number {
+    return this.vaults.length;
   }
-}
 
-const watchedVaults = new Set<string>();
+  get vaultIds(): string[] {
+    return this.vaults.map(({ vaultId }) => vaultId);
+  }
 
-async function discoverAndWatch(): Promise<void> {
-  const vaultIds = await listVaultIds();
-  for (const vaultId of vaultIds) {
-    if (watchedVaults.has(vaultId)) continue;
-    watchedVaults.add(vaultId);
-    runVaultConsumer(vaultId).catch((error) => {
-      watchedVaults.delete(vaultId);
-      console.error(`materializer: vault ${vaultId} consumer stopped, will retry`, error);
-    });
+  add(vaultId: string): void {
+    if (this.size >= this.capacity) throw new Error("materializer stream batch is full");
+    this.vaults.push({ vaultId, key: streamKey(vaultId), recovered: false });
+    if (!this.loopPromise) {
+      this.loopPromise = this.loop().catch((error) => {
+        if (this.running) this.onFailure(this, error);
+      }).finally(() => this.connection.disconnect());
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.running = false;
+    this.connection.disconnect();
+    await this.loopPromise;
+  }
+
+  private async read(vaults: WatchedVault[], id: "0" | ">", block = false): Promise<StreamResponse> {
+    if (vaults.length === 0) return null;
+    const args = [
+      "GROUP",
+      MATERIALIZER_GROUP,
+      CONSUMER_NAME,
+      "COUNT",
+      String(READ_COUNT),
+      ...(block ? ["BLOCK", String(this.blockMs)] : []),
+      "STREAMS",
+      ...vaults.map(({ key }) => key),
+      ...vaults.map(() => id),
+    ];
+    const xreadgroup = this.connection.xreadgroup.bind(this.connection) as unknown as
+      (...commandArgs: string[]) => Promise<StreamResponse>;
+    return await xreadgroup(...args);
+  }
+
+  private async processResponse(response: StreamResponse): Promise<number> {
+    let processed = 0;
+    for (const [key, rows] of response ?? []) {
+      const vault = this.vaults.find((candidate) => candidate.key === key);
+      if (!vault || rows.length === 0) continue;
+      await processRows(vault.vaultId, key, rows);
+      processed += rows.length;
+    }
+    return processed;
+  }
+
+  private async recoverNewVaults(): Promise<void> {
+    const recovering = this.vaults.filter(({ recovered }) => !recovered);
+    if (recovering.length === 0) return;
+    for (;;) {
+      const processed = await this.processResponse(await this.read(recovering, "0"));
+      if (processed === 0) break;
+    }
+    for (const vault of recovering) vault.recovered = true;
+  }
+
+  private async loop(): Promise<void> {
+    await this.connection.client("SETNAME", `localgraph-materializer-batch-${this.id}`);
+    while (this.running) {
+      // A vault added while this batch was already blocking must drain the
+      // stable consumer's pending entries before its first ">" live read.
+      await this.recoverNewVaults();
+      const liveVaults = this.vaults.filter(({ recovered }) => recovered);
+      if (liveVaults.length === 0) continue;
+      await this.processResponse(await this.read(liveVaults, ">", true));
+    }
   }
 }
 
@@ -163,13 +200,109 @@ async function sweepAllTombstones(): Promise<void> {
   }
 }
 
+export type MaterializerStats = {
+  watchedVaults: number;
+  streamBatches: number;
+  blockingConnections: number;
+};
+
+export class MaterializerService {
+  private readonly watchedVaults = new Set<string>();
+  private readonly batches = new Set<MaterializerStreamBatch>();
+  private nextBatchId = 1;
+  private discoveryTimer: ReturnType<typeof setInterval> | undefined;
+  private tombstoneTimer: ReturnType<typeof setInterval> | undefined;
+  private discoveryPromise: Promise<void> | undefined;
+  private stopping = false;
+
+  constructor(
+    private readonly streamsPerConnection = MATERIALIZER_STREAMS_PER_CONNECTION,
+    private readonly discoveryIntervalMs = VAULT_DISCOVERY_INTERVAL_MS,
+    private readonly blockMs = BLOCK_MS,
+    private readonly ownsVault: (vaultId: string) => boolean = () => true,
+  ) {}
+
+  stats(): MaterializerStats {
+    return {
+      watchedVaults: this.watchedVaults.size,
+      streamBatches: this.batches.size,
+      blockingConnections: this.batches.size,
+    };
+  }
+
+  async start(): Promise<void> {
+    if (this.discoveryTimer || this.tombstoneTimer) throw new Error("materializer service is already started");
+    this.stopping = false;
+    await ensureNeo4jSchema();
+    await this.discoverNow();
+    this.discoveryTimer = setInterval(() => {
+      void this.discoverNow().catch((error) => console.error("materializer: vault discovery failed", error));
+    }, this.discoveryIntervalMs);
+    this.tombstoneTimer = setInterval(() => {
+      void sweepAllTombstones().catch((error) => console.error("materializer: tombstone sweep failed", error));
+    }, TOMBSTONE_SWEEP_INTERVAL_MS);
+  }
+
+  discoverNow(): Promise<void> {
+    if (this.discoveryPromise) return this.discoveryPromise;
+    this.discoveryPromise = this.discover().finally(() => {
+      this.discoveryPromise = undefined;
+    });
+    return this.discoveryPromise;
+  }
+
+  async stop(): Promise<void> {
+    this.stopping = true;
+    if (this.discoveryTimer) clearInterval(this.discoveryTimer);
+    if (this.tombstoneTimer) clearInterval(this.tombstoneTimer);
+    this.discoveryTimer = undefined;
+    this.tombstoneTimer = undefined;
+    await this.discoveryPromise?.catch(() => undefined);
+    const batches = [...this.batches];
+    this.batches.clear();
+    this.watchedVaults.clear();
+    await Promise.all(batches.map((batch) => batch.stop()));
+  }
+
+  private async discover(): Promise<void> {
+    if (this.stopping) return;
+    const vaultIds = await listVaultIds();
+    for (const vaultId of vaultIds) {
+      if (this.stopping) return;
+      if (!this.ownsVault(vaultId)) continue;
+      if (this.watchedVaults.has(vaultId)) continue;
+      try {
+        await ensureConsumerGroup(streamKey(vaultId));
+        if (this.stopping) return;
+        let batch = [...this.batches].find((candidate) => candidate.size < candidate.capacity);
+        if (!batch) {
+          batch = new MaterializerStreamBatch(
+            this.nextBatchId++,
+            this.streamsPerConnection,
+            this.blockMs,
+            (failed, error) => this.handleBatchFailure(failed, error),
+          );
+          this.batches.add(batch);
+        }
+        batch.add(vaultId);
+        this.watchedVaults.add(vaultId);
+      } catch (error) {
+        console.error(`materializer: could not watch vault ${vaultId}, will retry`, error);
+      }
+    }
+  }
+
+  private handleBatchFailure(batch: MaterializerStreamBatch, error: unknown): void {
+    this.batches.delete(batch);
+    for (const vaultId of batch.vaultIds) this.watchedVaults.delete(vaultId);
+    console.error(
+      `materializer: stream batch ${batch.id} (${batch.vaultIds.length} vaults) stopped, will retry`,
+      error,
+    );
+  }
+}
+
 export async function startMaterializer(): Promise<void> {
-  await ensureNeo4jSchema();
-  await discoverAndWatch();
-  setInterval(() => {
-    discoverAndWatch().catch((error) => console.error("materializer: vault discovery failed", error));
-  }, VAULT_DISCOVERY_INTERVAL_MS);
-  setInterval(() => {
-    sweepAllTombstones().catch((error) => console.error("materializer: tombstone sweep failed", error));
-  }, TOMBSTONE_SWEEP_INTERVAL_MS);
+  const service = new MaterializerService();
+  await service.start();
 }
