@@ -12,7 +12,6 @@ import { useSettings } from "../hooks/useSettings";
 import { Link } from "@tanstack/react-router";
 import { SyncSettings } from "../components/SyncSettings";
 import { DataBackup } from "../components/DataBackup";
-import { ThemeSettings } from "../components/ThemeSettings";
 
 export function SettingsPage() {
   const { appTitle, setAppTitle } = useSettings();
@@ -55,6 +54,21 @@ export function SettingsPage() {
         <div className="panel-header">
           <div>
             <p className="label-accent">Display</p>
+            <h2 className="title">Theme</h2>
+          </div>
+          <Link className="primary-btn button-link" to="/settings/theme">
+            Choose colours
+          </Link>
+        </div>
+        <p className="helper-text">
+          Set the app's colours for light and dark mode. Stored in the graph, so a theme
+          reaches your other devices and is part of a backup.
+        </p>
+      </section>
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="label-accent">Display</p>
             <h2 className="title">App title</h2>
           </div>
         </div>
@@ -70,7 +84,6 @@ export function SettingsPage() {
           />
         </div>
       </section>
-      <ThemeSettings />
       <DataBackup />
       <SyncSettings />
     </div>

@@ -19,6 +19,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ThemePage } from "./pages/ThemePage";
 import { TabPage } from "./pages/TabPage";
 import { SchemaListPage } from "./pages/SchemaListPage";
 import { SchemaEditorPage } from "./pages/SchemaEditorPage";
@@ -144,6 +145,12 @@ const settingsRoute = createRoute({
   component: SettingsPage,
 });
 
+const themeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/theme",
+  component: ThemePage,
+});
+
 const schemaListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings/schemas",
@@ -172,6 +179,7 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   tabRoute,
   settingsRoute,
+  themeRoute,
   schemaListRoute,
   schemaEditorRoute,
   tabsManagerRoute,

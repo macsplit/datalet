@@ -597,7 +597,6 @@ src/
 │   ├── DataBackup.tsx          Whole-graph JSON export and import
 │   ├── SyncSettings.tsx        Vault create / join / rotate / delete / pair codes
 │   ├── PairingQr.tsx           Renders the LG1 code as a QR; scan where supported
-│   ├── ThemeSettings.tsx       Per-role light/dark colour fields and reset
 │   ├── RuntimeSafety.tsx       Error boundary, issue banner, inline circuit notice
 │   ├── icons.tsx               Inline SVG icons
 │   └── usePrivateNuri.ts       Resolves the active graph (local session or vault)
@@ -605,7 +604,8 @@ src/
 │   ├── MetaStoreContext.tsx    The five metadata subscriptions, shared once
 │   ├── useTabs / useBlocks / useWidgets / useSchemas / usePropertyDefs
 │   └── useSettings.ts          The Settings singleton
-├── pages/                      Tab view plus the Settings/schema/tab/block builders
+├── pages/                      Tab view plus the Settings/theme/schema/tab/block
+│                               builders
 ├── shapes/
 │   ├── shex/metaShapes.shex    Metadata shape definitions (source of truth)
 │   └── orm/                    Generated ORM artifacts — regenerate, don't edit

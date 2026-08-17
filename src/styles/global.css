@@ -361,6 +361,83 @@ a {
     border-radius: var(--radius-md);
 }
 
+.theme-color-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* The text field holds the authoritative value, so it takes the free space
+   while the picker and preview stay at a fixed size. */
+.theme-color-row > .input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.theme-color-picker {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: none;
+    cursor: pointer;
+}
+
+.theme-color-picker::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.theme-color-picker::-webkit-color-swatch,
+.theme-color-picker::-moz-color-swatch {
+    border: none;
+    border-radius: calc(var(--radius-sm) - 2px);
+}
+
+/* A native colour input always has a value, so a field it cannot represent -
+   an unset role, or a translucent rgba() - would otherwise render as a
+   confident black square claiming black was chosen. The swatch colour comes
+   from the value and cannot be restyled reliably, so the control is faded
+   whenever it is not showing the truth: still usable for choosing, while the
+   preview square beside it carries the real value. */
+.theme-color-picker-inexact {
+    opacity: 0.3;
+}
+
+.theme-color-picker-inexact:hover,
+.theme-color-picker-inexact:focus-visible {
+    opacity: 1;
+}
+
+.theme-color-preview {
+    flex: 0 0 auto;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border);
+    /* The colour is painted as its own layer over a chequerboard, rather than
+       as background-color underneath it, so a translucent value reads as
+       translucent instead of as a slightly different flat colour. The value
+       arrives through a custom property because an inline `background`
+       shorthand would drop the chequerboard layers entirely. */
+    background-image:
+        linear-gradient(var(--swatch, transparent), var(--swatch, transparent)),
+        linear-gradient(45deg, var(--color-surface-alt) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--color-surface-alt) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--color-surface-alt) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--color-surface-alt) 75%);
+    background-size: auto, 8px 8px, 8px 8px, 8px 8px, 8px 8px;
+    background-position: 0 0, 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+/* An unset or unusable value is shown as absent rather than as some colour. */
+.theme-color-preview-unset {
+    border-style: dashed;
+    background-image: none;
+    background: none;
+}
+
 .pairing-scanner {
     gap: var(--space-3);
 }

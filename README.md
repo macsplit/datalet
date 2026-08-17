@@ -190,10 +190,21 @@ paths as any other change.
 
 ## Theme
 
-**Settings → Theme** sets the app's colours. Each role has a light and a dark
-value; the dark column applies when the operating system asks for dark mode, so
-choosing a theme does not stop the app following that preference. An empty
-field keeps the built-in colour, and **Reset theme** clears them all.
+**Settings → Theme → Choose colours** opens the theme on its own page. Each role
+has a light and a dark value; the dark column applies when the operating system
+asks for dark mode, so choosing a theme does not stop the app following that
+preference. An empty field keeps the built-in colour, and **Reset theme** clears
+them all.
+
+Each value has a colour picker, a preview square, and a text field. The text
+field is the authoritative one: a native colour picker only understands
+`#rrggbb`, so translucent and functional values are typed rather than picked,
+and clearing the field — the only way to restore the built-in colour — is
+something a picker cannot express. When the picker cannot show the stored value
+faithfully it is faded, because a colour input always has *some* value and a
+confident black square would otherwise claim black was chosen. The preview
+square shows the real stored colour over a chequerboard, so translucency looks
+translucent, and is drawn empty when nothing is set.
 
 Colours are stored in the graph as ordinary record fields, so a theme reaches
 your other devices through sync, appears in a JSON backup, and can be undone

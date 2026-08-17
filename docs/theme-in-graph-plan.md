@@ -161,13 +161,34 @@ build.
 
 ## T5. Settings UI — **completed 2026-08-17**
 
-A theme section in Settings: a light and a dark colour input per role, and a
-Reset that clears the fields back to stylesheet defaults. It reads and writes
-the existing `useSettings` singleton, so no new subscription and no new
-metadata plumbing.
+A light and a dark colour input per role, and a Reset that clears the fields
+back to stylesheet defaults. It reads and writes the existing `useSettings`
+singleton, so no new subscription and no new metadata plumbing.
 
 **Landed without the font selector this plan originally listed**, because T6
 was declined; there is nothing for it to select between.
+
+**Revised after first use.** The plan said "a theme section in Settings", and
+sixteen roles × two schemes swamped that page — the builder entries it sits
+beside are one panel and a link each. It now follows the same shape: a panel
+linking to `/settings/theme`, with the controls on their own page.
+
+Each value is a native colour picker, a preview square, and a text field, and
+the division of labour between them is the whole design. `<input type="color">`
+understands only `#rrggbb`, so it cannot express a translucent value, a
+functional notation, or — most importantly — *unset*, which is the only way to
+return a role to its built-in colour. The text field is therefore
+authoritative and the picker is a convenience. Two consequences follow, and
+both were found by looking at the rendered page rather than by reasoning:
+
+- **A colour input always has a value**, so every unset role rendered as
+  confident black — across most of the page, since most roles are unset. The
+  picker is now faded whenever it cannot represent the stored value, which
+  covers unset *and* `rgba()` alike.
+- **The preview square must paint its colour as a background layer**, not as
+  `background-color` under the chequerboard, or a translucent value looks like
+  a slightly different flat one. The value reaches it through a custom property
+  because an inline `background` shorthand would drop the chequerboard layers.
 
 ## T6. Vendored fonts — **declined 2026-08-17**
 
@@ -223,7 +244,7 @@ so T2 and T4 follow that precedent rather than inventing a third harness.
 | **T2** | Unit: every accepted colour form round-trips; `url(https://…)`, a backslash, a comment sequence, a stray `;` or `}`, and an over-long value are each rejected; a rejected value leaves the token unset rather than empty. |
 | **T3** | Playwright: a theme survives reload, appears in a JSON backup export, and reaches a second tab. Absent fields render identically to an unthemed graph. |
 | **T4** | Unit: generated CSS contains only allowlisted names, and emits both the plain and the `prefers-color-scheme: dark` block. **Playwright with `colorScheme` emulation — and the light-mode direction is the one that matters**: with both palettes stored, light mode must show the light value. The dark-mode assertion passes even against the broken implementation, so it proves nothing on its own. Verified by breaking the implementation on purpose and watching the light-mode test fail. |
-| **T5** | Playwright: editing a colour updates the computed value live; Reset restores the default. |
+| **T5** | Playwright: editing a colour updates the computed value live; Reset restores the default; the theme is reachable from Settings and Settings itself no longer carries the colour rows; the picker writes a plain hex while a `rgba()` typed into the text field survives beside it and fades the picker; the preview square carries the stored colour and reads as empty when unset or invalid. |
 | **T6** | Not applicable — declined. The precache trap it would have introduced is documented above in case fonts are ever revisited. |
 | **Hostile input** | Playwright: import a backup whose theme value contains `url(https://example.invalid/f.woff2)`. Assert the value is rejected, a runtime issue is reported, and — via route interception — that no request to that origin is ever made. This is the test that encodes *why* URLs are refused. |
 

@@ -107,7 +107,7 @@ test("a hostile theme value cannot make the app fetch anything", async ({ page }
 
 test("editing a colour applies live, persists, and resets", async ({ page }) => {
   await seedTheme(page, {});
-  await page.goto("/settings");
+  await page.goto("/settings/theme");
 
   await page.getByLabel("Light", { exact: true }).first().fill("#204060");
   await expect.poll(() => backgroundOf(page)).toBe("rgb(32, 64, 96)");
@@ -121,13 +121,13 @@ test("editing a colour applies live, persists, and resets", async ({ page }) => 
 
 test("an unparseable stored colour is flagged rather than silently ignored", async ({ page }) => {
   await seedTheme(page, { themeColorBgLight: "not a colour" });
-  await page.goto("/settings");
+  await page.goto("/settings/theme");
   await expect(page.getByText("Not a colour value").first()).toBeVisible();
 });
 
 test("a theme reaches a second tab and a backup export", async ({ page, context }) => {
   await seedTheme(page, {});
-  await page.goto("/settings");
+  await page.goto("/settings/theme");
   await page.getByLabel("Light", { exact: true }).first().fill("#0a0b0c");
   await expect.poll(() => backgroundOf(page)).toBe("rgb(10, 11, 12)");
 
@@ -141,4 +141,63 @@ test("a theme reaches a second tab and a backup export", async ({ page, context 
     { prefix: RECORD_PREFIX, graph: GRAPH, settingsId: SETTINGS_ID });
   expect(stored).toContain("themeColorBgLight");
   expect(stored).toContain("#0a0b0c");
+});
+
+test("the theme lives on its own page, reached from Settings", async ({ page }) => {
+  await seedTheme(page, {});
+  await page.goto("/settings");
+  // Settings should describe the theme, not contain its sixteen colour rows.
+  await expect(page.getByLabel("Light", { exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Choose colours" }).click();
+  await expect(page.getByRole("heading", { name: "Theme" })).toBeVisible();
+  await expect(page.getByLabel("Light", { exact: true }).first()).toBeVisible();
+  await page.getByRole("link", { name: "Back to Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+});
+
+test("the colour picker writes the value and the text field stays authoritative", async ({ page }) => {
+  await seedTheme(page, {});
+  await page.goto("/settings/theme");
+
+  const picker = page.getByLabel("Page background, Light picker");
+  const text = page.getByLabel("Light", { exact: true }).first();
+
+  // A native colour input only speaks #rrggbb, so choosing through it is what
+  // writes a plain hex; the text field is what makes richer values reachable.
+  await picker.fill("#3366cc");
+  await expect(text).toHaveValue("#3366cc");
+  await expect.poll(() => backgroundOf(page)).toBe("rgb(51, 102, 204)");
+
+  // A value the picker cannot express must survive being displayed beside it,
+  // and the picker must stop claiming to show it: a colour input always has a
+  // value, so an unfaded black square would assert that black was chosen.
+  await text.fill("rgba(10, 20, 30, 0.5)");
+  await expect(text).toHaveValue("rgba(10, 20, 30, 0.5)");
+  await expect(picker).toHaveValue("#000000");
+  await expect(picker).toHaveClass(/theme-color-picker-inexact/);
+  await expect.poll(() => backgroundOf(page)).toBe("rgba(10, 20, 30, 0.5)");
+
+  // A plain hex is representable, so the picker speaks for itself again.
+  await text.fill("#3366cc");
+  await expect(picker).not.toHaveClass(/theme-color-picker-inexact/);
+});
+
+test("the preview square shows the stored colour, and shows nothing when unset", async ({ page }) => {
+  await seedTheme(page, { themeColorBgLight: "#3366cc" });
+  await page.goto("/settings/theme");
+
+  const swatchOf = (nth: number) => page.locator(".theme-color-preview").nth(nth).evaluate(
+    (node) => ({
+      swatch: getComputedStyle(node).getPropertyValue("--swatch").trim(),
+      unset: node.classList.contains("theme-color-preview-unset"),
+    }),
+  );
+
+  // First row is the page background: light is set, dark is not.
+  expect(await swatchOf(0)).toEqual({ swatch: "#3366cc", unset: false });
+  expect(await swatchOf(1)).toEqual({ swatch: "", unset: true });
+
+  // An invalid value is shown as unset rather than as some arbitrary colour.
+  await page.getByLabel("Light", { exact: true }).first().fill("nonsense");
+  expect(await swatchOf(0)).toEqual({ swatch: "", unset: true });
 });
