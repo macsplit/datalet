@@ -420,8 +420,15 @@ Redis is the ingest and fanout tier, not the durable store. Per vault:
 | `vault:<id>:batch:<batchId>` | Idempotency record, 24 h TTL |
 | `vault:<id>:stream-ticket:<hash>` | Stream ticket → token generation, 1 h TTL |
 
-Plus a global `vaults:index` set, which is how the materializer discovers
-vaults without scanning the keyspace.
+Plus three keys outside the per-vault namespace: `vaults:index`, the set the
+materializer uses to discover vaults without scanning the keyspace;
+`vault:pair-code:<hash>`, a one-use pairing code carrying its own vault id and
+token generation, with a ten-minute TTL; and `materializer:shard:<index>`, the
+ownership lease a materializer process claims and heartbeats. The pairing key
+sits outside `vault:<id>:*` deliberately — it is looked up by code, not by
+vault — so deleting a vault leaves any outstanding code behind to expire
+harmlessly, since redemption revalidates against the vault's now-absent meta
+hash.
 
 Live fanout works because each server process tails a vault's stream on a
 dedicated blocking connection and pushes entries to its locally attached SSE
@@ -492,6 +499,22 @@ the two cannot disagree. The same sweep reports vaults idle past the configured
 window (30 days by default), using the last accepted-write timestamp and only
 reporting—never automatically deleting—the vault.
 
+The same sweep also emits one single-line JSON object per owned vault
+(`"event": "vault-stats"`), and `GET /sync/admin/vaults` serves the identical
+numbers on demand: records, tombstones, bytes against quota, accepted batches,
+stream length, materializer lag and pending, created and last-active times.
+Without these, the per-vault quota and write rate limit are invisible until a
+tenant complains. The endpoint authenticates against `ADMIN_TOKEN`, a secret
+deliberately separate from every vault token — a tenant credential grants full
+read/write over that tenant's data and no visibility into any vault's numbers.
+Unset, the route answers 404 rather than 401, so a single-tenant deployment has
+no admin API at all. Listing pages through `vaults:index` with `SSCAN`, because
+an observability endpoint that fell over at tenant scale would defeat its own
+purpose. Backlog comes from the consumer group rather than being inferred:
+`lag` is entries never read, `pending` is entries read but unacknowledged, and
+a null lag (which Redis reports when trimming makes it uncomputable) is passed
+through rather than flattened to zero.
+
 Materialization is decoupled on purpose: `/sync/patches` never touches Neo4j,
 so a slow or down Neo4j cannot block accepting writes or fanning them out. The
 cost is that the durable copy trails the live copy — about 130 records/s in the
@@ -526,7 +549,8 @@ src/
 │   ├── RecordCard.tsx          Generic record editor
 │   ├── UndoControl.tsx         Nav undo button and Ctrl/Cmd+Z
 │   ├── DataBackup.tsx          Whole-graph JSON export and import
-│   ├── SyncSettings.tsx        Vault create / join / rotate / leave
+│   ├── SyncSettings.tsx        Vault create / join / rotate / delete / pair codes
+│   ├── PairingQr.tsx           Renders the LG1 code as a QR; scan where supported
 │   ├── RuntimeSafety.tsx       Error boundary, issue banner, inline circuit notice
 │   ├── icons.tsx               Inline SVG icons
 │   └── usePrivateNuri.ts       Resolves the active graph (local session or vault)
@@ -544,21 +568,34 @@ src/
     ├── dynamicSchema.ts        Schema + fields → runtime ORM shape
     ├── remoteSyncEngine.ts     Outbox, HLC, SSE, cursor, snapshot resync
     ├── blockGraph.ts           Bounded, cycle-safe block traversal
+    ├── pairingCode.ts          LG1 Crockford-base32 credential encode / decode
+    ├── qrCode.ts               Dependency-free QR matrix generation
+    ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
     └── runtimeHealth.ts        Limits and the issue reporter
 
 server/src/
 ├── index.ts                    Entry point; ROLE selects ingest or materializer
 ├── httpServer.ts               All /sync/* routes, SSE, static serving
-├── vaultStore.ts               Vault identity, tokens, tickets, apply, replay
+├── vaultStore.ts               Vault identity, tokens, tickets, pair codes,
+│                               apply, replay, stats, lifecycle deletion
 ├── patchApply.ts               Patch algebra shared with the materializer
-├── materializer.ts             Stream consumer group → Neo4j; tombstone sweep
+├── materializer.ts             Sharded, multiplexed consumer groups → Neo4j;
+│                               tombstone sweep, idle reporting, stats logging
+├── pairCode.ts                 One-use PAIR- code generation and normalization
+├── config.ts                   Tombstone retention, idle window, admin token
+├── cleanupNeo4jLabels.ts       Optional dry-run-first legacy label cleanup
 ├── redis/
-│   ├── applyBatch.lua          The atomic accept + apply + sequence script
+│   ├── applyBatch.lua          The atomic accept + apply + sequence script,
+│   │                           including the quota gate and lifecycle check
+│   ├── redeemPairCode.lua      Single-use redemption bound to a token generation
+│   ├── manageShardLease.lua    Shard ownership claim and heartbeat
+│   ├── incrementRateLimit.lua  Atomic fixed-window counter with its expiry
 │   ├── client.ts               Shared and blocking connections
 │   ├── streamWatcher.ts        Per-vault stream tail, fanned out to SSE listeners
-│   └── rateLimit.ts            Fixed-window counter for vault creation
+│   └── rateLimit.ts            Vault creation, pair redemption, and vault writes
 └── neo4j/
     ├── client.ts               Driver, session, schema constraints
+    ├── labels.ts               The closed record-label set and stale-label picker
     └── materialize.ts          Record upsert / tombstone / read / purge
 
 tests/                          Playwright: persistence, data blocks, builders,

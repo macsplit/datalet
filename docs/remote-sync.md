@@ -115,12 +115,56 @@ built when, and the defects found doing it, see
 | `GET /sync/snapshot?vault=` | full current state, from Neo4j |
 | `POST /sync/stream-ticket?vault=` | exchange bearer auth for a one-hour stream-only ticket |
 | `GET /sync/stream?vault=&since=&ticket=` | live + replayed patches, SSE |
+| `GET /sync/admin/vaults` | operator-only per-vault stats; see below |
 
 All endpoints except `/sync/health`, vault creation, and temporary-code
 redemption are bearer-protected. Redemption is protected by the temporary
 credential itself, exact-once consumption, expiry, and a per-IP rate limit.
 Other HTTP requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint
 accepts only the short-lived ticket returned by `/sync/stream-ticket`.
+
+### Operator statistics
+
+`GET /sync/admin/vaults` reports the numbers a multi-tenant deployment needs
+and nothing else can see: without it, the storage quota and the write rate
+limit are invisible until a tenant complains.
+
+It authenticates against `ADMIN_TOKEN`, a shared secret **separate from every
+vault token**, compared in constant time. A vault token is never accepted —
+holding one grants full read/write over that vault's data and no visibility
+into any vault's numbers, including its own. When `ADMIN_TOKEN` is unset the
+route answers `404`: a deployment with no operator to serve has no admin API,
+which is the correct default for single-tenant use.
+
+| Parameter | Meaning |
+|---|---|
+| `?vault=<id>` | one vault's stats; `404` if unknown |
+| `?cursor=&limit=` | page through every vault; `limit` clamps to 500 |
+
+Listing pages through `vaults:index` with `SSCAN` rather than reading it
+whole, and echoes the cursor back — `"0"` means every vault has been seen. An
+observability endpoint that itself fell over at tenant scale would defeat its
+own purpose. `SSCAN` guarantees full coverage across a cycle, not ordering or
+a fixed page size.
+
+Each entry reports `records`, `tombstones`, `bytes` against `quotaBytes`,
+`acceptedBatches` (the vault's monotonic sequence number), `streamEntries`,
+`materializerLag` and `materializerPending`, `createdAt`, `lastActiveAt`, and
+`deleting`.
+
+Two deliberate choices in that payload. `acceptedBatches` is a **counter, not
+a rate**: a scraper differencing two samples gets a correct rate across any
+window, where a server-computed one would fix the window for every caller.
+And the materializer backlog is read from the consumer group rather than
+inferred — `lag` counts entries the group has never read, `pending` counts
+entries it read but has not acknowledged, so the pair separates "not started"
+from "started and stuck". Redis reports a null `lag` when trimming has made it
+uncomputable; that null is passed through rather than flattened to zero,
+because an unknown backlog is not a healthy one.
+
+The materializer emits the same object for each vault it owns as a single-line
+JSON log (`"event": "vault-stats"`) during its maintenance sweep, so the fleet
+can be scraped from logs without polling the endpoint.
 
 ---
 

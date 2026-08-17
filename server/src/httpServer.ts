@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import {
   applyBatch,
   checkVaultToken,
@@ -20,10 +21,12 @@ import {
   entriesSince,
   rotateVaultToken,
   redeemPairCode,
+  scanVaultIds,
   snapshot,
   subscribeLive,
   VAULT_DELETED_CHANNEL,
   vaultExists,
+  vaultStats,
   type LogEntry,
 } from "./vaultStore.js";
 import { newBlockingConnection } from "./redis/client.js";
@@ -37,6 +40,11 @@ import {
   VAULT_WRITE_RATE_LIMIT,
   VAULT_WRITE_RATE_WINDOW_SECONDS,
 } from "./redis/config.js";
+import {
+  ADMIN_TOKEN,
+  ADMIN_VAULT_PAGE_LIMIT,
+  ADMIN_VAULT_PAGE_LIMIT_MAX,
+} from "./config.js";
 import type { Patch } from "./patchApply.js";
 
 const MAX_BODY_BYTES = 2_000_000;
@@ -106,12 +114,26 @@ function clientIp(req: IncomingMessage): string {
 export type SyncServerOptions = {
   vaultWriteRateLimit?: number;
   vaultWriteRateWindowSeconds?: number;
+  adminToken?: string;
 };
 
 export function createSyncServer(staticDir: string, options: SyncServerOptions = {}) {
   const vaultWriteRateLimit = options.vaultWriteRateLimit ?? VAULT_WRITE_RATE_LIMIT;
   const vaultWriteRateWindowSeconds =
     options.vaultWriteRateWindowSeconds ?? VAULT_WRITE_RATE_WINDOW_SECONDS;
+  const adminToken = options.adminToken ?? ADMIN_TOKEN;
+  /**
+   * Constant-time equality against the operator secret only. A vault token
+   * can never satisfy this, which is the point: tenant credentials must not
+   * read fleet-wide numbers.
+   */
+  const adminAuthorized = (req: IncomingMessage): boolean => {
+    const token = bearerToken(req);
+    if (!adminToken || !token) return false;
+    const offered = Buffer.from(token);
+    const expected = Buffer.from(adminToken);
+    return offered.length === expected.length && timingSafeEqual(offered, expected);
+  };
   if (!Number.isInteger(vaultWriteRateLimit) || vaultWriteRateLimit < 1) {
     throw new Error("vault write rate limit must be a positive integer");
   }
@@ -146,6 +168,39 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
     try {
       if (url.pathname === "/sync/health") {
         sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (url.pathname === "/sync/admin/vaults" && req.method === "GET") {
+        // 404 rather than 401 when no operator secret is configured: a
+        // deployment without one has no admin API, and saying so is more
+        // useful than advertising an endpoint nobody can reach.
+        if (!adminToken) {
+          sendJson(res, 404, { reason: "admin API is not enabled" });
+          return;
+        }
+        if (!adminAuthorized(req)) {
+          sendJson(res, 401, { reason: "invalid admin token" });
+          return;
+        }
+        const requestedVault = url.searchParams.get("vault");
+        if (requestedVault) {
+          if (!(await vaultExists(requestedVault))) {
+            sendJson(res, 404, { reason: "unknown vault" });
+            return;
+          }
+          sendJson(res, 200, await vaultStats(requestedVault));
+          return;
+        }
+        const requestedLimit = Number(url.searchParams.get("limit") ?? ADMIN_VAULT_PAGE_LIMIT);
+        const limit = Number.isFinite(requestedLimit)
+          ? Math.min(ADMIN_VAULT_PAGE_LIMIT_MAX, Math.max(1, Math.trunc(requestedLimit)))
+          : ADMIN_VAULT_PAGE_LIMIT;
+        const page = await scanVaultIds(url.searchParams.get("cursor") ?? "0", limit);
+        const vaults = await Promise.all(page.vaultIds.map((vaultId) => vaultStats(vaultId)));
+        // SSCAN's cursor, passed straight back: "0" means the caller has seen
+        // every vault, and any other value is the next page's starting point.
+        sendJson(res, 200, { cursor: page.cursor, vaults });
         return;
       }
 

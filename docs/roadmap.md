@@ -25,32 +25,6 @@ ruled out from a run that short.
 This needs a deployment-focused session with real hours available. It gates
 nothing else.
 
-### Multi-tenancy and identity tracks
-
-[`multi-tenancy-and-identity-plan.md`](multi-tenancy-and-identity-plan.md)
-plans two pieces of work identified after this roadmap was written:
-
-- **Multi-tenant hosting** — carrying thousands of separate vaults on one
-  backend deployment. This is *not* the multi-user work listed as out of scope
-  below: a vault stays all-or-nothing and single-world, and the vault-token
-  scheme is unchanged. A1 through A6 are complete: the materializer multiplexes
-  64 vault streams per blocking connection, deterministically shards vaults
-  across leased worker indexes, and keeps Neo4j record labels bounded across
-  user schemas, while Redis atomically enforces per-vault storage and write
-  limits, while authenticated lifecycle deletion cleans both stores and idle
-  vaults are reported without automatic reclamation. Remaining work is
-  per-tenant observability.
-- **User-facing identity** — resolving `did:ng:` ids to labels in the four
-  places they leak (reference sort, reader search, export, print), and
-  replacing the two-field pairing credential with one checksummed string plus
-  QR and short-lived pairing codes. **Track B is complete:** labels cover all
-  four reader surfaces, durable and one-use pairing flows are implemented,
-  and user tabs use readable derived URLs while permanent raw-id bookmarks
-  continue to resolve.
-
-Both include a testing strategy. The endurance run above should be re-scoped
-to multi-tenant once the first two items of that plan land.
-
 ---
 
 ## Deferred by decision
@@ -97,14 +71,47 @@ listed so they are not mistaken for oversights.
   earlier tranche. The 4 MB cap and the full-store startup load remain, and
   everything built since has been sized to live under them.
 - **Joins, reverse lookups, rollups, relationship constraints, cascading
-  record behaviour.** References are one-directional and unresolved outside the
-  on-screen control.
+  record behaviour.** References stay one-directional. They now *display* as
+  the target's label everywhere rather than as a raw id, but that is a lookup
+  of one record by its own id, not a relational feature: nothing traverses the
+  reverse direction, aggregates across it, or constrains it.
 - **The upstream `@ng-org/orm` subscription-lifecycle race.** Worked around in
   `graph_orm_update`; not fixable here without forking the dependency.
 
 ---
 
 ## Delivered
+
+### Multi-tenancy and identity tracks
+
+[`multi-tenancy-and-identity-plan.md`](multi-tenancy-and-identity-plan.md)
+planned two pieces of work identified after this roadmap was written. Both are
+now complete; the plan keeps the per-item detail and the deviations from it:
+
+- **Multi-tenant hosting** — carrying thousands of separate vaults on one
+  backend deployment. This is *not* the multi-user work listed as out of scope
+  above: a vault stays all-or-nothing and single-world, and the vault-token
+  scheme is unchanged. A1 through A7 are complete: the materializer multiplexes
+  64 vault streams per blocking connection, deterministically shards vaults
+  across leased worker indexes, and keeps Neo4j record labels bounded across
+  user schemas, while Redis atomically enforces per-vault storage and write
+  limits, authenticated lifecycle deletion cleans both stores, idle vaults are
+  reported without automatic reclamation, and per-vault numbers are served to
+  an operator-only endpoint and emitted as structured logs.
+- **User-facing identity** — resolving `did:ng:` ids to labels in the four
+  places they leak (reference sort, reader search, export, print), and
+  replacing the two-field pairing credential with one checksummed string plus
+  QR and short-lived pairing codes. **Track B is complete:** labels cover all
+  four reader surfaces, durable and one-use pairing flows are implemented,
+  and user tabs use readable derived URLs while permanent raw-id bookmarks
+  continue to resolve.
+
+The endurance run under **Open** should now be re-scoped to multi-tenant:
+`pnpm test:multi-tenant` already measures connection count, per-vault
+accepted-versus-materialized equality and lag percentiles across 200 vaults in
+one pass, and a multi-hour version of that answers the original memory-leak
+question at the same time.
+
 
 | Area | What landed |
 | --- | --- |
@@ -139,9 +146,14 @@ Changing `src/shapes/shex/metaShapes.shex` additionally requires re-running
 
 Before signing off a tranche, also exercise the real sync path with Redis and
 Neo4j running: start `./run.sh`, then run `pnpm test:smoke:sync` in another
-terminal. Run the server suite with `.env.local` loaded so no integration test
-is skipped. The smoke must traverse two browser contexts, Redis, the
-materializer and a Neo4j-backed snapshot, and must clean up its temporary vault.
+terminal, then stop the stack with Ctrl-C rather than killing its children (see
+the README's note on orphaned servers). The smoke must traverse two browser
+contexts, Redis, the materializer and a Neo4j-backed snapshot, and must clean up
+its temporary vault.
+
+`pnpm test:server` loads `.env.local` itself, so integration tests run rather
+than skip. Check the `# skipped` count anyway: a skip reports as `ok … # SKIP`,
+so a suite that reaches neither Redis nor Neo4j still exits green.
 
 Update [`product-assessment.md`](product-assessment.md) as each piece lands.
 Its value is that it stays accurate about what is missing.

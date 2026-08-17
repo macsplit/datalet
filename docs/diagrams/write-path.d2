@@ -2,9 +2,14 @@ shape: sequence_diagram
 
 Client -> Client: "queue in the persistent outbox,\nstamp one HLC per batch"
 Client -> Server: "POST /sync/patches (Bearer token)"
+Server -> Server: "per-vault write rate limit"
+if over the limit: {
+  Server -> Client: "429 - keep the batch queued,\nback off and retry (not terminal)"
+}
 Server -> Redis: "run applyBatch.lua"
-Redis -> Redis: "accept/reject each patch:\ntombstone check, structural write-once,\nper-field HLC last-write-wins, set merge"
-Redis -> Redis: "apply accepted patches,\nINCR seq, XADD to the vault stream"
+Redis -> Redis: "accept/reject each patch:\nvault not deleting, tombstone check,\nstructural write-once,\nper-field HLC last-write-wins, set merge"
+Redis -> Redis: "project final size:\nrefuse the whole batch over quota,\nbefore any write"
+Redis -> Redis: "apply accepted patches, commit HLCs,\nINCR seq, XADD to the vault stream"
 Redis -> Server: "accepted, seq, accepted/submitted counts"
 Server -> Client: "200 (or 409 if nothing was accepted)"
 Client -> Client: "drop from the outbox;\nwarn if any patch was dropped"

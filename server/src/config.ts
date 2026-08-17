@@ -37,3 +37,17 @@ if (!Number.isFinite(configuredVaultIdleReportAfterMs) || configuredVaultIdleRep
   throw new Error("VAULT_IDLE_REPORT_AFTER_MS must be a positive number.");
 }
 export const VAULT_IDLE_REPORT_AFTER_MS = configuredVaultIdleReportAfterMs;
+
+// Shared secret for GET /sync/admin/vaults. Deliberately separate from every
+// vault token: a tenant credential must never read another tenant's numbers,
+// and an operator must not need one to see the fleet. Unset means the admin
+// API does not exist at all (the route answers 404), which is the right
+// default for a single-tenant deployment that has no operator to serve.
+export const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
+
+// How many vaults one GET /sync/admin/vaults page may report. The endpoint
+// pages through vaults:index with SSCAN rather than reading it whole -
+// an observability endpoint that itself fell over at tenant scale would
+// defeat its own purpose.
+export const ADMIN_VAULT_PAGE_LIMIT = 100;
+export const ADMIN_VAULT_PAGE_LIMIT_MAX = 500;

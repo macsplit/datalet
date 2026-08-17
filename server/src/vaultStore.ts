@@ -39,6 +39,7 @@ import {
   upsertVaultMeta,
 } from "./neo4j/materialize.js";
 import { TOMBSTONE_RETENTION_MS } from "./config.js";
+import { MATERIALIZER_GROUP } from "./neo4j/config.js";
 import type { Patch, Store } from "./patchApply.js";
 
 const VAULTS_INDEX_KEY = "vaults:index";
@@ -130,6 +131,114 @@ export async function rotateVaultToken(vaultId: string): Promise<string> {
 /** All known vault IDs, for the materializer's vault-discovery loop. */
 export async function listVaultIds(): Promise<string[]> {
   return redis().smembers(VAULTS_INDEX_KEY);
+}
+
+/**
+ * One page of vault IDs. The admin API pages rather than reading the whole
+ * index (listVaultIds) because it is the one caller whose cost scales with
+ * tenant count on every request; the materializer reads the index whole
+ * because it must own the complete set to shard it.
+ */
+export async function scanVaultIds(
+  cursor: string,
+  count: number,
+): Promise<{ cursor: string; vaultIds: string[] }> {
+  const [nextCursor, vaultIds] = await redis().sscan(VAULTS_INDEX_KEY, cursor, "COUNT", count);
+  return { cursor: nextCursor, vaultIds };
+}
+
+export type VaultStats = {
+  vaultId: string;
+  records: number;
+  tombstones: number;
+  bytes: number;
+  quotaBytes: number;
+  acceptedBatches: number;
+  streamEntries: number;
+  materializerLag: number | null;
+  materializerPending: number | null;
+  createdAt: number | undefined;
+  lastActiveAt: number | undefined;
+  deleting: boolean;
+};
+
+function numberOrUndefined(raw: string | null | undefined): number | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * How far the materializer is behind on this vault, read from the consumer
+ * group rather than inferred: `lag` is entries the group has never read and
+ * `pending` is entries it read but has not acknowledged, so the two together
+ * separate "not started" from "started and stuck". Redis reports a null lag
+ * when trimming has made it uncomputable, which is passed through rather
+ * than flattened to zero - an unknown lag is not a healthy one.
+ */
+async function materializerBacklog(
+  vaultId: string,
+): Promise<{ lag: number | null; pending: number | null }> {
+  try {
+    const groups = await redis().xinfo("GROUPS", streamKey(vaultId)) as unknown[];
+    for (const group of groups) {
+      if (!Array.isArray(group)) continue;
+      const fields = new Map<string, unknown>();
+      for (let index = 0; index + 1 < group.length; index += 2) {
+        fields.set(String(group[index]), group[index + 1]);
+      }
+      if (fields.get("name") !== MATERIALIZER_GROUP) continue;
+      const lag = numberOrUndefined(fields.get("lag") as string | null);
+      const pending = numberOrUndefined(fields.get("pending") as string | null);
+      return { lag: lag ?? null, pending: pending ?? null };
+    }
+  } catch {
+    // No stream yet, or no consumer group on it: nothing has been written or
+    // no materializer has ever attached. Neither is an error to report here.
+  }
+  return { lag: null, pending: null };
+}
+
+/**
+ * Per-vault numbers for the admin API and the materializer's structured
+ * stats log. Read-only and best-effort: it never repairs what it observes,
+ * so a drifting counter is reported rather than silently corrected.
+ */
+export async function vaultStats(vaultId: string): Promise<VaultStats> {
+  const [records, tombstones, storedBytes, seq, streamEntries, meta, backlog] = await Promise.all([
+    redis().hlen(storeKey(vaultId)),
+    redis().hlen(tombstoneKey(vaultId)),
+    redis().get(bytesKey(vaultId)),
+    redis().get(seqKey(vaultId)),
+    redis().xlen(streamKey(vaultId)),
+    redis().hmget(metaKey(vaultId), "createdAt", "lastActiveAt", "deletingAt"),
+    materializerBacklog(vaultId),
+  ]);
+
+  // A vault written before the quota landed has no byte counter until its
+  // next accepted write backfills one inside applyBatch.lua. Summing the
+  // stored records here reports the same number without writing it, since
+  // only the atomic accept path may set it.
+  let bytes = numberOrUndefined(storedBytes);
+  if (bytes === undefined) {
+    const stored = await redis().hvals(storeKey(vaultId));
+    bytes = stored.reduce((total, record) => total + Buffer.byteLength(record), 0);
+  }
+
+  return {
+    vaultId,
+    records,
+    tombstones,
+    bytes,
+    quotaBytes: VAULT_QUOTA_BYTES,
+    acceptedBatches: numberOrUndefined(seq) ?? 0,
+    streamEntries,
+    materializerLag: backlog.lag,
+    materializerPending: backlog.pending,
+    createdAt: numberOrUndefined(meta[0]),
+    lastActiveAt: numberOrUndefined(meta[1]),
+    deleting: meta[2] !== null,
+  };
 }
 
 export async function vaultExists(vaultId: string): Promise<boolean> {

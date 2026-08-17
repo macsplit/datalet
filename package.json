@@ -13,7 +13,7 @@
     "test": "pnpm test:client && pnpm test:server",
     "test:client": "playwright test && pnpm test:offline",
     "test:offline": "pnpm build && playwright test --config playwright.offline.config.ts",
-    "test:server": "tsx --test server/test/**/*.test.ts",
+    "test:server": "tsx --env-file-if-exists=.env.local --test server/test/**/*.test.ts",
     "test:smoke:sync": "tsx --env-file-if-exists=.env.local server/test/fullStackSmoke.ts",
     "test:multi-tenant": "tsx --env-file-if-exists=.env.local server/test/multiTenant.ts",
     "cleanup:neo4j-labels": "tsx --env-file-if-exists=.env.local server/src/cleanupNeo4jLabels.ts",

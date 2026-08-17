@@ -29,6 +29,7 @@ import {
   parseLogEntry,
   streamKey,
   sweepVaultTombstones,
+  vaultStats,
   vaultActivityAt,
   type LogEntry,
 } from "./vaultStore.js";
@@ -209,9 +210,13 @@ class MaterializerStreamBatch {
 
 /**
  * Purges tombstones (both Neo4j's and Redis's) past their retention window
- * (remote-sync-architecture.md §5) across every known vault. One vault's
- * failure is logged and skipped rather than aborting the rest, matching
- * discoverAndWatch's per-vault fault isolation below.
+ * (remote-sync-architecture.md §5) across every known vault, and emits one
+ * structured stats line per owned vault. The sweep is where per-vault
+ * reporting belongs because it is already the one loop that visits every
+ * vault this process owns; the same numbers are available on demand from
+ * GET /sync/admin/vaults. One vault's failure is logged and skipped rather
+ * than aborting the rest, matching discoverAndWatch's per-vault fault
+ * isolation below.
  */
 async function sweepAllTombstones(
   ownsVault: (vaultId: string) => boolean,
@@ -224,6 +229,10 @@ async function sweepAllTombstones(
     try {
       const purged = await sweepVaultTombstones(vaultId);
       if (purged > 0) console.log(`materializer: purged ${purged} expired tombstone(s) in vault ${vaultId}`);
+      // One JSON object per line, so a log scraper can consume this without
+      // parsing prose. Quota and rate limits are otherwise invisible until a
+      // tenant complains, which is the gap this closes.
+      console.log(JSON.stringify({ event: "vault-stats", ...await vaultStats(vaultId) }));
       const activityAt = await vaultActivityAt(vaultId);
       if (activityAt !== undefined && activityAt <= idleCutoff) {
         console.warn(

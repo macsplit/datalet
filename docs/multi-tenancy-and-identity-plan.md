@@ -1,8 +1,8 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) and Track A1 through A6 were
-completed 2026-08-17; A7 has not started. Written 2026-08-16 from
-the code as it stood at `b707800` and kept current as work lands.
+**Status: complete.** Track A (A1 through A7) and Track B (B1 through B6) were
+completed 2026-08-17. Written 2026-08-16 from the code as it stood at
+`b707800` and kept current as work landed.
 
 Two independent tracks, plannable and shippable separately:
 
@@ -285,14 +285,34 @@ maintenance sweep reports vaults whose latest accepted write (or creation for
 never-written vaults) is older than `VAULT_IDLE_REPORT_AFTER_MS`, default 30
 days, and explicitly performs no automatic vault deletion.
 
-### A7. Per-tenant observability — **small**
+### A7. Per-tenant observability — **completed 2026-08-17**
 
-Multi-tenant operation needs per-vault numbers that do not exist today: record
+Multi-tenant operation needs per-vault numbers that did not exist: record
 count, byte usage against quota, accepted-writes rate, materialization lag,
 last-active. Expose them behind a separate admin credential (never the vault
 token) at `GET /sync/admin/vaults`, and emit the same values as structured
 logs. Without this, A4's quota and A5's limit are unobservable until a tenant
 complains.
+
+**Landed detail.** `vaultStats()` reads one vault's numbers from Redis and the
+materializer consumer group; `GET /sync/admin/vaults` serves them, and the
+materializer's maintenance sweep emits the same object per owned vault as a
+single-line `"event": "vault-stats"` JSON log. Authentication is a constant-time
+compare against `ADMIN_TOKEN`, which no vault token can satisfy; unset, the
+route answers 404 so a single-tenant deployment has no admin API rather than a
+locked one. Listing pages through `vaults:index` with `SSCAN` and echoes the
+cursor back, since an observability endpoint that fell over at tenant scale
+would defeat its own purpose.
+
+**Two deviations from the plan as written, both deliberate.** The plan asked
+for an accepted-writes *rate*; the endpoint reports the monotonic counter
+(`acceptedBatches`, the vault's sequence number) instead, because a scraper
+differencing two samples gets a correct rate over any window while a
+server-computed one fixes the window for every caller. And materialization lag
+is read from `XINFO GROUPS` rather than inferred, splitting into `lag`
+(never read) and `pending` (read, unacknowledged) so "not started" is
+distinguishable from "started and stuck"; Redis's null lag after trimming is
+passed through rather than flattened to zero.
 
 ---
 
@@ -511,7 +531,7 @@ asserts on:
 | **A4** | Extend `server/test/redisSync.test.ts`. Writes under quota unaffected; the batch that crosses it is refused **whole**, with nothing partially applied; the byte counter is credited back on record removal; the refusal reason reaches the client's existing discarded-writes warning (Playwright, alongside `sync-warnings.spec.ts`). Concurrency: two simultaneous batches that individually fit but jointly exceed — exactly one is accepted. |
 | **A5** | Server: a 429 is returned past the limit. **Client (the critical one):** a 429 leaves the batch in the outbox, backs off, and eventually delivers it — asserted by final record state, not by response codes. Add an explicit regression asserting a 429 is *not* treated like the terminal 409 path, since that failure mode loses data silently. |
 | **A6** | Delete removes every `vault:<id>:*` key, index membership, and both Neo4j node kinds; an attached SSE client is disconnected; a subsequent request with the old token 401s. `lastActiveAt` advances on accepted writes only. |
-| **A7** | Reported per-vault numbers match independently computed ones. The admin endpoint rejects a vault token — it must not be reachable with tenant credentials. |
+| **A7** | `adminStatsHttp.test.ts`: reported per-vault numbers match independently computed Redis state; the admin endpoint rejects a vault token *and* an anonymous request; an unset `ADMIN_TOKEN` makes the route 404; paging covers every vault with no repeats; an unknown vault is a 404 rather than an empty report. |
 | **B1/B2** | Playwright in `tests/data-blocks.spec.ts`: a reference column sorts by label rather than id; reader search matches label text; exported JSON carries the label and still carries `@id`; the print table shows labels. Fallback: a target schema with no text or enum property still renders the id without crashing. Unit: `lookupRecordLabel` on a missing target returns the id. |
 | **B3** | Pure-function property tests — encode/decode round-trip; the check symbol catches every single-character substitution and adjacent transposition; `0/O` and `1/I/L` decode identically; case-insensitivity; a legacy two-field entry still pairs. This is the cheapest high-value test surface in the plan. |
 | **B4** | QR encode → decode round-trip as a unit test. Playwright asserts the QR renders and that the manual field remains present and usable. Camera capture is a documented manual test — it cannot run in the plain-HTTP contexts CI uses, which is itself the constraint worth recording. |
@@ -543,8 +563,9 @@ pnpm test:server
 
 B1 additionally requires `pnpm build:orm` with the regenerated
 `src/shapes/orm/*` committed. Track A additionally requires `./run.sh` plus
-`pnpm test:smoke:sync` against real Redis and Neo4j, with `.env.local` loaded
-so no integration test is skipped.
+`pnpm test:smoke:sync` against real Redis and Neo4j. `pnpm test:server` loads
+`.env.local` itself; verify `# skipped 0` regardless, because a skipped
+integration test reports as `ok … # SKIP` and leaves the suite green.
 
 ---
 
@@ -562,11 +583,21 @@ so no integration test is skipped.
 
 ## Effect on existing documents
 
-When items land: update [`product-assessment.md`](product-assessment.md) —
-its "ceremony-to-workload ratio" criticism is contingent on the product being
-one person's devices and inverts if multi-tenant hosting becomes a supported
-mode; update `architecture.md` §5's statement that references sort and search
-on raw ids (B2 changes it); update `remote-sync-architecture.md` §6.3, whose
-sharded-worker-pool note A2 implements; and update
-[`remote-sync-deployment.md`](remote-sync-deployment.md) with the sharding
-procedure, the quota and rate-limit variables, and multi-tenant sizing.
+All done, and worth re-checking if any of this is revisited:
+
+- [`product-assessment.md`](product-assessment.md) — the
+  "ceremony-to-workload ratio" criticism was contingent on the product being
+  one person's devices, and multi-tenant hosting inverted it. Rewritten, with
+  multi-tenant hosting added as a use case and the verified scale (200 vaults)
+  stated separately from the extrapolated one.
+- `architecture.md` — §5's statement that references sort and search on raw
+  ids (changed by B2), and §3.4's materializer description (A1, A2, A3, A6,
+  A7).
+- `remote-sync.md` — the endpoint table plus the operator-statistics section.
+- `remote-sync-architecture.md` §6.3, whose sharded-worker-pool note A2
+  implements.
+- [`remote-sync-deployment.md`](remote-sync-deployment.md) — the sharding
+  procedure, and the quota, rate-limit, idle-report and `ADMIN_TOKEN`
+  variables.
+- `build-history.md` — one row per landed step (12 through 18).
+- The untracked local `secrets.md` env table, which `run.sh` points readers at.

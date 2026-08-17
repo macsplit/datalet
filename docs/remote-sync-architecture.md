@@ -513,6 +513,15 @@ per-user records. Concretely:
 - `DELETE /sync/vaults?vault=` requires the current bearer token, blocks new
   writes with a lifecycle marker, removes the complete Redis and Neo4j vault,
   and publishes a cross-replica notification that disconnects its SSE clients.
+- `GET /sync/admin/vaults` is the one endpoint outside the per-vault scheme.
+  It authenticates against `ADMIN_TOKEN`, a separate operator secret: a vault
+  token grants full read/write over one tenant's *data* and must not grant
+  read access to any tenant's *numbers*, so the two credential kinds are
+  deliberately disjoint rather than hierarchical. Unset, the route answers 404
+  — a deployment with no operator to serve should not carry an admin surface
+  at all. This is fleet observability, not a step toward accounts: it reports
+  per-vault size, throughput and materialization backlog, and exposes no
+  record content.
   Accepted writes atomically refresh `lastActiveAt`; the materializer reports
   vaults idle beyond `VAULT_IDLE_REPORT_AFTER_MS` but never deletes them.
 - Without at least the bearer-token check, any client that discovers the

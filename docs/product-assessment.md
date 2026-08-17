@@ -91,6 +91,24 @@ idempotency, stateless ingest behind a proxy, snapshot fallback when a resume
 cursor falls outside the retained stream, and an offline outbox that survives
 reloads.
 
+**6. Hosting many small worlds on one backend.** A vault is a complete,
+isolated tenant — separate Redis keyspace, separate graph, its own credential —
+so one deployment can serve a few thousand of them. This is a recent capability
+rather than an original goal, and it is the reason the sync tier's engineering
+is proportionate rather than excessive: the materializer multiplexes 64 vault
+streams per blocking connection and shards across leased workers, Neo4j label
+cardinality is bounded regardless of how many schemas tenants define, Redis
+enforces per-vault storage and write limits atomically, and an operator-only
+endpoint plus a structured per-vault log make those limits visible before a
+tenant has to complain. The 200-vault harness
+measures 4 blocking connections where the old design would have held 200, with
+materialization lag at p99 177 ms.
+
+Read the boundary carefully: this is **many separate single-user worlds, not
+teams**. Everything under "Multi-user work" below still holds inside any one
+vault. What changed is how many vaults one operator can carry, not what a vault
+is.
+
 ## What it is not good for
 
 **Complex relational workflows.** Fields include record references, so a Task
@@ -129,13 +147,21 @@ enter Redis with AOF `everysec`, leaving roughly a one-second crash window.
 Materialization runs at about 130 records/s, so the Neo4j copy trails the live
 Redis copy by seconds under load.
 
-**Long-term maintenance is still early.** There are browser regressions for
-persistence and bootstrap, reader data blocks, schema and property editing, tab
-management, nested blocks, widget management, cleanup cascades, sync recovery
-and offline startup. Server tests cover patch behaviour, the Redis conflict
-path, Redis-loss snapshot recovery and tombstone purging, and run in CI. That
-is meaningful workflow coverage, not a comprehensive unit or visual test
-matrix.
+**Long-term maintenance is still early.** Coverage is real but uneven: 52
+browser regressions plus an offline cold-start, and 32 server tests, all in CI.
+The browser suites cover persistence and bootstrap, reader data blocks, schema
+and property editing, tab management, nested blocks, widget management, cleanup
+cascades, sync recovery, discarded-write and quota warnings, rate-limit retry,
+pairing in all its forms, and offline startup. The server suites cover patch
+algebra, the Redis conflict path, snapshot recovery, tombstone purging, stream
+multiplexing and sharding, label bounding, quota atomicity, pairing codes and
+operator statistics, against live Redis and Neo4j. Two standalone harnesses sit
+outside the suites: a full-stack browser-to-Neo4j-to-browser smoke test and a
+200-vault multi-tenant measurement.
+
+That is meaningful workflow coverage, not a comprehensive unit or visual test
+matrix — there is no component-level or visual-regression testing at all, and
+the multi-hour endurance run remains outstanding.
 
 ## The additions that would cost it its identity
 
@@ -163,29 +189,36 @@ how reasonable the ask sounds against how much damage it does.
 - **Joins, reverse lookups, rollups.** Asking for these is asking it to be a
   database product.
 
-## Two criticisms of the current state
+## Two earlier criticisms, and where they now stand
 
-**The sync tier is the part already drifting toward the generic thing.** It is
-the best-engineered code in the repository — atomic Lua accept, HLC ordering,
-`batchId` idempotency, consumer-group materialization, tombstone retention,
-stateless ingest behind a proxy. It serves "one person's two or three devices,
-hundreds of small records." Redis plus Neo4j plus a materializer process plus a
-stream-ticket exchange is substantial operational surface for that workload,
-and the operator is the same person who chose this tool partly to avoid running
-things. `remote-sync-architecture.md` justifies each decision individually; the
-aggregate ratio of ceremony to workload is the honest weak point. Nothing here
-argues for rewriting it — it works, and it is the most instructive code in the
-repo — but if an extension is ever proposed, the prior question is whether the
-personal use case wanted a single process over SQLite. Its maturity is also
-precisely what invites readers to mistake this for a platform.
+**The sync tier's ceremony-to-workload ratio — answered by changing the
+workload, not the tier.** This document used to argue that Redis plus Neo4j
+plus a materializer plus a stream-ticket exchange was disproportionate
+operational surface for "one person's two or three devices, hundreds of small
+records", and that the honest question was whether the personal use case wanted
+a single process over SQLite. That criticism was contingent on which product
+the tier serves, and the multi-tenant work inverted it: the same machinery now
+carries many isolated tenants at once, which is a workload that genuinely
+warrants sequencing, idempotency, sharded materialization, quota enforcement
+and an operator's view of the fleet.
 
-**Reference labels now stay inside the product's existing model.** A schema
-chooses the property used to represent its records, with an automatic fallback
-for existing data. Sorting, reader search, export and print resolve that label
-directly from the already-resident store rather than opening more subscriptions
-or changing the stable ids. Export retains both forms. This closes the clearest
-reader-facing papercut without adding joins, reverse relationships or another
-identity system.
+Two honest limits on that. The verified scale is **200 vaults**, measured in a
+single pass by `pnpm test:multi-tenant`; the "few thousand" this document
+claims above is an extrapolation from flat connection counts and sub-200 ms
+lag, not a measurement. And the
+multi-hour endurance run in [`roadmap.md`](roadmap.md) is still outstanding, so
+nothing here rules out a slow leak. The criticism that remains is narrower:
+running this for other people is a different posture from running it for
+yourself, and the repository now supports two quite different deployments. Its
+documents have to keep saying which one they mean.
+
+**Reference labels — resolved.** A schema chooses the property used to
+represent its records, with an automatic fallback for existing data. Sorting,
+reader search, export and print resolve that label directly from the
+already-resident store rather than opening more subscriptions or changing the
+stable ids. Export retains both forms. This closed the clearest reader-facing
+papercut without adding joins, reverse relationships or another identity
+system.
 
 ## Smaller things worth knowing
 
@@ -198,6 +231,12 @@ identity system.
 - Recovery from a stale cursor reconciles the snapshot into mounted
   subscriptions without navigation, then reconnects and flushes the untouched
   outbox. Import and pairing still reload deliberately.
+- A vault credential is one `LG1-…` string rather than two fields: Crockford
+  base32 with no ambiguous characters and a check symbol, so a typo is refused
+  locally instead of returning an unexplained 401. It can be scanned as a QR
+  where the browser allows a camera, and a device that is not to hand can be
+  given a ten-minute, single-use, rate-limited `PAIR-…` code so the durable
+  credential is never read aloud. The old two-field entry still works.
 - JSON export and import provide an explicit local backup path covering both
   records and builder metadata. Each data block additionally exports its own
   matching records as JSON and prints them as a plain black-and-white table
@@ -216,12 +255,14 @@ A personal, privacy-by-construction tracker for small self-defined datasets
 whose shape keeps changing — and a well-documented specimen of how to build
 one. The application layer stays deliberately small while covering references,
 configured filtering and sorting, reader search and pagination, per-block
-export and print, undo, and portable backups; the sync architecture is more
-mature than the application layer it serves.
+export and print, undo, and portable backups. The sync architecture remains
+more mature than the application layer, but it is no longer out of proportion
+to it: the same tier now also serves multi-tenant hosting, which is a second
+deployment shape rather than a second product.
 
 The list of things it will not do — team use, complex relational workflows,
 meaningful volume, sensitive information once synced — is a list of decisions
-rather than a list of deficits. Every entry on it is what buys the five things
+rather than a list of deficits. Every entry on it is what buys the six things
 above. It is already at roughly the right size, and the main risk to it is
 incremental reasonableness: a sequence of individually defensible additions
 that ends with a worse version of a product other people already ship.

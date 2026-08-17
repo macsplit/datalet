@@ -86,6 +86,7 @@ services:
       VAULT_WRITE_RATE_LIMIT: "${VAULT_WRITE_RATE_LIMIT:-600}"
       VAULT_WRITE_RATE_WINDOW_SECONDS: "${VAULT_WRITE_RATE_WINDOW_SECONDS:-60}"
       VAULT_IDLE_REPORT_AFTER_MS: "${VAULT_IDLE_REPORT_AFTER_MS:-2592000000}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
       PORT: "3000"
       NODE_ENV: "production"
     networks: [backend]
@@ -237,7 +238,14 @@ VAULT_QUOTA_BYTES=8388608
 VAULT_WRITE_RATE_LIMIT=600
 VAULT_WRITE_RATE_WINDOW_SECONDS=60
 VAULT_IDLE_REPORT_AFTER_MS=2592000000
+ADMIN_TOKEN=
 ```
+
+Leave `ADMIN_TOKEN` empty on a single-tenant deployment: `/sync/admin/vaults`
+answers `404` when it is unset, so an unused operator API is absent rather
+than merely locked. On a multi-tenant one, set it to a long random value —
+it reads every tenant's numbers, so treat it like a root credential and never
+reuse a vault token for it.
 
 Copy to `.env`, fill in real values, never commit `.env` (already covered
 by this repo's existing `.gitignore` pattern for secrets — extend it with
@@ -517,6 +525,7 @@ them; the cleanup command filters those inert tokens out.
 | `MATERIALIZER_SHARD_LEASE_SECONDS` / `MATERIALIZER_SHARD_HEARTBEAT_MS` | materializer | duplicate-index lease TTL and refresh interval (defaults 15 seconds and 5000 ms; heartbeat must be shorter than TTL) |
 | `TOMBSTONE_RETENTION_MS` / `TOMBSTONE_SWEEP_INTERVAL_MS` | materializer | how long a deleted record's tombstone is kept before purging, and how often the sweep runs (architecture doc §5) |
 | `VAULT_IDLE_REPORT_AFTER_MS` | materializer | report-only inactivity threshold based on the last accepted write, or creation time for an empty vault (default 2592000000 / 30 days); never deletes data automatically |
+| `ADMIN_TOKEN` | sync server | shared operator secret for `GET /sync/admin/vaults`; unset disables the route entirely (404). Never a vault token — it reads every tenant's numbers |
 
 Vault tokens themselves need no server-side secret to configure: each is a
 random opaque bearer value generated at vault-creation time, stored only
