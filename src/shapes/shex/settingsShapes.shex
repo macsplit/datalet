@@ -69,5 +69,17 @@ ex:SettingsShape {
   ex:themeColorSuccessLight xsd:string ?
     // rdfs:comment "--color-success in the light palette; omitted uses the stylesheet default" ;
   ex:themeColorSuccessDark xsd:string ?
-    // rdfs:comment "--color-success in the dark palette; omitted uses the stylesheet default"
+    // rdfs:comment "--color-success in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorHeading2Light xsd:string ?
+    // rdfs:comment "--color-heading-2 in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorHeading2Dark xsd:string ?
+    // rdfs:comment "--color-heading-2 in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorHeading3Light xsd:string ?
+    // rdfs:comment "--color-heading-3 in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorHeading3Dark xsd:string ?
+    // rdfs:comment "--color-heading-3 in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorLabelLight xsd:string ?
+    // rdfs:comment "--color-label in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorLabelDark xsd:string ?
+    // rdfs:comment "--color-label in the dark palette; omitted uses the stylesheet default"
 }

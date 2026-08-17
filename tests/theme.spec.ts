@@ -155,49 +155,83 @@ test("the theme lives on its own page, reached from Settings", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 });
 
-test("the colour picker writes the value and the text field stays authoritative", async ({ page }) => {
+const swatchOf = (page: import("@playwright/test").Page, nth: number) =>
+  page.locator(".theme-color-swatch").nth(nth).evaluate((node) => ({
+    swatch: getComputedStyle(node).getPropertyValue("--swatch").trim(),
+    unset: node.classList.contains("theme-color-swatch-unset"),
+  }));
+
+test("the swatch is the picker, and shows what will be on screen", async ({ page }) => {
   await seedTheme(page, {});
   await page.goto("/settings/theme");
 
-  const picker = page.getByLabel("Page background, Light picker");
+  const picker = page.getByLabel("Page background, Light", { exact: true });
   const text = page.getByLabel("Light", { exact: true }).first();
 
-  // A native colour input only speaks #rrggbb, so choosing through it is what
-  // writes a plain hex; the text field is what makes richer values reachable.
+  // The colour input sits inside the swatch, so choosing through it writes a
+  // plain hex and the square it is laid over shows that colour.
   await picker.fill("#3366cc");
   await expect(text).toHaveValue("#3366cc");
   await expect.poll(() => backgroundOf(page)).toBe("rgb(51, 102, 204)");
+  expect(await swatchOf(page, 0)).toEqual({ swatch: "#3366cc", unset: false });
 
-  // A value the picker cannot express must survive being displayed beside it,
-  // and the picker must stop claiming to show it: a colour input always has a
-  // value, so an unfaded black square would assert that black was chosen.
+  // A value the picker cannot express survives, and the swatch still shows it
+  // — which is the reason the square is not just the input's own rendering.
   await text.fill("rgba(10, 20, 30, 0.5)");
   await expect(text).toHaveValue("rgba(10, 20, 30, 0.5)");
   await expect(picker).toHaveValue("#000000");
-  await expect(picker).toHaveClass(/theme-color-picker-inexact/);
+  expect(await swatchOf(page, 0)).toEqual({ swatch: "rgba(10, 20, 30, 0.5)", unset: false });
   await expect.poll(() => backgroundOf(page)).toBe("rgba(10, 20, 30, 0.5)");
-
-  // A plain hex is representable, so the picker speaks for itself again.
-  await text.fill("#3366cc");
-  await expect(picker).not.toHaveClass(/theme-color-picker-inexact/);
 });
 
-test("the preview square shows the stored colour, and shows nothing when unset", async ({ page }) => {
+test("the swatch shows nothing when unset or unusable", async ({ page }) => {
   await seedTheme(page, { themeColorBgLight: "#3366cc" });
   await page.goto("/settings/theme");
 
-  const swatchOf = (nth: number) => page.locator(".theme-color-preview").nth(nth).evaluate(
-    (node) => ({
-      swatch: getComputedStyle(node).getPropertyValue("--swatch").trim(),
-      unset: node.classList.contains("theme-color-preview-unset"),
-    }),
-  );
-
   // First row is the page background: light is set, dark is not.
-  expect(await swatchOf(0)).toEqual({ swatch: "#3366cc", unset: false });
-  expect(await swatchOf(1)).toEqual({ swatch: "", unset: true });
+  expect(await swatchOf(page, 0)).toEqual({ swatch: "#3366cc", unset: false });
+  expect(await swatchOf(page, 1)).toEqual({ swatch: "", unset: true });
 
   // An invalid value is shown as unset rather than as some arbitrary colour.
   await page.getByLabel("Light", { exact: true }).first().fill("nonsense");
-  expect(await swatchOf(0)).toEqual({ swatch: "", unset: true });
+  expect(await swatchOf(page, 0)).toEqual({ swatch: "", unset: true });
+});
+
+test("a per-colour reset returns just that one to its default", async ({ page }) => {
+  await seedTheme(page, { themeColorBgLight: "#3366cc", themeColorTextLight: "#112233" });
+  await page.goto("/settings/theme");
+  await expect.poll(() => backgroundOf(page)).toBe("rgb(51, 102, 204)");
+
+  await page.getByRole("button", { name: "Reset Page background, Light to default" }).click();
+
+  await expect(page.locator("#theme-bg-light")).toHaveValue("");
+  await expect.poll(() => backgroundOf(page)).not.toBe("rgb(51, 102, 204)");
+  // The other colour is untouched: this resets one item, not the theme.
+  await expect(page.locator("#theme-text-light")).toHaveValue("#112233");
+});
+
+test("a role with a digit in its name persists", async ({ page }) => {
+  // heading-2 maps to themeColorHeading2Light. An earlier field-name transform
+  // left the hyphen in, producing a name the shape does not declare, so the
+  // colour was accepted in the UI and silently never stored.
+  await seedTheme(page, {});
+  await page.goto("/settings/theme");
+  await page.locator("#theme-heading-2-light").fill("#884400");
+  await page.reload();
+  await expect(page.locator("#theme-heading-2-light")).toHaveValue("#884400");
+  const stored = await page.evaluate(({ prefix, graph, settingsId }) =>
+    localStorage.getItem(`${prefix}${graph}|${settingsId}`),
+    { prefix: RECORD_PREFIX, graph: GRAPH, settingsId: SETTINGS_ID });
+  expect(stored).toContain("themeColorHeading2Light");
+});
+
+test("a colour that would be unreadable is moved, and says so", async ({ page }) => {
+  // Neither value is at an extreme, so the text moves rather than the shared
+  // background — and the swatch shows the moved colour, not the typed one.
+  await seedTheme(page, { themeColorTextLight: "#fafafa", themeColorBgLight: "#fbfbfb" });
+  await page.goto("/settings/theme");
+
+  await expect(page.getByText("Lightened or darkened to stay readable").first()).toBeVisible();
+  const applied = await page.evaluate(() => getComputedStyle(document.body).color);
+  expect(applied).not.toBe("rgb(250, 250, 250)");
 });

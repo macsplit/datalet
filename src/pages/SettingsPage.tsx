@@ -61,8 +61,8 @@ export function SettingsPage() {
           </Link>
         </div>
         <p className="helper-text">
-          Set the app's colours for light and dark mode. Stored in the graph, so a theme
-          reaches your other devices and is part of a backup.
+          Set the app's colours for light and dark mode. They follow you to your other
+          devices and are kept in your backups.
         </p>
       </section>
       <section className="panel">

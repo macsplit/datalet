@@ -27,6 +27,8 @@ type SettingsValue = {
   symbol: string;
   appTitle: string;
   setAppTitle: (next: string) => void;
+  /** The raw Settings record, for callers that need the whole stored theme. */
+  settingsRecord: Record<string, unknown>;
   themeColor: (role: ThemeColorRole, scheme: ThemeScheme) => string;
   setThemeColor: (role: ThemeColorRole, scheme: ThemeScheme, next: string) => void;
   resetTheme: () => void;
@@ -128,6 +130,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     symbol: "€",
     appTitle,
     setAppTitle,
+    settingsRecord: (settings ?? {}) as Record<string, unknown>,
     themeColor,
     setThemeColor,
     resetTheme,

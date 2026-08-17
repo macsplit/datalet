@@ -169,7 +169,7 @@ singleton, so no new subscription and no new metadata plumbing.
 was declined; there is nothing for it to select between.
 
 **Revised after first use.** The plan said "a theme section in Settings", and
-sixteen roles × two schemes swamped that page — the builder entries it sits
+sixteen roles (nineteen now) × two schemes swamped that page — the builder entries it sits
 beside are one panel and a link each. It now follows the same shape: a panel
 linking to `/settings/theme`, with the controls on their own page.
 
@@ -189,6 +189,48 @@ both were found by looking at the rendered page rather than by reasoning:
   `background-color` under the chequerboard, or a translucent value looks like
   a slightly different flat one. The value reaches it through a custom property
   because an inline `background` shorthand would drop the chequerboard layers.
+
+**Revised again: one control, a per-colour reset, and a contrast floor.**
+
+The picker and the preview were two squares showing the same thing whenever the
+value was a plain hex, which is most of the time. They are now one: the visible
+square is a styled element, with the colour input laid transparently over it.
+The native input paints its swatch from its own value and cannot be restyled,
+so it can show neither alpha nor "unset"; putting it on top keeps the native
+picker while letting the square tell the truth. The fade-when-inexact rule went
+with it — there is nothing left to lie.
+
+Each field also gained a **×** that clears just that colour, next to the
+existing whole-theme reset.
+
+**The contrast floor** stops a choice making the app unreadable while it is
+being made — the case where nothing legible is left on screen to fix it with.
+One threshold, 2.5:1, on text-on-background pairs only; borders and fills are
+decorative and untouched. It is set below the built-in `text-subtle` (2.69:1)
+on purpose, because a stricter floor would rewrite the shipped palette on first
+load, and a test asserts every default clears its own gate. The foreground
+moves first, since a background is read against several foregrounds; a value
+already at 00 or ff moves nothing and the background gives way instead, so the
+chosen colour survives exactly.
+
+**Three roles were missing, and a name transform hid a fourth defect.** The
+curated set left out `--color-label` and the two heading colours, so the page
+painted colours it offered no way to change - noticed by looking at the app,
+not by reading the list. Adding them exposed a second fault: the role-to-field
+transform only stripped a hyphen before a *letter*, so `heading-2` became
+`themeColorHeading-2Light`, a name the shape does not declare. The colour would
+have been accepted in the UI and silently never stored. A test now asserts that
+every custom property the stylesheet reads through `var()` is an offered role,
+apart from an explicit list of decorative fills, so the first mistake cannot
+recur quietly.
+
+**Two defects the sweep tests found that the examples did not.** Correcting a
+foreground against each of its backgrounds in turn lets the second correction
+undo the first, leaving a value at 2.4930 against a floor of 2.5; the fix
+satisfies every background at once. And a binary search over unrounded
+channels, rounded only on output, lands just under the floor for the same
+reason — the search now measures the colour that will actually be emitted.
+Neither was reachable from the hand-picked cases.
 
 ## T6. Vendored fonts — **declined 2026-08-17**
 
@@ -244,7 +286,7 @@ so T2 and T4 follow that precedent rather than inventing a third harness.
 | **T2** | Unit: every accepted colour form round-trips; `url(https://…)`, a backslash, a comment sequence, a stray `;` or `}`, and an over-long value are each rejected; a rejected value leaves the token unset rather than empty. |
 | **T3** | Playwright: a theme survives reload, appears in a JSON backup export, and reaches a second tab. Absent fields render identically to an unthemed graph. |
 | **T4** | Unit: generated CSS contains only allowlisted names, and emits both the plain and the `prefers-color-scheme: dark` block. **Playwright with `colorScheme` emulation — and the light-mode direction is the one that matters**: with both palettes stored, light mode must show the light value. The dark-mode assertion passes even against the broken implementation, so it proves nothing on its own. Verified by breaking the implementation on purpose and watching the light-mode test fail. |
-| **T5** | Playwright: editing a colour updates the computed value live; Reset restores the default; the theme is reachable from Settings and Settings itself no longer carries the colour rows; the picker writes a plain hex while a `rgba()` typed into the text field survives beside it and fades the picker; the preview square carries the stored colour and reads as empty when unset or invalid. |
+| **T5** | Unit sweeps over greyscale and saturated palettes assert no pair is ever left under the floor, that correcting is idempotent (the stylesheet regenerates every render, so a drifting correction would walk a colour to black over a session), that alpha survives, and that decorative roles are never touched. Playwright: editing a colour updates the computed value live; Reset restores the default; a per-colour × clears one without touching the others; a corrected colour says so; the theme is reachable from Settings and Settings itself no longer carries the colour rows; the picker writes a plain hex while a `rgba()` typed into the text field survives beside it and fades the picker; the preview square carries the stored colour and reads as empty when unset or invalid. |
 | **T6** | Not applicable — declined. The precache trap it would have introduced is documented above in case fonts are ever revisited. |
 | **Hostile input** | Playwright: import a backup whose theme value contains `url(https://example.invalid/f.woff2)`. Assert the value is rejected, a runtime issue is reported, and — via route interception — that no request to that origin is ever made. This is the test that encodes *why* URLs are refused. |
 

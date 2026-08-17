@@ -57,6 +57,9 @@ test("role names, custom properties and Settings fields stay in step", () => {
   assert.equal(themeSettingsField("surface-alt", "dark"), "themeColorSurfaceAltDark");
   assert.equal(themeSettingsField("bg", "light"), "themeColorBgLight");
   assert.ok(isThemeColorRole("accent"));
+  // A role with a digit in it round-trips: heading-2 -> themeColorHeading2Light.
+  assert.equal(themeSettingsField("heading-2", "light"), "themeColorHeading2Light");
+  assert.equal(themeCustomProperty("heading-2"), "--color-heading-2");
   assert.ok(!isThemeColorRole("bg; background: url(x)"));
 
   // Every role must produce a distinct field for each scheme, or two roles

@@ -395,48 +395,20 @@ a {
     min-width: 0;
 }
 
-.theme-color-picker {
+/* One control, not two. The visible square is a styled element showing the
+   colour that will actually be on screen - including alpha, and including a
+   value the contrast floor moved - with a transparent colour input laid over
+   it for interaction. A native input paints its swatch from its own value and
+   cannot be restyled, so it can neither show alpha nor show "unset"; putting
+   it on top keeps the native picker while letting the square tell the truth. */
+.theme-color-swatch {
+    position: relative;
     flex: 0 0 auto;
-    width: 2.5rem;
+    width: 2.25rem;
     height: 2.25rem;
-    padding: 0;
-    border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    background: none;
+    border: 1px solid var(--color-border);
     cursor: pointer;
-}
-
-.theme-color-picker::-webkit-color-swatch-wrapper {
-    padding: 2px;
-}
-
-.theme-color-picker::-webkit-color-swatch,
-.theme-color-picker::-moz-color-swatch {
-    border: none;
-    border-radius: calc(var(--radius-sm) - 2px);
-}
-
-/* A native colour input always has a value, so a field it cannot represent -
-   an unset role, or a translucent rgba() - would otherwise render as a
-   confident black square claiming black was chosen. The swatch colour comes
-   from the value and cannot be restyled reliably, so the control is faded
-   whenever it is not showing the truth: still usable for choosing, while the
-   preview square beside it carries the real value. */
-.theme-color-picker-inexact {
-    opacity: 0.3;
-}
-
-.theme-color-picker-inexact:hover,
-.theme-color-picker-inexact:focus-visible {
-    opacity: 1;
-}
-
-.theme-color-preview {
-    flex: 0 0 auto;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border);
     /* The colour is painted as its own layer over a chequerboard, rather than
        as background-color underneath it, so a translucent value reads as
        translucent instead of as a slightly different flat colour. The value
@@ -453,10 +425,27 @@ a {
 }
 
 /* An unset or unusable value is shown as absent rather than as some colour. */
-.theme-color-preview-unset {
+.theme-color-swatch-unset {
     border-style: dashed;
     background-image: none;
-    background: none;
+}
+
+/* The input is invisible but still the focusable, clickable control, so the
+   ring has to come from the wrapper. */
+.theme-color-swatch:focus-within {
+    box-shadow: var(--focus-ring);
+}
+
+.theme-color-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
 }
 
 .pairing-scanner {

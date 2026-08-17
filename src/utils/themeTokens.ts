@@ -32,6 +32,11 @@ export const THEME_COLOR_ROLES = [
   "badge-text",
   "danger",
   "success",
+  // Heading and label colours: prominent enough that leaving them out meant a
+  // user could see colours the page offered no way to change.
+  "heading-2",
+  "heading-3",
+  "label",
 ] as const;
 
 export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
@@ -51,7 +56,11 @@ export function themeCustomProperty(role: ThemeColorRole): string {
  * listed so the shape, the UI and the stylesheet cannot drift apart.
  */
 export function themeSettingsField(role: ThemeColorRole, scheme: ThemeScheme): string {
-  const camel = role.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+  // `[a-z0-9]`, not `[a-z]`: a role like `heading-2` has a digit after the
+  // hyphen, and matching only letters leaves the hyphen in place - producing
+  // `themeColorHeading-2Light`, which is not the field the shape declares, so
+  // the colour would silently never persist.
+  const camel = role.replace(/-([a-z0-9])/g, (_, part: string) => part.toUpperCase());
   const capitalized = camel.charAt(0).toUpperCase() + camel.slice(1);
   return `themeColor${capitalized}${scheme === "dark" ? "Dark" : "Light"}`;
 }

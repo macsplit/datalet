@@ -220,4 +220,40 @@ export interface Settings {
    * Original IRI: did:ng:z:themeColorSuccessDark
    */
   themeColorSuccessDark?: string;
+  /**
+   * --color-heading-2 in the light palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorHeading2Light
+   */
+  themeColorHeading2Light?: string;
+  /**
+   * --color-heading-2 in the dark palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorHeading2Dark
+   */
+  themeColorHeading2Dark?: string;
+  /**
+   * --color-heading-3 in the light palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorHeading3Light
+   */
+  themeColorHeading3Light?: string;
+  /**
+   * --color-heading-3 in the dark palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorHeading3Dark
+   */
+  themeColorHeading3Dark?: string;
+  /**
+   * --color-label in the light palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorLabelLight
+   */
+  themeColorLabelLight?: string;
+  /**
+   * --color-label in the dark palette; omitted uses the stylesheet default
+   *
+   * Original IRI: did:ng:z:themeColorLabelDark
+   */
+  themeColorLabelDark?: string;
 }

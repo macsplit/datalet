@@ -11,6 +11,7 @@
 import type React from "react";
 import { Link } from "@tanstack/react-router";
 import { useSettings } from "../hooks/useSettings";
+import { effectiveColorsFor } from "../utils/themeStylesheet";
 import {
   THEME_COLOR_ROLES,
   THEME_SCHEMES,
@@ -37,22 +38,23 @@ const ROLE_LABELS: Record<ThemeColorRole, string> = {
   "badge-text": "Badge text",
   "danger": "Danger",
   "success": "Success",
+  "heading-2": "Section heading",
+  "heading-3": "Sub-heading",
+  "label": "Small caps label",
 };
 
 const SCHEME_LABELS: Record<ThemeScheme, string> = { light: "Light", dark: "Dark" };
 
 /**
- * The `#rrggbb` a native colour input can show for a stored value, or
- * `undefined` when it cannot represent that value faithfully - an unset field,
- * or a functional notation like `rgba()`.
+ * The `#rrggbb` to open the native picker at, or `undefined` when the stored
+ * value cannot be expressed as one - an unset field, or a functional notation
+ * like `rgba()`.
  *
- * `<input type="color">` speaks only `#rrggbb`, so it is a convenience for
- * choosing, never the record of what is stored: the text field beside it holds
- * the actual value, which is what keeps alpha and functional notations usable
- * and what makes "empty means the built-in colour" expressible at all. When
- * the picker cannot show the truth it is faded, because a control always has
- * *some* value and a confident black square would otherwise claim black was
- * chosen.
+ * The picker only ever seeds the dialog; what is shown is the swatch behind
+ * it, and what is stored is the text field beside it. That division is what
+ * keeps alpha and functional notations usable, and what makes "empty means the
+ * built-in colour" expressible at all - none of which `<input type="color">`
+ * can represent.
  */
 function pickerValue(stored: string): string | undefined {
   const value = stored.trim();
@@ -64,36 +66,48 @@ function pickerValue(stored: string): string | undefined {
   return undefined;
 }
 
-function ColorField({ role, scheme }: { role: ThemeColorRole; scheme: ThemeScheme }) {
+function ColorField({
+  role,
+  scheme,
+  effective,
+  adjusted,
+}: {
+  role: ThemeColorRole;
+  scheme: ThemeScheme;
+  effective: string;
+  adjusted: boolean;
+}) {
   const { themeColor, setThemeColor } = useSettings();
   const stored = themeColor(role, scheme);
   const valid = validThemeColor(stored);
   const invalid = stored !== "" && valid === undefined;
   const inputId = `theme-${role}-${scheme}`;
   const exact = pickerValue(stored);
+  // The preview shows what will actually be on screen, so a value the contrast
+  // floor moved does not leave the square disagreeing with the app.
+  const previewed = valid ? effective : undefined;
 
   return (
     <div className="field-group">
       <label className="field-label" htmlFor={inputId}>{SCHEME_LABELS[scheme]}</label>
       <div className="theme-color-row">
-        <input
-          type="color"
-          className={`theme-color-picker${exact ? "" : " theme-color-picker-inexact"}`}
-          aria-label={`${ROLE_LABELS[role]}, ${SCHEME_LABELS[scheme]} picker`}
-          value={exact ?? "#000000"}
-          onChange={(event) => setThemeColor(role, scheme, event.target.value)}
-        />
-        {/* Shows the stored value rather than the picker's approximation, so a
-            translucent or functional colour looks like what it is, and an
-            unset field reads as unset instead of as black. */}
+        {/* One control: the square shows the colour that will actually be on
+            screen, and the transparent input over it opens the native picker.
+            Passed as a custom property, not `background`, so the chequerboard
+            underneath survives. Only a value that already passed
+            validThemeColor reaches here. */}
         <span
-          className={`theme-color-preview${valid ? "" : " theme-color-preview-unset"}`}
-          // Passed as a custom property, not `background`, so the chequerboard
-          // underneath survives and a translucent value looks translucent.
-          // Only a value that already passed validThemeColor reaches here.
-          style={valid ? ({ "--swatch": valid } as React.CSSProperties) : undefined}
-          aria-hidden="true"
-        />
+          className={`theme-color-swatch${previewed ? "" : " theme-color-swatch-unset"}`}
+          style={previewed ? ({ "--swatch": previewed } as React.CSSProperties) : undefined}
+        >
+          <input
+            type="color"
+            className="theme-color-input"
+            aria-label={`${ROLE_LABELS[role]}, ${SCHEME_LABELS[scheme]}`}
+            value={exact ?? "#000000"}
+            onChange={(event) => setThemeColor(role, scheme, event.target.value)}
+          />
+        </span>
         <input
           id={inputId}
           className="input"
@@ -105,10 +119,25 @@ function ColorField({ role, scheme }: { role: ThemeColorRole; scheme: ThemeSchem
           aria-invalid={invalid || undefined}
           onChange={(event) => setThemeColor(role, scheme, event.target.value)}
         />
+        <button
+          type="button"
+          className="icon-btn icon-btn-quiet"
+          aria-label={`Reset ${ROLE_LABELS[role]}, ${SCHEME_LABELS[scheme]} to default`}
+          title="Reset to default"
+          disabled={stored === ""}
+          onClick={() => setThemeColor(role, scheme, "")}
+        >
+          ×
+        </button>
       </div>
       {invalid && (
         <span className="helper-text danger-text">
           Not a colour value — the built-in colour is being used.
+        </span>
+      )}
+      {adjusted && !invalid && (
+        <span className="helper-text">
+          Lightened or darkened to stay readable against what it sits on.
         </span>
       )}
     </div>
@@ -116,7 +145,11 @@ function ColorField({ role, scheme }: { role: ThemeColorRole; scheme: ThemeSchem
 }
 
 export function ThemePage() {
-  const { resetTheme } = useSettings();
+  const { resetTheme, settingsRecord } = useSettings();
+  const effective = {
+    light: effectiveColorsFor(settingsRecord, "light"),
+    dark: effectiveColorsFor(settingsRecord, "dark"),
+  };
 
   return (
     <div className="page-content">
@@ -135,10 +168,10 @@ export function ThemePage() {
           </button>
         </header>
         <p className="helper-text">
-          Colours are stored in the graph like your records, so a theme set here reaches
-          your other devices and is included in a backup. Clear a field to keep the
-          built-in colour. The dark column applies when your system asks for dark mode,
-          so setting a theme does not stop the app following that preference.
+          Colours you set here follow you to your other devices and are kept in your
+          backups. Clear a field, or press ×, to go back to the built-in colour. The
+          dark column is used when your system asks for dark mode, so picking colours
+          here does not stop the app following that.
         </p>
         <div className="section-stack">
           {THEME_COLOR_ROLES.map((role) => (
@@ -146,7 +179,13 @@ export function ThemePage() {
               <span className="field-label">{ROLE_LABELS[role]}</span>
               <div className="layout-row">
                 {THEME_SCHEMES.map((scheme) => (
-                  <ColorField role={role} scheme={scheme} key={scheme} />
+                  <ColorField
+                    role={role}
+                    scheme={scheme}
+                    effective={effective[scheme].colors[role]}
+                    adjusted={effective[scheme].adjusted.has(role)}
+                    key={scheme}
+                  />
                 ))}
               </div>
             </div>

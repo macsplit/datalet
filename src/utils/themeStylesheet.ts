@@ -16,21 +16,52 @@ import {
   themeCustomProperty,
   themeSettingsField,
   validThemeColor,
+  type ThemeColorRole,
   type ThemeScheme,
 } from "./themeTokens";
+import { enforceContrast, THEME_DEFAULTS } from "./themeContrast";
 
 export const THEME_STYLE_ELEMENT_ID = "graph-theme";
 
 /** Values keyed by Settings field name, as read off the Settings record. */
 export type StoredTheme = Record<string, unknown>;
 
-function declarationsFor(theme: StoredTheme, scheme: ThemeScheme): string[] {
-  const declarations: string[] = [];
+/** The roles a stored theme validly sets for one scheme. */
+export function storedColorsFor(
+  theme: StoredTheme,
+  scheme: ThemeScheme,
+): Record<string, string> {
+  const colors: Record<string, string> = {};
   for (const role of THEME_COLOR_ROLES) {
     const value = validThemeColor(theme[themeSettingsField(role, scheme)]);
-    // An invalid or absent value is simply not emitted, leaving the token at
+    // An invalid or absent value is simply not recorded, leaving the token at
     // its stylesheet default. The two cases are deliberately indistinguishable.
-    if (value !== undefined) declarations.push(`${themeCustomProperty(role)}: ${value};`);
+    if (value !== undefined) colors[role] = value;
+  }
+  return colors;
+}
+
+/**
+ * What a scheme will actually render as, once the contrast floor has been
+ * applied. Exposed so the settings page can show a value that was moved
+ * rather than leaving the user to wonder why the screen disagrees with the
+ * field.
+ */
+export function effectiveColorsFor(theme: StoredTheme, scheme: ThemeScheme) {
+  return enforceContrast(scheme, storedColorsFor(theme, scheme));
+}
+
+function declarationsFor(theme: StoredTheme, scheme: ThemeScheme): string[] {
+  const stored = storedColorsFor(theme, scheme);
+  const { colors } = enforceContrast(scheme, stored);
+  const declarations: string[] = [];
+  for (const role of THEME_COLOR_ROLES) {
+    // Only roles the theme actually touches are emitted. A role the contrast
+    // pass moved is emitted too, even if the user never set it - that is the
+    // background giving way when a foreground had nowhere left to go.
+    const isSet = role in stored;
+    const moved = colors[role] !== THEME_DEFAULTS[scheme][role as ThemeColorRole];
+    if (isSet || moved) declarations.push(`${themeCustomProperty(role)}: ${colors[role]};`);
   }
   return declarations;
 }

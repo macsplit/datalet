@@ -384,6 +384,72 @@ export const settingsShapesSchema: Schema = {
         iri: "did:ng:z:themeColorSuccessDark",
         readablePredicate: "themeColorSuccessDark",
       },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorHeading2Light",
+        readablePredicate: "themeColorHeading2Light",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorHeading2Dark",
+        readablePredicate: "themeColorHeading2Dark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorHeading3Light",
+        readablePredicate: "themeColorHeading3Light",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorHeading3Dark",
+        readablePredicate: "themeColorHeading3Dark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorLabelLight",
+        readablePredicate: "themeColorLabelLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorLabelDark",
+        readablePredicate: "themeColorLabelDark",
+      },
     ],
   },
 };

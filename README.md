@@ -196,15 +196,22 @@ asks for dark mode, so choosing a theme does not stop the app following that
 preference. An empty field keeps the built-in colour, and **Reset theme** clears
 them all.
 
-Each value has a colour picker, a preview square, and a text field. The text
-field is the authoritative one: a native colour picker only understands
-`#rrggbb`, so translucent and functional values are typed rather than picked,
-and clearing the field — the only way to restore the built-in colour — is
-something a picker cannot express. When the picker cannot show the stored value
-faithfully it is faded, because a colour input always has *some* value and a
-confident black square would otherwise claim black was chosen. The preview
-square shows the real stored colour over a chequerboard, so translucency looks
-translucent, and is drawn empty when nothing is set.
+Each value is a colour square and a text field. Clicking the square opens your
+browser's colour picker; the square itself shows the colour that will actually
+be on screen, over a chequerboard so a translucent value looks translucent, and
+is drawn empty when nothing is set. The text field is the authoritative one — a
+browser picker only understands plain `#rrggbb`, so translucent and functional
+values are typed rather than picked. **×** next to a field returns that one
+colour to its default, and **Reset theme** returns all of them.
+
+Colours are held to a minimum contrast against what they sit on, so a choice
+cannot leave the app unreadable while you are still using it. This is a floor,
+not a style guide: it only steps in when text would be lost against its
+background, and it moves the colour as little as it can. The text moves first,
+since a background is read against several colours at once. If the colour you
+chose is already at its limit — pure black or pure white — the other side moves
+instead, so what you picked survives. When a colour has been moved, the field
+says so.
 
 Colours are stored in the graph as ordinary record fields, so a theme reaches
 your other devices through sync, appears in a JSON backup, and can be undone

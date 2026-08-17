@@ -245,9 +245,9 @@ the client's outbox already handles the failure correctly.
 
 ### 1.9 The theme, and why it is a stylesheet
 
-`src/styles/global.css` defines 228 CSS custom properties. A curated sixteen
-colour *roles* — background, surface, border, text, accent, danger and so on —
-may be overridden from the graph, each with a separate light and dark value,
+`src/styles/global.css` defines 228 CSS custom properties. Nineteen colour
+*roles* — background, surface, border, text, accent, danger, headings, labels
+and so on — may be overridden from the graph, each with a separate light and dark value,
 stored as ordinary optional fields on the Settings record. Absent means "use
 the stylesheet default", so an unthemed graph renders exactly as before and no
 migration was needed.
@@ -272,6 +272,20 @@ comment sequence, `;` or `}`. A failing value is dropped rather than corrected,
 so it behaves identically to an absent one. This is the same discipline
 `sanitizeLabel` applies before splicing a label into Cypher: nothing reaches a
 language from stored data without matching an allowlist first.
+
+**A minimum contrast floor, applied at generation time.** A colour that would
+leave text lost against its background is moved apart before it reaches the
+stylesheet, so a choice cannot make the app unreadable while it is being made.
+The floor is 2.5:1 and is deliberately below the built-in `text-subtle`, which
+sits at 2.69:1 — anything stricter would rewrite the shipped palette on first
+load, and a test asserts every default clears its own gate. The foreground
+moves first, because a background is read against several foregrounds while a
+foreground is read against one; a value already at 00 or ff cannot be pushed
+further without inverting it into something plainly unchosen, so there the
+background gives way instead and the choice survives exactly. Corrections are
+computed against every background a colour is read on at once, not one at a
+time — the latter lets the second correction undo the first, which a sweep test
+caught settling at 2.4930 against a floor of 2.5.
 
 Backing that up, the app ships a Content Security Policy — as a build-injected
 `<meta>` tag and as a response header from `staticServer.ts`. `font-src 'self'`
