@@ -30,7 +30,9 @@ import {
 } from "./redis/config.js";
 import { generatePairCode, normalizePairCode } from "./pairCode.js";
 import {
+  deleteVaultData,
   deleteVaultMeta,
+  markVaultDeleting,
   purgeExpiredTombstones,
   readVaultMeta,
   readVaultRecords,
@@ -40,6 +42,7 @@ import { TOMBSTONE_RETENTION_MS } from "./config.js";
 import type { Patch, Store } from "./patchApply.js";
 
 const VAULTS_INDEX_KEY = "vaults:index";
+export const VAULT_DELETED_CHANNEL = "vault:lifecycle:deleted";
 
 export type PatchBatchInput = {
   nodeId: string;
@@ -130,9 +133,10 @@ export async function listVaultIds(): Promise<string[]> {
 }
 
 export async function vaultExists(vaultId: string): Promise<boolean> {
-  if ((await redis().exists(metaKey(vaultId))) === 1) return true;
+  const cached = await redis().hgetall(metaKey(vaultId));
+  if (cached.token) return !cached.deletingAt;
   const durable = await readVaultMeta(vaultId);
-  if (!durable) return false;
+  if (!durable || durable.deletingAt !== undefined) return false;
   await redis().hset(metaKey(vaultId), {
     token: durable.tokenHash,
     createdAt: durable.createdAt,
@@ -144,19 +148,64 @@ export async function vaultExists(vaultId: string): Promise<boolean> {
 
 export async function checkVaultToken(vaultId: string, token: string): Promise<boolean> {
   if (!(await vaultExists(vaultId))) return false;
-  const storedHex = await redis().hget(metaKey(vaultId), "token");
-  if (!storedHex) return false;
+  const [storedHex, deletingAt] = await redis().hmget(metaKey(vaultId), "token", "deletingAt");
+  if (!storedHex || deletingAt) return false;
   const candidate = createHash("sha256").update(token).digest();
   const stored = Buffer.from(storedHex, "hex");
   return candidate.length === stored.length && timingSafeEqual(candidate, stored);
+}
+
+async function deleteVaultRedisKeys(vaultId: string): Promise<void> {
+  let cursor = "0";
+  do {
+    const [nextCursor, keys] = await redis().scan(
+      cursor,
+      "MATCH",
+      `vault:${vaultId}:*`,
+      "COUNT",
+      "1000",
+    );
+    cursor = nextCursor;
+    if (keys.length > 0) await redis().unlink(...keys);
+  } while (cursor !== "0");
+}
+
+/**
+ * Permanently delete a vault. The Redis deleting marker closes the race with
+ * already-authenticated writes (applyBatch.lua checks it atomically), while
+ * the durable marker prevents vaultExists() from restoring credentials if a
+ * later cleanup step fails. This operation is intentionally user-triggered;
+ * idle-vault reporting never calls it.
+ */
+export async function deleteVault(vaultId: string): Promise<void> {
+  const deletingAt = Date.now();
+  await redis().hset(metaKey(vaultId), { deletingAt });
+  try {
+    await markVaultDeleting(vaultId, deletingAt);
+  } catch (error) {
+    await redis().hdel(metaKey(vaultId), "deletingAt").catch(() => undefined);
+    throw error;
+  }
+  await redis().srem(VAULTS_INDEX_KEY, vaultId);
+  await deleteVaultRedisKeys(vaultId);
+  await deleteVaultData(vaultId);
+  await redis().publish(VAULT_DELETED_CHANNEL, vaultId);
+}
+
+export async function vaultActivityAt(vaultId: string): Promise<number | undefined> {
+  const meta = await redis().hmget(metaKey(vaultId), "lastActiveAt", "createdAt");
+  const raw = meta[0] ?? meta[1];
+  if (raw === null) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 /** Issue a short-lived, stream-only credential so the vault token never appears in an SSE URL. */
 export async function createStreamTicket(vaultId: string): Promise<string> {
   const ticket = randomBytes(24).toString("base64url");
   const hash = createHash("sha256").update(ticket).digest("hex");
-  const tokenHash = await redis().hget(metaKey(vaultId), "token");
-  if (!tokenHash) throw new Error("Cannot issue a stream ticket for an unknown vault.");
+  const [tokenHash, deletingAt] = await redis().hmget(metaKey(vaultId), "token", "deletingAt");
+  if (!tokenHash || deletingAt) throw new Error("Cannot issue a stream ticket for an unknown vault.");
   // Bind the ticket to the current token generation. Rotation therefore
   // invalidates unused/reconnecting tickets without scanning ticket keys.
   await redis().set(
@@ -248,6 +297,7 @@ export async function applyBatch(
     batchKey(vaultId, input.batchId),
     tombstoneKey(vaultId),
     bytesKey(vaultId),
+    metaKey(vaultId),
     input.nodeId,
     input.hlc,
     input.shape,
@@ -256,6 +306,7 @@ export async function applyBatch(
     String(STREAM_MAXLEN),
     input.batchId,
     String(vaultQuotaBytes),
+    String(Date.now()),
   );
   return accepted === 1
     ? {

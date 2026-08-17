@@ -26,3 +26,14 @@ export const TOMBSTONE_RETENTION_MS = Number(process.env.TOMBSTONE_RETENTION_MS 
 // tombstones (materializer.ts). Purging is a low-urgency background task
 // relative to the retention window itself, so an hourly cadence is plenty.
 export const TOMBSTONE_SWEEP_INTERVAL_MS = Number(process.env.TOMBSTONE_SWEEP_INTERVAL_MS ?? 60 * 60 * 1000);
+
+// Vaults older than this with no later accepted write are reported by the
+// materializer's maintenance sweep. Reporting is deliberately not deletion:
+// retention policy belongs to the deployment operator.
+const configuredVaultIdleReportAfterMs = Number(
+  process.env.VAULT_IDLE_REPORT_AFTER_MS ?? 30 * 24 * 60 * 60 * 1000,
+);
+if (!Number.isFinite(configuredVaultIdleReportAfterMs) || configuredVaultIdleReportAfterMs < 1) {
+  throw new Error("VAULT_IDLE_REPORT_AFTER_MS must be a positive number.");
+}
+export const VAULT_IDLE_REPORT_AFTER_MS = configuredVaultIdleReportAfterMs;

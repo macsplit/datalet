@@ -48,6 +48,7 @@ export type DurableVaultMeta = {
   tokenHash: string;
   createdAt: number;
   rotatedAt?: number;
+  deletingAt?: number;
 };
 
 /** Durable copy of vault identity; plaintext bearer tokens are never stored. */
@@ -58,8 +59,11 @@ export async function upsertVaultMeta(meta: DurableVaultMeta): Promise<void> {
       `MERGE (v:VaultMeta {id: $vaultId})
        SET v.tokenHash = $tokenHash,
            v.createdAt = $createdAt,
-           v.rotatedAt = $rotatedAt`,
-      { ...meta, rotatedAt: meta.rotatedAt ?? null },
+           v.rotatedAt = $rotatedAt
+       FOREACH (_ IN CASE WHEN $deletingAt IS NULL THEN [] ELSE [1] END |
+         SET v.deletingAt = $deletingAt
+       )`,
+      { ...meta, rotatedAt: meta.rotatedAt ?? null, deletingAt: meta.deletingAt ?? null },
     );
   } finally {
     await session.close();
@@ -82,6 +86,9 @@ export async function readVaultMeta(vaultId: string): Promise<DurableVaultMeta |
       ...(props.rotatedAt !== null && props.rotatedAt !== undefined
         ? { rotatedAt: Number(props.rotatedAt) }
         : {}),
+      ...(props.deletingAt !== null && props.deletingAt !== undefined
+        ? { deletingAt: Number(props.deletingAt) }
+        : {}),
     };
   } finally {
     await session.close();
@@ -92,6 +99,35 @@ export async function deleteVaultMeta(vaultId: string): Promise<void> {
   const session = neo4jSession();
   try {
     await session.run("MATCH (v:VaultMeta {id: $vaultId}) DETACH DELETE v", { vaultId });
+  } finally {
+    await session.close();
+  }
+}
+
+/** Mark deletion durably so a Redis cache miss cannot resurrect the vault. */
+export async function markVaultDeleting(vaultId: string, deletingAt: number): Promise<void> {
+  const session = neo4jSession();
+  try {
+    await session.run(
+      "MATCH (v:VaultMeta {id: $vaultId}) SET v.deletingAt = $deletingAt",
+      { vaultId, deletingAt },
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+/** Permanently remove a vault's identity, live records, and tombstones together. */
+export async function deleteVaultData(vaultId: string): Promise<void> {
+  const session = neo4jSession();
+  try {
+    await session.run(
+      `MATCH (n)
+       WHERE (n:Record AND n.graph = $vaultId)
+          OR (n:VaultMeta AND n.id = $vaultId)
+       DETACH DELETE n`,
+      { vaultId },
+    );
   } finally {
     await session.close();
   }

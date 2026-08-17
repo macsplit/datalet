@@ -38,6 +38,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 14 | Multi-tenant A3: a closed Neo4j record-label set, exact indexed type preservation, a dry-run-first legacy-label cleanup, and 50-schema/10-vault coverage. |
 | 15 | Multi-tenant A4: atomic per-vault Redis byte quotas, deletion credit, concurrency-safe whole-batch refusal, and client-visible quota warnings. |
 | 16 | Multi-tenant A5: authenticated per-vault write limiting, atomic expiring counters, and retry-safe client 429 handling distinct from terminal 409s. |
+| 17 | Multi-tenant A6: atomic last-active tracking, authenticated two-store vault deletion, cross-replica SSE disconnect, dead-stream reconciliation, and report-only idle detection. |
 
 ---
 

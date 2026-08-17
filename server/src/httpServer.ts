@@ -16,14 +16,17 @@ import {
   createStreamTicket,
   createPairCode,
   createVault,
+  deleteVault,
   entriesSince,
   rotateVaultToken,
   redeemPairCode,
   snapshot,
   subscribeLive,
+  VAULT_DELETED_CHANNEL,
   vaultExists,
   type LogEntry,
 } from "./vaultStore.js";
+import { newBlockingConnection } from "./redis/client.js";
 import { serveStatic } from "./staticServer.js";
 import { checkRateLimit } from "./redis/rateLimit.js";
 import {
@@ -49,7 +52,7 @@ function setCors(res: ServerResponse, req: IncomingMessage) {
   if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("X-Instance-Id", INSTANCE_ID);
 }
 
@@ -115,7 +118,22 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
   if (!Number.isInteger(vaultWriteRateWindowSeconds) || vaultWriteRateWindowSeconds < 1) {
     throw new Error("vault write rate window must be a positive integer");
   }
-  return createServer(async (req, res) => {
+  const liveResponses = new Map<string, Set<ServerResponse>>();
+  const closeVaultStreams = (vaultId: string) => {
+    const responses = liveResponses.get(vaultId);
+    if (!responses) return;
+    liveResponses.delete(vaultId);
+    for (const response of responses) response.end();
+  };
+  const lifecycleSubscriber = newBlockingConnection();
+  lifecycleSubscriber.on("message", (channel, vaultId) => {
+    if (channel === VAULT_DELETED_CHANNEL) closeVaultStreams(vaultId);
+  });
+  void lifecycleSubscriber.subscribe(VAULT_DELETED_CHANNEL).catch((error) => {
+    console.error("sync server: vault lifecycle subscription failed", error);
+  });
+
+  const server = createServer(async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -143,6 +161,25 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
           return;
         }
         sendJson(res, 200, await createVault());
+        return;
+      }
+
+      if (url.pathname === "/sync/vaults" && req.method === "DELETE") {
+        const vaultId = url.searchParams.get("vault") ?? "";
+        if (!(await vaultExists(vaultId))) {
+          sendJson(res, 404, { reason: "unknown vault" });
+          return;
+        }
+        const token = bearerToken(req);
+        if (!token || !(await checkVaultToken(vaultId, token))) {
+          sendJson(res, 401, { reason: "invalid token" });
+          return;
+        }
+        await deleteVault(vaultId);
+        // Pub/sub closes streams on every replica; close local responses
+        // synchronously too so the DELETE response is the linearization point.
+        closeVaultStreams(vaultId);
+        sendJson(res, 200, { deleted: true });
         return;
       }
 
@@ -344,6 +381,12 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
         // resulting duplicate delivery is harmless (client dedupes by
         // batchId). See vaultStore.ts's subscribeLive doc comment.
         const unsubscribe = subscribeLive(vaultId, writeEntry);
+        let responses = liveResponses.get(vaultId);
+        if (!responses) {
+          responses = new Set();
+          liveResponses.set(vaultId, responses);
+        }
+        responses.add(res);
 
         for (const entry of initialEntries) writeEntry(entry);
         const lastSentSeq =
@@ -355,6 +398,8 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
         req.on("close", () => {
           clearInterval(heartbeat);
           unsubscribe();
+          responses?.delete(res);
+          if (responses?.size === 0) liveResponses.delete(vaultId);
         });
         return;
       }
@@ -369,4 +414,6 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
       sendJson(res, 500, { error: error instanceof Error ? error.message : "internal error" });
     }
   });
+  server.on("close", () => lifecycleSubscriber.disconnect());
+  return server;
 }

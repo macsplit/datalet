@@ -90,7 +90,7 @@ built when, and the defects found doing it, see
 
 ## Data model
 
-- **Redis**, per vault: `meta` (token hash), `seq` (counter), `store`
+- **Redis**, per vault: `meta` (token hash and lifecycle timestamps), `seq` (counter), `store`
   (current record per subject), `bytes` (the atomically maintained store-byte
   total), `hlc` (per-field last-write timestamps), `stream` (the ordered patch
   log), `tombstones` (deleted-subject → deletion timestamp). A global
@@ -107,6 +107,7 @@ built when, and the defects found doing it, see
 |---|---|
 | `GET /sync/health` | liveness check |
 | `POST /sync/vaults` | create a vault, returns `{ vaultId, vaultToken }` once |
+| `DELETE /sync/vaults?vault=` | permanently delete an authenticated vault from Redis and Neo4j |
 | `POST /sync/vaults/rotate?vault=` | issue a new token, invalidate the old one |
 | `POST /sync/pair-code?vault=` | issue an authenticated, one-use ten-minute pairing code |
 | `POST /sync/pair-redeem` | rate-limited exchange of a temporary code for vault credentials |

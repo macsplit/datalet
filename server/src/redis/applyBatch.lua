@@ -13,6 +13,7 @@
 -- KEYS[5] batchKey       (string: batchId's assigned seq, for idempotency)
 -- KEYS[6] tombstoneKey   (hash: subjectId -> deletedAtHlc, for a whole-record remove)
 -- KEYS[7] bytesKey       (string: exact bytes of JSON values in storeKey)
+-- KEYS[8] metaKey        (hash: vault credentials and lifecycle timestamps)
 --
 -- ARGV[1] nodeId
 -- ARGV[2] hlc
@@ -22,17 +23,25 @@
 -- ARGV[6] stream MAXLEN (approximate trim)
 -- ARGV[7] batchId
 -- ARGV[8] vault quota in serialized store bytes
+-- ARGV[9] accepted-write wall-clock timestamp, milliseconds
 --
 -- Returns {accepted (0/1), seq, reason, accepted patch count, submitted patch count}
 
-local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey, bytesKey =
-  KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6], KEYS[7]
-local nodeId, hlc, shape, patchesJson, batchTtl, streamMaxLen, batchId, vaultQuotaBytes =
-  ARGV[1], ARGV[2], ARGV[3], ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8])
+local seqKey, storeKey, hlcKey, streamKey, batchKey, tombstoneKey, bytesKey, metaKey =
+  KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6], KEYS[7], KEYS[8]
+local nodeId, hlc, shape, patchesJson, batchTtl, streamMaxLen, batchId, vaultQuotaBytes, lastActiveAt =
+  ARGV[1], ARGV[2], ARGV[3], ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8]), ARGV[9]
 
 local function currentSeq()
   local s = redis.call('GET', seqKey)
   return tonumber(s) or 0
+end
+
+-- Authentication happens before this script, but deletion can race a request
+-- that has already authenticated. Re-check lifecycle state inside the atomic
+-- write boundary so a deleting/deleted vault cannot acquire fresh state.
+if redis.call('EXISTS', metaKey) == 0 or redis.call('HEXISTS', metaKey, 'deletingAt') == 1 then
+  return { 0, currentSeq(), 'vault is being deleted', 0, 0 }
 end
 
 local existingResult = redis.call('GET', batchKey)
@@ -345,5 +354,6 @@ redis.call('SET', batchKey, cjson.encode({
   acceptedCount = #accepted,
   submittedCount = #patches,
 }), 'EX', batchTtl)
+redis.call('HSET', metaKey, 'lastActiveAt', lastActiveAt)
 
 return { 1, seq, partialReason, #accepted, #patches }

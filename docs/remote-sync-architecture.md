@@ -510,6 +510,11 @@ per-user records. Concretely:
   (`VAULT_WRITE_RATE_LIMIT`, default 600 per 60 seconds). A 429 is transient:
   the browser retains the outbox batch and backs off rather than discarding it
   like a terminal LWW/quota 409.
+- `DELETE /sync/vaults?vault=` requires the current bearer token, blocks new
+  writes with a lifecycle marker, removes the complete Redis and Neo4j vault,
+  and publishes a cross-replica notification that disconnects its SSE clients.
+  Accepted writes atomically refresh `lastActiveAt`; the materializer reports
+  vaults idle beyond `VAULT_IDLE_REPORT_AFTER_MS` but never deletes them.
 - Without at least the bearer-token check, any client that discovers the
   server URL could read or write any vault.
 - TLS: terminate at the reverse proxy (Caddy gets this for free via

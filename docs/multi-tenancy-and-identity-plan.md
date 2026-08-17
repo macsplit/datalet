@@ -1,7 +1,7 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) and Track A1 through A5 were
-completed 2026-08-17; A6 and A7 have not started. Written 2026-08-16 from
+**Status: active.** Track B (B1 through B6) and Track A1 through A6 were
+completed 2026-08-17; A7 has not started. Written 2026-08-16 from
 the code as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
@@ -253,7 +253,7 @@ expiry. Playwright holds the batch through a real backoff, applies its value to
 a fake server store on retry, and checks the outbox empties; the paired 409
 regression proves the same batch is removed and attempted only once.
 
-### A6. Vault lifecycle — **medium**
+### A6. Vault lifecycle — **completed 2026-08-17**
 
 **Problem.** There is no delete, no last-active tracking, and no reclamation.
 `vaults:index` only grows, and until A1 lands every abandoned vault costs a
@@ -271,6 +271,19 @@ permanent connection forever.
   beyond a configurable window. Report only — automatic deletion of a user's
   data on an inactivity timer is a policy decision for whoever deploys this,
   not a default.
+
+**Landed detail.** Accepted batches update `lastActiveAt` inside the same Redis
+Lua transaction that commits their records and stream entry; rejected batches
+do not make a vault look active. Authenticated `DELETE /sync/vaults?vault=`
+marks deletion in both metadata stores, removes the vault's entire Redis key
+namespace and index membership, and deletes its Neo4j `:Record` and
+`:VaultMeta` nodes. The Lua write boundary rejects a request that raced the
+deletion marker. A Redis lifecycle notification closes attached SSE responses
+on every sync-server replica, while materializer discovery drops batches that
+contain an index-removed vault and rebuilds any surviving watches. The hourly
+maintenance sweep reports vaults whose latest accepted write (or creation for
+never-written vaults) is older than `VAULT_IDLE_REPORT_AFTER_MS`, default 30
+days, and explicitly performs no automatic vault deletion.
 
 ### A7. Per-tenant observability — **small**
 

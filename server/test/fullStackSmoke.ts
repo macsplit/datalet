@@ -10,6 +10,7 @@ const syncUrl = process.env.SMOKE_SYNC_URL ?? "http://127.0.0.1:3000";
 const marker = `Full-stack smoke ${Date.now()}`;
 let vaultId = "";
 let vaultToken = "";
+let deletedThroughApi = false;
 
 const browser = await chromium.launch({
   headless: true,
@@ -106,16 +107,29 @@ try {
     { timeout: 20_000 },
   );
 
+  const deletion = await fetch(`${syncUrl}/sync/vaults?vault=${encodeURIComponent(vaultId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${vaultToken}` },
+  });
+  expect(deletion.status).toBe(200);
+  expect(await deletion.json()).toEqual({ deleted: true });
+  deletedThroughApi = true;
+  const deletedSnapshot = await fetch(
+    `${syncUrl}/sync/snapshot?vault=${encodeURIComponent(vaultId)}`,
+    { headers: { Authorization: `Bearer ${vaultToken}` } },
+  );
+  expect(deletedSnapshot.status).toBe(404);
+
   await firstDevice.close();
   await secondDevice.close();
   console.log(JSON.stringify({
     ok: true,
-    path: "browser-1 -> sync -> Redis -> materializer -> Neo4j snapshot -> one-time pair code -> browser-2",
+    path: "browser-1 -> sync -> Redis -> materializer -> Neo4j snapshot -> one-time pair code -> browser-2 -> authenticated vault deletion",
     vaultId,
   }));
 } finally {
   await browser.close();
-  if (vaultId) {
+  if (vaultId && !deletedThroughApi) {
     const redisClient = redis();
     const keys = await redisClient.keys(`vault:${vaultId}:*`);
     if (keys.length > 0) await redisClient.del(...keys);

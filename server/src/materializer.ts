@@ -24,7 +24,14 @@
 import { newBlockingConnection, redis } from "./redis/client.js";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import { listVaultIds, parseLogEntry, streamKey, sweepVaultTombstones, type LogEntry } from "./vaultStore.js";
+import {
+  listVaultIds,
+  parseLogEntry,
+  streamKey,
+  sweepVaultTombstones,
+  vaultActivityAt,
+  type LogEntry,
+} from "./vaultStore.js";
 import { applyPatchesToStore, patchTarget, type Store } from "./patchApply.js";
 import { ensureNeo4jSchema } from "./neo4j/client.js";
 import { readRecord, tombstoneRecord, upsertRecord } from "./neo4j/materialize.js";
@@ -37,7 +44,7 @@ import {
   MATERIALIZER_STREAMS_PER_CONNECTION,
   VAULT_DISCOVERY_INTERVAL_MS,
 } from "./neo4j/config.js";
-import { TOMBSTONE_SWEEP_INTERVAL_MS } from "./config.js";
+import { TOMBSTONE_SWEEP_INTERVAL_MS, VAULT_IDLE_REPORT_AFTER_MS } from "./config.js";
 
 type StreamEntryRow = [string, string[] | null];
 type StreamResponse = Array<[string, StreamEntryRow[]]> | null;
@@ -206,13 +213,24 @@ class MaterializerStreamBatch {
  * failure is logged and skipped rather than aborting the rest, matching
  * discoverAndWatch's per-vault fault isolation below.
  */
-async function sweepAllTombstones(ownsVault: (vaultId: string) => boolean): Promise<void> {
+async function sweepAllTombstones(
+  ownsVault: (vaultId: string) => boolean,
+  idleReportAfterMs: number,
+): Promise<void> {
   const vaultIds = await listVaultIds();
+  const idleCutoff = Date.now() - idleReportAfterMs;
   for (const vaultId of vaultIds) {
     if (!ownsVault(vaultId)) continue;
     try {
       const purged = await sweepVaultTombstones(vaultId);
       if (purged > 0) console.log(`materializer: purged ${purged} expired tombstone(s) in vault ${vaultId}`);
+      const activityAt = await vaultActivityAt(vaultId);
+      if (activityAt !== undefined && activityAt <= idleCutoff) {
+        console.warn(
+          `materializer: vault ${vaultId} has been idle since ${new Date(activityAt).toISOString()}; ` +
+          "reporting only, no data was deleted",
+        );
+      }
     } catch (error) {
       console.error(`materializer: tombstone sweep failed for vault ${vaultId}`, error);
     }
@@ -236,6 +254,7 @@ export type MaterializerServiceOptions = {
   claimShard?: boolean;
   ownsVault?: (vaultId: string) => boolean;
   consumerName?: string;
+  idleReportAfterMs?: number;
 };
 
 export class MaterializerService {
@@ -259,6 +278,7 @@ export class MaterializerService {
   private readonly claimShard: boolean;
   private readonly ownsVault: (vaultId: string) => boolean;
   private readonly consumerName: string;
+  private readonly idleReportAfterMs: number;
   private readonly leaseKey: string;
   private readonly leaseOwner: string;
 
@@ -286,6 +306,10 @@ export class MaterializerService {
     this.ownsVault = options.ownsVault ??
       ((vaultId) => materializerShardFor(vaultId, this.shardCount) === this.shardIndex);
     this.consumerName = options.consumerName ?? materializerConsumerName(this.shardIndex);
+    this.idleReportAfterMs = options.idleReportAfterMs ?? VAULT_IDLE_REPORT_AFTER_MS;
+    if (!Number.isFinite(this.idleReportAfterMs) || this.idleReportAfterMs < 1) {
+      throw new Error("vault idle reporting window must be a positive number");
+    }
     this.leaseKey = `materializer:shard:${this.shardIndex}`;
     this.leaseOwner = `${hostname()}:${process.pid}:${randomUUID()}:count-${this.shardCount}`;
   }
@@ -310,7 +334,7 @@ export class MaterializerService {
         void this.discoverNow().catch((error) => console.error("materializer: vault discovery failed", error));
       }, this.discoveryIntervalMs);
       this.tombstoneTimer = setInterval(() => {
-        void sweepAllTombstones(this.ownsVault)
+        void this.maintenanceNow()
           .catch((error) => console.error("materializer: tombstone sweep failed", error));
       }, TOMBSTONE_SWEEP_INTERVAL_MS);
     } catch (error) {
@@ -326,6 +350,10 @@ export class MaterializerService {
       this.discoveryPromise = undefined;
     });
     return this.discoveryPromise;
+  }
+
+  async maintenanceNow(): Promise<void> {
+    await sweepAllTombstones(this.ownsVault, this.idleReportAfterMs);
   }
 
   async stop(): Promise<void> {
@@ -348,6 +376,15 @@ export class MaterializerService {
   private async discover(): Promise<void> {
     if (this.stopping) return;
     const vaultIds = await listVaultIds();
+    const currentVaultIds = new Set(vaultIds);
+    const obsoleteBatches = [...this.batches].filter((batch) =>
+      batch.vaultIds.some((vaultId) => !currentVaultIds.has(vaultId)));
+    for (const batch of obsoleteBatches) {
+      this.batches.delete(batch);
+      for (const vaultId of batch.vaultIds) this.watchedVaults.delete(vaultId);
+    }
+    await Promise.all(obsoleteBatches.map((batch) => batch.stop()));
+
     for (const vaultId of vaultIds) {
       if (this.stopping) return;
       if (!this.ownsVault(vaultId)) continue;

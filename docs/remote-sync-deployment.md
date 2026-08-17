@@ -85,6 +85,7 @@ services:
       VAULT_QUOTA_BYTES: "${VAULT_QUOTA_BYTES:-8388608}"
       VAULT_WRITE_RATE_LIMIT: "${VAULT_WRITE_RATE_LIMIT:-600}"
       VAULT_WRITE_RATE_WINDOW_SECONDS: "${VAULT_WRITE_RATE_WINDOW_SECONDS:-60}"
+      VAULT_IDLE_REPORT_AFTER_MS: "${VAULT_IDLE_REPORT_AFTER_MS:-2592000000}"
       PORT: "3000"
       NODE_ENV: "production"
     networks: [backend]
@@ -235,6 +236,7 @@ MATERIALIZER_SHARD_COUNT=1
 VAULT_QUOTA_BYTES=8388608
 VAULT_WRITE_RATE_LIMIT=600
 VAULT_WRITE_RATE_WINDOW_SECONDS=60
+VAULT_IDLE_REPORT_AFTER_MS=2592000000
 ```
 
 Copy to `.env`, fill in real values, never commit `.env` (already covered
@@ -514,6 +516,7 @@ them; the cleanup command filters those inert tokens out.
 | `MATERIALIZER_SHARD_COUNT` / `MATERIALIZER_SHARD_INDEX` | materializer | common worker count and this process's zero-based index (defaults 1 and 0); every index must run exactly once |
 | `MATERIALIZER_SHARD_LEASE_SECONDS` / `MATERIALIZER_SHARD_HEARTBEAT_MS` | materializer | duplicate-index lease TTL and refresh interval (defaults 15 seconds and 5000 ms; heartbeat must be shorter than TTL) |
 | `TOMBSTONE_RETENTION_MS` / `TOMBSTONE_SWEEP_INTERVAL_MS` | materializer | how long a deleted record's tombstone is kept before purging, and how often the sweep runs (architecture doc §5) |
+| `VAULT_IDLE_REPORT_AFTER_MS` | materializer | report-only inactivity threshold based on the last accepted write, or creation time for an empty vault (default 2592000000 / 30 days); never deletes data automatically |
 
 Vault tokens themselves need no server-side secret to configure: each is a
 random opaque bearer value generated at vault-creation time, stored only

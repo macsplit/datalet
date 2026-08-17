@@ -409,7 +409,7 @@ Redis is the ingest and fanout tier, not the durable store. Per vault:
 
 | Key | Contents |
 | --- | --- |
-| `vault:<id>:meta` | Token hash, created/rotated timestamps |
+| `vault:<id>:meta` | Token hash plus created, rotated, last-active, and deletion-in-progress timestamps |
 | `vault:<id>:seq` | Monotonic sequence counter |
 | `vault:<id>:store` | Materialized current record per subject |
 | `vault:<id>:bytes` | Exact serialized bytes in `store`, atomically maintained for quota enforcement |
@@ -429,6 +429,10 @@ listeners. That is what lets *any* instance serve *any* vault's stream
 regardless of which instance accepted the write. Listeners do their historical
 catch-up both before and after attaching, closing the handoff race; duplicate
 delivery is harmless because the client dedupes by `batchId`.
+Successful vault deletion publishes a Redis lifecycle notification so every
+server replica ends any attached SSE responses; their reconnect then receives
+404. Deletion removes index membership and every `vault:<id>:*` key as well as
+the durable Neo4j identity, records, and tombstones.
 
 Redis must run with AOF (`appendonly yes`, `appendfsync everysec`). Without it,
 a hard kill can lose already-accepted writes *and* a vault's identity — this
@@ -484,7 +488,9 @@ the optional dry-run-first cleanup is documented in the deployment guide.
 
 Tombstones are purged from both stores after 30 days by a sweep on the
 materializer. Neo4j decides what has expired and Redis mirrors the decision, so
-the two cannot disagree.
+the two cannot disagree. The same sweep reports vaults idle past the configured
+window (30 days by default), using the last accepted-write timestamp and only
+reporting—never automatically deleting—the vault.
 
 Materialization is decoupled on purpose: `/sync/patches` never touches Neo4j,
 so a slow or down Neo4j cannot block accepting writes or fanning them out. The

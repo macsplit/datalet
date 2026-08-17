@@ -171,3 +171,52 @@ test("a restarted shard drains its stable consumer's pending entries from every 
     await service.stop();
   }
 });
+
+test("maintenance reports idle vaults without deleting them and discovery drops removed vaults", async (t) => {
+  if (!(await integrationAvailable())) {
+    t.skip("Redis/Neo4j unavailable");
+    return;
+  }
+
+  const prefix = `a6-lifecycle-${randomUUID()}`;
+  const vaultId = `${prefix}-idle`;
+  await seedStream(vaultId, 20);
+  await redis().hset(`vault:${vaultId}:meta`, {
+    token: "test-token-hash",
+    createdAt: Date.now() - 10_000,
+  });
+  const service = new MaterializerService({
+    streamsPerConnection: 2,
+    discoveryIntervalMs: 60_000,
+    blockMs: 50,
+    claimShard: false,
+    idleReportAfterMs: 1_000,
+    consumerName: `a6-lifecycle-${randomUUID()}`,
+    ownsVault: (candidate) => candidate.startsWith(prefix),
+  });
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+
+  try {
+    await service.start();
+    await eventually(async () => service.stats().watchedVaults === 1);
+    console.warn = (...args: unknown[]) => warnings.push(args.map(String).join(" "));
+    await service.maintenanceNow();
+    assert.ok(warnings.some((message) =>
+      message.includes(vaultId) && message.includes("reporting only, no data was deleted")));
+    assert.equal(await redis().sismember("vaults:index", vaultId), 1);
+    assert.equal(await redis().exists(`vault:${vaultId}:meta`), 1);
+
+    await redis().srem("vaults:index", vaultId);
+    await service.discoverNow();
+    assert.deepEqual(service.stats(), {
+      watchedVaults: 0,
+      streamBatches: 0,
+      blockingConnections: 0,
+    });
+    assert.equal(await redis().exists(streamKey(vaultId)), 1);
+  } finally {
+    console.warn = originalWarn;
+    await service.stop();
+  }
+});
