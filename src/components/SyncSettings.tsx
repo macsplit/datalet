@@ -290,9 +290,13 @@ export function SyncSettings() {
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="LG1-… or PAIR-…"
+            placeholder="LG1-…"
             onChange={(event) => setJoinCode(event.target.value)}
           />
+          <p className="helper-text">
+            Paste the pairing code shown on a device already in the vault. A temporary
+            PAIR- code from that device also works, once, within ten minutes.
+          </p>
         </div>
         <button
           type="button"

@@ -283,6 +283,40 @@ test("a joining device redeems a temporary pair code", async ({ page }) => {
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 });
 
+test("a pair code without separators still routes to redemption", async ({ page }) => {
+  // The server strips every hyphen and space before checking the prefix, so a
+  // code pasted without its separators is valid input. The client therefore
+  // routes on "PAIR" rather than "PAIR-": tightening that test would send this
+  // exact code down the LG1 decode path and report a meaningless typo error.
+  let redeemed: unknown;
+  await page.route("**/sync/pair-redeem", async (route) => {
+    redeemed = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ vaultId: VAULT_ID, vaultToken: VAULT_TOKEN }),
+    });
+  });
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: "compact-ticket" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+
+  await page.goto("/settings");
+  await page.getByLabel("Pairing code").fill("PAIRK3RM9T7AX");
+  await page.getByRole("button", { name: "Join vault" }).click();
+
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  expect(redeemed).toEqual({ code: "PAIRK3RM9T7AX" });
+});
+
 test("a redeemed code survives an initial snapshot failure as a durable retry", async ({ page }) => {
   await page.route("**/sync/pair-redeem", (route) => route.fulfill({
     status: 200,
