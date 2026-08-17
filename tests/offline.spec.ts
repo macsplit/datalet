@@ -71,3 +71,56 @@ test("the production shell cold-starts offline with local records", async ({ pag
     `Browser errors after offline reload: ${browserErrors.join(" | ")}`,
   ).toBeVisible();
 });
+
+test("the built app runs without violating its own Content Security Policy", async ({ page }) => {
+  // The main suite runs against `vite dev`, which ships no CSP - the policy is
+  // injected at build time only, because plugin-react's refresh preamble is an
+  // inline module script. So this suite, which serves the built app, is the
+  // only place the shipped policy is exercised at all.
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    (window as unknown as { __cspViolations: string[] }).__cspViolations = violations;
+    document.addEventListener("securitypolicyviolation", (event) => {
+      violations.push(`${event.violatedDirective} blocked ${event.blockedURI}`);
+    });
+  });
+
+  const readViolations = () =>
+    page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations);
+
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  expect(await readViolations()).toEqual([]);
+
+  // Settings renders the QR pairing view, whose image is a data: URI - the
+  // reason img-src carries `data:` rather than bare 'self'.
+  await page.goto("/settings");
+  await expect(page.getByText("Remote sync")).toBeVisible();
+  expect(await readViolations()).toEqual([]);
+});
+
+test("the policy blocks a font from another origin", async ({ page }) => {
+  // font-src 'self' is the directive this policy exists for: a theme value
+  // stored in the graph must never be able to cause an outbound request.
+  // Asserting the browser enforces it keeps that a guarantee rather than a
+  // convention (theme-in-graph-plan.md, T1).
+  await page.goto("/");
+  const outcome = await page.evaluate(async () => {
+    const violations: string[] = [];
+    document.addEventListener("securitypolicyviolation", (event) => {
+      violations.push(event.violatedDirective);
+    });
+    const style = document.createElement("style");
+    style.textContent =
+      "@font-face { font-family: Hostile; src: url('https://example.invalid/f.woff2'); }";
+    document.head.append(style);
+    const probe = document.createElement("span");
+    probe.style.fontFamily = "Hostile";
+    probe.textContent = "probe";
+    document.body.append(probe);
+    await document.fonts.ready.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return violations;
+  });
+  expect(outcome).toContain("font-src");
+});

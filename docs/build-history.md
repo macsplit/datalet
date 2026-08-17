@@ -40,6 +40,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 16 | Multi-tenant A5: authenticated per-vault write limiting, atomic expiring counters, and retry-safe client 429 handling distinct from terminal 409s. |
 | 17 | Multi-tenant A6: atomic last-active tracking, authenticated two-store vault deletion, cross-replica SSE disconnect, dead-stream reconciliation, and report-only idle detection. |
 | 18 | Multi-tenant A7: operator-only per-vault statistics behind a credential no vault token satisfies, consumer-group backlog reporting, SSCAN paging, and a matching structured stats log. |
+| 19 | Theme in the graph T1-T5: the project's first Content Security Policy, an allowlisted colour-role set with a closed value grammar, per-role light/dark fields on Settings, and a generated stylesheet rather than inline custom properties. |
 
 ---
 

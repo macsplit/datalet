@@ -1,7 +1,8 @@
 # Plan: The Theme in the Graph
 
-**Status: proposed.** Not started. Written 2026-08-17 from the code as it
-stands at `b4ec878`.
+**Status: active.** T1 through T5 landed 2026-08-17; T6 (vendored fonts) has
+not started. Written 2026-08-17 from the code as it stood at `b4ec878` and kept
+current as work lands.
 
 The visual theme is the last part of "the app" that is still hardcoded. Tabs,
 blocks, widgets, schemas and settings are already ordinary records; the palette
@@ -44,7 +45,7 @@ being decided separately.
 
 ---
 
-## T1. Content Security Policy — **small, do first**
+## T1. Content Security Policy — **completed 2026-08-17**
 
 There is currently **no CSP anywhere** — not in `index.html`, not in
 `server/src/staticServer.ts`. Landing one first means the rest of this work is
@@ -73,7 +74,17 @@ however the built app is served, and a response header in `staticServer.ts`,
 which is authoritative when the sync server serves it. `frame-ancestors` is
 ignored in a meta tag, so that directive only takes effect via the header.
 
-## T2. Token allowlist and value validation — **small**
+**Landed detail.** The meta tag is injected by a build-only Vite plugin, not
+written into the source `index.html`: `@vitejs/plugin-react` serves its refresh
+preamble as an inline module script, which `script-src 'self'` blocks, and
+loosening the policy to accommodate a dev-only script would weaken what ships.
+The consequence is that the main Playwright suite — which runs against
+`vite dev` — never exercises the policy at all. This plan originally claimed
+those suites were the regression; they are not. The offline suite serves the
+built app, so the CSP tests live there instead, including one asserting the
+browser actually blocks a cross-origin font.
+
+## T2. Token allowlist and value validation — **completed 2026-08-17**
 
 A fixed list of token names a theme may set, and a validator for values.
 
@@ -94,7 +105,7 @@ A fixed list of token names a theme may set, and a validator for values.
 This is the same instinct as `sanitizeLabel` in `server/src/neo4j/labels.ts`:
 splice nothing into a language from stored data without an allowlist first.
 
-## T3. Storage on the Settings singleton — **small**
+## T3. Storage on the Settings singleton — **completed 2026-08-17**
 
 Two optional string fields per colour role (`…Light` and `…Dark`), plus
 `fontFamily`, added to `src/shapes/shex/settingsShapes.shex` — which currently
@@ -119,7 +130,7 @@ under the existing per-field HLC rules, with no new conflict logic.
 
 Requires `pnpm build:orm` and committing the regenerated `src/shapes/orm/*`.
 
-## T4. Applying the theme — **small, and the one with a real trap**
+## T4. Applying the theme — **completed 2026-08-17**
 
 Generate a **single `<style id="graph-theme">` element** in `<head>` from the
 validated tokens, rewritten whenever the Settings record changes:
@@ -138,7 +149,17 @@ possibility rather than documenting it.
 
 Only allowlisted names are ever emitted, after T2's validation.
 
-## T5. Settings UI — **small**
+**Landed detail, and a correction to this plan's own testing advice.** The
+regression test was written as "with dark emulated, a light+dark theme applies
+the dark value" — and it *passes under the broken implementation*, because
+writing the dark palette last happens to leave the right value in force. The
+test that actually fails is the inverse: **with light emulated, a light+dark
+theme must apply the light value**, since the naive version leaves the
+last-written (dark) value in place regardless of scheme. Both are kept; only
+the light-mode one has been verified to fail against a deliberately broken
+build.
+
+## T5. Settings UI — **completed 2026-08-17**
 
 A theme section in Settings: a light and a dark colour input per role, a font
 selector, and a Reset that clears the fields back to stylesheet defaults. It
@@ -185,10 +206,10 @@ so T2 and T4 follow that precedent rather than inventing a third harness.
 
 | Item | Tests |
 | --- | --- |
-| **T1** | A server test asserts the CSP header on a static response and that its directives include `font-src 'self'`. The existing Playwright suites are the regression that the policy does not break the app — they run against the app as served. |
+| **T1** | `contentSecurityPolicy.test.ts` asserts the header on every static response (not just the document), that `font-src`/`script-src` cannot be widened unnoticed, and that only the header form carries `frame-ancestors`. `offline.spec.ts` — the only suite serving the built app — asserts no `securitypolicyviolation` fires while using it, and that the browser blocks a cross-origin `@font-face`. |
 | **T2** | Unit: every accepted colour form round-trips; `url(https://…)`, a backslash, a comment sequence, a stray `;` or `}`, and an over-long value are each rejected; a rejected value leaves the token unset rather than empty. |
 | **T3** | Playwright: a theme survives reload, appears in a JSON backup export, and reaches a second tab. Absent fields render identically to an unthemed graph. |
-| **T4** | Unit: generated CSS contains only allowlisted names, and emits both the plain and the `prefers-color-scheme: dark` block. **Playwright with `colorScheme` emulation: dark values apply under emulated dark and light values under light, with a theme set.** That is the test that catches the `setProperty` mistake, and it is the reason to write it first. |
+| **T4** | Unit: generated CSS contains only allowlisted names, and emits both the plain and the `prefers-color-scheme: dark` block. **Playwright with `colorScheme` emulation — and the light-mode direction is the one that matters**: with both palettes stored, light mode must show the light value. The dark-mode assertion passes even against the broken implementation, so it proves nothing on its own. Verified by breaking the implementation on purpose and watching the light-mode test fail. |
 | **T5** | Playwright: editing a colour updates the computed value live; Reset restores the default. |
 | **T6** | Playwright: selecting a vendored font changes the computed `font-family`; `tests/offline.spec.ts` gains an assertion that the font file is in the cache after install, which is what makes the precache trap a caught regression rather than a comment. |
 | **Hostile input** | Playwright: import a backup whose theme value contains `url(https://example.invalid/f.woff2)`. Assert the value is rejected, a runtime issue is reported, and — via route interception — that no request to that origin is ever made. This is the test that encodes *why* URLs are refused. |

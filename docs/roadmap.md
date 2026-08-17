@@ -33,8 +33,11 @@ a record like everything else. Cheap because `global.css` is already 228 CSS
 custom properties, and small enough (well under 1 KB) that the file-and-image
 reasoning does not apply.
 
-The plan also lands the project's first Content Security Policy, which is worth
-having on its own merits — there is none today.
+T1 through T5 are complete: the project's first Content Security Policy, an
+allowlisted set of sixteen colour roles with a closed value grammar, per-role
+light and dark fields on the Settings record, and a generated stylesheet rather
+than inline custom properties. Only the vendored fonts (T6) remain, and they
+are the most optional part.
 
 Two things it rules out on purpose, so they are not later mistaken for
 oversights: **webfont URLs in the graph**, because JSON import is a supported

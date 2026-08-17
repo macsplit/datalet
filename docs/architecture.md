@@ -243,6 +243,49 @@ with its local records.
 cached sync response would be considerably worse than a failed request, since
 the client's outbox already handles the failure correctly.
 
+### 1.9 The theme, and why it is a stylesheet
+
+`src/styles/global.css` defines 228 CSS custom properties. A curated sixteen
+colour *roles* — background, surface, border, text, accent, danger and so on —
+may be overridden from the graph, each with a separate light and dark value,
+stored as ordinary optional fields on the Settings record. Absent means "use
+the stylesheet default", so an unthemed graph renders exactly as before and no
+migration was needed.
+
+Two decisions carry the weight.
+
+**It generates a stylesheet, not inline properties.** `applyThemeToDocument`
+writes one `<style id="graph-theme">` element containing a `:root` block and a
+real `@media (prefers-color-scheme: dark)` block. The obvious alternative —
+`documentElement.style.setProperty` — is wrong in a way that is hard to
+notice: an inline property beats a media query, so both palettes would collapse
+into whichever was written last, and a themed app would stop following the
+system colour scheme. Generating CSS removes the possibility instead of
+documenting it.
+
+**Stored values are validated against a closed grammar.** A theme arrives
+through JSON import and through a vault whose token another person may hold, so
+a value is a string someone else may have chosen. `validThemeColor` accepts
+only three hex forms and four functional notations with numeric arguments, and
+rejects outright anything containing `url(`, `image-set(`, a backslash, a
+comment sequence, `;` or `}`. A failing value is dropped rather than corrected,
+so it behaves identically to an absent one. This is the same discipline
+`sanitizeLabel` applies before splicing a label into Cypher: nothing reaches a
+language from stored data without matching an allowlist first.
+
+Backing that up, the app ships a Content Security Policy — as a build-injected
+`<meta>` tag and as a response header from `staticServer.ts`. `font-src 'self'`
+is the load-bearing directive: it makes "a stored value cannot cause an
+outbound request" a guarantee the browser enforces rather than a convention
+every future change must remember. The policy is injected at build time only,
+because `@vitejs/plugin-react` serves its dev refresh preamble as an inline
+module script that `script-src 'self'` would block, and weakening the shipped
+policy for a dev-only script would defeat the point.
+
+Fonts are the system stack. Webfont URLs in the graph are refused for the
+reason above, and font bytes in the graph fall under the existing file and
+image deferral — see [`roadmap.md`](roadmap.md).
+
 ---
 
 ## 2. The builder metadata model
@@ -551,6 +594,7 @@ src/
 │   ├── DataBackup.tsx          Whole-graph JSON export and import
 │   ├── SyncSettings.tsx        Vault create / join / rotate / delete / pair codes
 │   ├── PairingQr.tsx           Renders the LG1 code as a QR; scan where supported
+│   ├── ThemeSettings.tsx       Per-role light/dark colour fields and reset
 │   ├── RuntimeSafety.tsx       Error boundary, issue banner, inline circuit notice
 │   ├── icons.tsx               Inline SVG icons
 │   └── usePrivateNuri.ts       Resolves the active graph (local session or vault)
@@ -571,6 +615,8 @@ src/
     ├── pairingCode.ts          LG1 Crockford-base32 credential encode / decode
     ├── qrCode.ts               Dependency-free QR matrix generation
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
+    ├── themeTokens.ts          The allowlisted colour roles and value grammar
+    ├── themeStylesheet.ts      Stored theme → one <style> with a dark media query
     └── runtimeHealth.ts        Limits and the issue reporter
 
 server/src/
@@ -583,6 +629,7 @@ server/src/
 │                               tombstone sweep, idle reporting, stats logging
 ├── pairCode.ts                 One-use PAIR- code generation and normalization
 ├── config.ts                   Tombstone retention, idle window, admin token
+├── contentSecurityPolicy.ts    The shipped CSP, as header and meta variants
 ├── cleanupNeo4jLabels.ts       Optional dry-run-first legacy label cleanup
 ├── redis/
 │   ├── applyBatch.lua          The atomic accept + apply + sequence script,

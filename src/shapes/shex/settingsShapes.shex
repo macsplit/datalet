@@ -6,4 +6,68 @@ ex:SettingsShape {
   a [ex:Settings] ;
   ex:appTitle xsd:string
     // rdfs:comment "The application title shown in the nav bar and browser tab" ;
+  ex:themeColorBgLight xsd:string ?
+    // rdfs:comment "--color-bg in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorBgDark xsd:string ?
+    // rdfs:comment "--color-bg in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorSurfaceLight xsd:string ?
+    // rdfs:comment "--color-surface in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorSurfaceDark xsd:string ?
+    // rdfs:comment "--color-surface in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorSurfaceAltLight xsd:string ?
+    // rdfs:comment "--color-surface-alt in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorSurfaceAltDark xsd:string ?
+    // rdfs:comment "--color-surface-alt in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorBorderLight xsd:string ?
+    // rdfs:comment "--color-border in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorBorderDark xsd:string ?
+    // rdfs:comment "--color-border in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextLight xsd:string ?
+    // rdfs:comment "--color-text in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextDark xsd:string ?
+    // rdfs:comment "--color-text in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextMutedLight xsd:string ?
+    // rdfs:comment "--color-text-muted in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextMutedDark xsd:string ?
+    // rdfs:comment "--color-text-muted in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextSubtleLight xsd:string ?
+    // rdfs:comment "--color-text-subtle in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorTextSubtleDark xsd:string ?
+    // rdfs:comment "--color-text-subtle in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentLight xsd:string ?
+    // rdfs:comment "--color-accent in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentDark xsd:string ?
+    // rdfs:comment "--color-accent in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentHoverLight xsd:string ?
+    // rdfs:comment "--color-accent-hover in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentHoverDark xsd:string ?
+    // rdfs:comment "--color-accent-hover in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentTextLight xsd:string ?
+    // rdfs:comment "--color-accent-text in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorAccentTextDark xsd:string ?
+    // rdfs:comment "--color-accent-text in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorChipBgLight xsd:string ?
+    // rdfs:comment "--color-chip-bg in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorChipBgDark xsd:string ?
+    // rdfs:comment "--color-chip-bg in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorChipTextLight xsd:string ?
+    // rdfs:comment "--color-chip-text in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorChipTextDark xsd:string ?
+    // rdfs:comment "--color-chip-text in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorBadgeBgLight xsd:string ?
+    // rdfs:comment "--color-badge-bg in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorBadgeBgDark xsd:string ?
+    // rdfs:comment "--color-badge-bg in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorBadgeTextLight xsd:string ?
+    // rdfs:comment "--color-badge-text in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorBadgeTextDark xsd:string ?
+    // rdfs:comment "--color-badge-text in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorDangerLight xsd:string ?
+    // rdfs:comment "--color-danger in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorDangerDark xsd:string ?
+    // rdfs:comment "--color-danger in the dark palette; omitted uses the stylesheet default" ;
+  ex:themeColorSuccessLight xsd:string ?
+    // rdfs:comment "--color-success in the light palette; omitted uses the stylesheet default" ;
+  ex:themeColorSuccessDark xsd:string ?
+    // rdfs:comment "--color-success in the dark palette; omitted uses the stylesheet default"
 }

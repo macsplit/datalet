@@ -188,6 +188,25 @@ session; reloading intentionally starts with an empty undo stack. An undo is a
 new edit, so it persists and follows the same cross-tab and optional remote-sync
 paths as any other change.
 
+## Theme
+
+**Settings → Theme** sets the app's colours. Each role has a light and a dark
+value; the dark column applies when the operating system asks for dark mode, so
+choosing a theme does not stop the app following that preference. An empty
+field keeps the built-in colour, and **Reset theme** clears them all.
+
+Colours are stored in the graph as ordinary record fields, so a theme reaches
+your other devices through sync, appears in a JSON backup, and can be undone
+like any other edit.
+
+Only colours are configurable, and only in a closed set of forms (`#rgb`,
+`#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, `hsl()`, `hsla()`). A stored value
+that is not one of those is ignored in favour of the built-in colour and
+flagged in the Settings field. That strictness is deliberate: a backup you
+import, or a vault someone else shares, can contain any string, and a theme
+must never be able to make the app fetch from another server. Fonts follow the
+same rule — the app uses your system font stack and does not load webfonts.
+
 ## Storage and synchronization
 
 All application data is held in the current browser profile using

@@ -32,6 +32,358 @@ export const settingsShapesSchema: Schema = {
         iri: "did:ng:z:appTitle",
         readablePredicate: "appTitle",
       },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBgLight",
+        readablePredicate: "themeColorBgLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBgDark",
+        readablePredicate: "themeColorBgDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSurfaceLight",
+        readablePredicate: "themeColorSurfaceLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSurfaceDark",
+        readablePredicate: "themeColorSurfaceDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSurfaceAltLight",
+        readablePredicate: "themeColorSurfaceAltLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSurfaceAltDark",
+        readablePredicate: "themeColorSurfaceAltDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBorderLight",
+        readablePredicate: "themeColorBorderLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBorderDark",
+        readablePredicate: "themeColorBorderDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextLight",
+        readablePredicate: "themeColorTextLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextDark",
+        readablePredicate: "themeColorTextDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextMutedLight",
+        readablePredicate: "themeColorTextMutedLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextMutedDark",
+        readablePredicate: "themeColorTextMutedDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextSubtleLight",
+        readablePredicate: "themeColorTextSubtleLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorTextSubtleDark",
+        readablePredicate: "themeColorTextSubtleDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentLight",
+        readablePredicate: "themeColorAccentLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentDark",
+        readablePredicate: "themeColorAccentDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentHoverLight",
+        readablePredicate: "themeColorAccentHoverLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentHoverDark",
+        readablePredicate: "themeColorAccentHoverDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentTextLight",
+        readablePredicate: "themeColorAccentTextLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorAccentTextDark",
+        readablePredicate: "themeColorAccentTextDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorChipBgLight",
+        readablePredicate: "themeColorChipBgLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorChipBgDark",
+        readablePredicate: "themeColorChipBgDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorChipTextLight",
+        readablePredicate: "themeColorChipTextLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorChipTextDark",
+        readablePredicate: "themeColorChipTextDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBadgeBgLight",
+        readablePredicate: "themeColorBadgeBgLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBadgeBgDark",
+        readablePredicate: "themeColorBadgeBgDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBadgeTextLight",
+        readablePredicate: "themeColorBadgeTextLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorBadgeTextDark",
+        readablePredicate: "themeColorBadgeTextDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorDangerLight",
+        readablePredicate: "themeColorDangerLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorDangerDark",
+        readablePredicate: "themeColorDangerDark",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSuccessLight",
+        readablePredicate: "themeColorSuccessLight",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:themeColorSuccessDark",
+        readablePredicate: "themeColorSuccessDark",
+      },
     ],
   },
 };

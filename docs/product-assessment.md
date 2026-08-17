@@ -27,6 +27,9 @@ Everything distinctive follows from that one decision:
   the phone. Nothing special-cases it.
 - The builder needs no persistence, migration story or export format of its
   own. A backup is the app *and* its contents, in one JSON file.
+- The same is true of how it looks. The colour theme is a set of fields on the
+  Settings record, so it syncs, backs up and undoes like any other edit — no
+  theme format, no theme storage, no theme sync.
 - A schema edit is a live, non-destructive event rather than a migration:
   `buildShapeType()` hashes the property list into the runtime shape IRI, so
   the subscription reopens while the stable record type keeps existing records
@@ -57,8 +60,9 @@ renovation punch list, a small research corpus. The value scales with *how
 often the shape changes*, not with row count.
 
 **2. Data that should not be in anyone's SaaS.** Unpaired, there is no network
-code on any path — verifiable by reading the source, not by trusting a privacy
-policy. Almost nothing else in this space can say that. Medication logs,
+code on any path — verifiable by reading the source, and now enforced by a
+Content Security Policy whose `font-src 'self'` means stored data cannot cause
+an outbound request even if some future change forgets why that matters. Almost nothing else in this space can say that. Medication logs,
 therapy notes, a legal-matter chronology, salary and finance notes, anything
 about other people that is not yours to hand to a vendor. Two conditions belong
 to the use case rather than beside it: it holds only while **unpaired** (paired,

@@ -13,12 +13,23 @@ import { OrmSubscription } from "@ng-org/orm";
 import { useShape } from "@ng-org/orm/react";
 import { SettingsShapeType } from "../shapes/orm/settingsShapes.shapeTypes";
 import usePrivateNuri from "../components/usePrivateNuri";
+import { applyThemeToDocument } from "../utils/themeStylesheet";
+import {
+  THEME_COLOR_ROLES,
+  THEME_SCHEMES,
+  themeSettingsField,
+  type ThemeColorRole,
+  type ThemeScheme,
+} from "../utils/themeTokens";
 
 type SettingsValue = {
   format: (amount: number) => string;
   symbol: string;
   appTitle: string;
   setAppTitle: (next: string) => void;
+  themeColor: (role: ThemeColorRole, scheme: ThemeScheme) => string;
+  setThemeColor: (role: ThemeColorRole, scheme: ThemeScheme, next: string) => void;
+  resetTheme: () => void;
 };
 
 const SettingsContext = createContext<SettingsValue | undefined>(undefined);
@@ -83,11 +94,43 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (settings) settings.appTitle = next;
   };
 
+  const themeColor = (role: ThemeColorRole, scheme: ThemeScheme): string => {
+    const stored = settings?.[themeSettingsField(role, scheme) as keyof typeof settings];
+    return typeof stored === "string" ? stored : "";
+  };
+
+  const setThemeColor = (role: ThemeColorRole, scheme: ThemeScheme, next: string) => {
+    if (!settings) return;
+    const field = themeSettingsField(role, scheme) as keyof typeof settings;
+    // Clearing a field is how a role returns to the stylesheet default, so an
+    // empty input removes the property rather than storing an empty string
+    // that would fail validation on every later read.
+    if (next.trim() === "") delete settings[field];
+    else (settings as Record<string, unknown>)[field] = next.trim();
+  };
+
+  const resetTheme = () => {
+    if (!settings) return;
+    for (const role of THEME_COLOR_ROLES) {
+      for (const scheme of THEME_SCHEMES) {
+        delete settings[themeSettingsField(role, scheme) as keyof typeof settings];
+      }
+    }
+  };
+
+  // Re-applied on every render rather than in an effect keyed on the record:
+  // ORM signal objects mutate in place, so a dependency array cannot see a
+  // colour change. applyThemeToDocument is a no-op when the CSS is unchanged.
+  applyThemeToDocument((settings ?? {}) as Record<string, unknown>);
+
   const value: SettingsValue = {
     format: formatCurrency,
     symbol: "€",
     appTitle,
     setAppTitle,
+    themeColor,
+    setThemeColor,
+    resetTheme,
   };
 
   return createElement(SettingsContext.Provider, { value }, children);

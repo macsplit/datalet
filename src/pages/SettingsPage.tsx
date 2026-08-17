@@ -12,6 +12,7 @@ import { useSettings } from "../hooks/useSettings";
 import { Link } from "@tanstack/react-router";
 import { SyncSettings } from "../components/SyncSettings";
 import { DataBackup } from "../components/DataBackup";
+import { ThemeSettings } from "../components/ThemeSettings";
 
 export function SettingsPage() {
   const { appTitle, setAppTitle } = useSettings();
@@ -69,6 +70,7 @@ export function SettingsPage() {
           />
         </div>
       </section>
+      <ThemeSettings />
       <DataBackup />
       <SyncSettings />
     </div>

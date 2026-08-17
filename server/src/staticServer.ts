@@ -11,6 +11,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { CONTENT_SECURITY_POLICY } from "./contentSecurityPolicy.js";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -32,6 +33,9 @@ export function serveStatic(staticDir: string, req: IncomingMessage, res: Server
   const target = isSafeFile ? requested : join(staticDir, "index.html");
 
   res.setHeader("Content-Type", CONTENT_TYPES[extname(target)] ?? "application/octet-stream");
+  // Set on every static response, not just the document: a policy that only
+  // covered index.html would leave a directly-opened asset unprotected.
+  res.setHeader("Content-Security-Policy", CONTENT_SECURITY_POLICY);
   createReadStream(target)
     .on("error", () => {
       res.writeHead(404);
