@@ -7,6 +7,7 @@
 | [`architecture.md`](architecture.md) | **How the whole thing works today** — the browser engine, the metadata model, the optional sync tier, and where the constraints are. Read this first. |
 | [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
 | [`product-assessment.md`](product-assessment.md) | What the project *is*, what it is good for, and which additions would cost it that. Kept accurate as work lands. |
+| [`theme-in-graph-plan.md`](theme-in-graph-plan.md) | **Proposed, not started.** Moving the visual theme into the graph like every other part of the app definition, with a Content Security Policy, an allowlisted token set, and vendored fonts rather than webfont URLs. Includes the testing strategy. |
 
 ## Sync tier
 

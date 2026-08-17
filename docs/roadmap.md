@@ -25,6 +25,25 @@ ruled out from a run that short.
 This needs a deployment-focused session with real hours available. It gates
 nothing else.
 
+### Theme in the graph
+
+[`theme-in-graph-plan.md`](theme-in-graph-plan.md) proposes moving the visual
+theme into the graph, so the last hardcoded part of the app definition becomes
+a record like everything else. Cheap because `global.css` is already 228 CSS
+custom properties, and small enough (well under 1 KB) that the file-and-image
+reasoning does not apply.
+
+The plan also lands the project's first Content Security Policy, which is worth
+having on its own merits — there is none today.
+
+Two things it rules out on purpose, so they are not later mistaken for
+oversights: **webfont URLs in the graph**, because JSON import is a supported
+path and a stored URL would make importing someone's backup silently fetch from
+their server, ending the "no network code on any path" property unpaired mode
+currently has honestly; and **font bytes in the graph**, which stay deferred
+under the existing file-and-image decision below rather than being decided
+separately.
+
 ---
 
 ## Deferred by decision
