@@ -282,8 +282,11 @@ because `@vitejs/plugin-react` serves its dev refresh preamble as an inline
 module script that `script-src 'self'` would block, and weakening the shipped
 policy for a dev-only script would defeat the point.
 
-Fonts are the system stack. Webfont URLs in the graph are refused for the
-reason above, and font bytes in the graph fall under the existing file and
+Fonts are the system stack, and there is no font setting at all. Vendored
+open-licensed families were planned and then declined: they would add bundle
+weight and a precache list to maintain, to support a preference that changes
+nothing about whether the app works. Webfont URLs in the graph are refused for
+the reason above, and font bytes in the graph fall under the existing file and
 image deferral — see [`roadmap.md`](roadmap.md).
 
 ---

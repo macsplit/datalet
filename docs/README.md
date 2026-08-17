@@ -7,7 +7,6 @@
 | [`architecture.md`](architecture.md) | **How the whole thing works today** — the browser engine, the metadata model, the optional sync tier, and where the constraints are. Read this first. |
 | [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
 | [`product-assessment.md`](product-assessment.md) | What the project *is*, what it is good for, and which additions would cost it that. Kept accurate as work lands. |
-| [`theme-in-graph-plan.md`](theme-in-graph-plan.md) | **Proposed, not started.** Moving the visual theme into the graph like every other part of the app definition, with a Content Security Policy, an allowlisted token set, and vendored fonts rather than webfont URLs. Includes the testing strategy. |
 
 ## Sync tier
 
@@ -21,6 +20,7 @@
 
 | Document | What it recorded |
 | --- | --- |
+| [`theme-in-graph-plan.md`](theme-in-graph-plan.md) | **Complete.** How the colour theme became graph data, why it generates a stylesheet rather than inline custom properties, and why font choice was declined outright. Also the origin of the app's Content Security Policy. |
 | [`multi-tenancy-and-identity-plan.md`](multi-tenancy-and-identity-plan.md) | **Complete.** How multi-tenant hosting and user-facing identity were planned and built, item by item, including the deviations from the plan and why. Read for the reasoning behind the sharded materializer, the quotas, and the `LG1` pairing credential. |
 | [`build-history.md`](build-history.md) | How the sync tier and the persistence layer were built, and — the part still worth reading — every real defect found, how it was found, and what changed. Condensed from three longer work journals. |
 | [`remote-sync-endurance-results.json`](remote-sync-endurance-results.json) | Partial endurance run, `status: curtailed` at ~19 of a planned 120 minutes. A real multi-hour run is the one open item in `roadmap.md`. |

@@ -1,8 +1,8 @@
 # Plan: The Theme in the Graph
 
-**Status: active.** T1 through T5 landed 2026-08-17; T6 (vendored fonts) has
-not started. Written 2026-08-17 from the code as it stood at `b4ec878` and kept
-current as work lands.
+**Status: complete.** T1 through T5 landed 2026-08-17. T6 was **declined**, not
+deferred — see below. Written 2026-08-17 from the code as it stood at
+`b4ec878` and kept current as work landed.
 
 The visual theme is the last part of "the app" that is still hardcoded. Tabs,
 blocks, widgets, schemas and settings are already ordinary records; the palette
@@ -161,31 +161,41 @@ build.
 
 ## T5. Settings UI — **completed 2026-08-17**
 
-A theme section in Settings: a light and a dark colour input per role, a font
-selector, and a Reset that clears the fields back to stylesheet defaults. It
-reads and writes the existing `useSettings` singleton, so no new subscription
-and no new metadata plumbing.
+A theme section in Settings: a light and a dark colour input per role, and a
+Reset that clears the fields back to stylesheet defaults. It reads and writes
+the existing `useSettings` singleton, so no new subscription and no new
+metadata plumbing.
 
-## T6. Vendored fonts — **medium, most optional**
+**Landed without the font selector this plan originally listed**, because T6
+was declined; there is nothing for it to select between.
 
-Ship three to five open-licensed woff2 subsets under `public/fonts/`, with
-`@font-face` rules in `global.css`. The graph stores only an id — `system`
-(default) or one per family — so this is an enum, not a URL.
+## T6. Vendored fonts — **declined 2026-08-17**
 
-Cost is bundle size: a subset runs 15–40 KB, so five is 100–200 KB against the
-current 415 KB of JS. Noticeable, not absurd, and same-origin like everything
-else, so it adds no network surface.
+The plan was to ship three to five open-licensed woff2 subsets and store the
+chosen id in the graph. **Not built, and not deferred.**
 
-**One concrete trap.** `public/sw.js` builds its precache list by scraping
-`href`/`src` attributes out of the shell HTML, plus a small hardcoded list.
-A font referenced only from an `@font-face` rule inside CSS is invisible to
-that scrape, so fonts must be added to the explicit `assets.push(...)` list —
-otherwise the offline cold-start claim quietly breaks for anyone who picks a
-non-system font, and only for them. `server/src/staticServer.ts` already maps
-`.woff2` to the right MIME type, so serving them needs no change.
+The system font stack is already the right answer. It renders text people can
+read, in the typeface their device is designed around, at zero bundle cost and
+with no network surface. Shipping alternatives would add 100–200 KB against a
+415 KB bundle, plus licence files, plus a precache list to keep in step, to
+support a preference that changes nothing about whether the app works.
 
-Only OFL or Apache-licensed families, with their licence files committed
-alongside and credited in the README.
+The honest framing is that this is an **opinionated** product, not a design
+tool. Colour is configurable because a tracker someone looks at daily benefits
+from being theirs; typeface selection is the beginning of a layout-and-
+typography surface that has no end, and that this project has no business
+competing on. Anyone who wants that has an application for it already.
+
+The two font positions this leaves are both decisions rather than gaps:
+
+- **No webfont URLs in the graph**, because import is a supported path and a
+  stored URL would make importing a backup fetch from a third party. Enforced
+  by T1's `font-src 'self'`.
+- **No font bytes in the graph**, under the existing file-and-image deferral in
+  [`roadmap.md`](roadmap.md).
+
+Revisit only alongside a decision that this should be a design tool, which
+would be a different product.
 
 ---
 
@@ -193,8 +203,11 @@ alongside and credited in the README.
 
 T1 first — independent, valuable alone, and it makes everything after it
 develop under the constraint. Then T2 → T3 → T4 as one coherent piece; none of
-them is useful alone. T5 makes it usable. T6 last: it has the largest bundle
-impact and is the easiest to drop if the system stack turns out to be fine.
+them is useful alone. T5 made it usable.
+
+T6 was placed last precisely because it had the largest bundle impact and was
+the easiest to drop if the system stack turned out to be fine. It did, and it
+was.
 
 ## Testing strategy
 
@@ -211,7 +224,7 @@ so T2 and T4 follow that precedent rather than inventing a third harness.
 | **T3** | Playwright: a theme survives reload, appears in a JSON backup export, and reaches a second tab. Absent fields render identically to an unthemed graph. |
 | **T4** | Unit: generated CSS contains only allowlisted names, and emits both the plain and the `prefers-color-scheme: dark` block. **Playwright with `colorScheme` emulation — and the light-mode direction is the one that matters**: with both palettes stored, light mode must show the light value. The dark-mode assertion passes even against the broken implementation, so it proves nothing on its own. Verified by breaking the implementation on purpose and watching the light-mode test fail. |
 | **T5** | Playwright: editing a colour updates the computed value live; Reset restores the default. |
-| **T6** | Playwright: selecting a vendored font changes the computed `font-family`; `tests/offline.spec.ts` gains an assertion that the font file is in the cache after install, which is what makes the precache trap a caught regression rather than a comment. |
+| **T6** | Not applicable — declined. The precache trap it would have introduced is documented above in case fonts are ever revisited. |
 | **Hostile input** | Playwright: import a backup whose theme value contains `url(https://example.invalid/f.woff2)`. Assert the value is rejected, a runtime issue is reported, and — via route interception — that no request to that origin is ever made. This is the test that encodes *why* URLs are refused. |
 
 ## Risk summary
@@ -220,7 +233,7 @@ so T2 and T4 follow that precedent rather than inventing a third harness.
 | --- | --- | --- |
 | Dark mode silently stops following the system | T4 | Generate a stylesheet with a real media query, never inline properties; `colorScheme`-emulated test |
 | Stored CSS becomes an injection channel | T2 | Name allowlist plus value grammar; hostile-import test; CSP as the backstop |
-| Themed app stops working offline | T6 | Fonts added to the service worker's explicit precache list; offline test asserts it |
+| Themed app stops working offline | T6 | Removed with T6: a colour theme is a record like any other, so it needs no asset and cannot miss the precache list |
 | CSP breaks a split-origin deployment | T1 | `connect-src` documented in the deployment guide as assuming a same-origin proxy |
 | Unreadable theme locks the user out | T5 | Reset control that clears every field; values are ordinary records, so undo also reaches them |
 | Scope drift into a theme manager | — | One active theme on Settings; multiple themes would need the rejected `ThemeToken` type and should be refused on that basis |

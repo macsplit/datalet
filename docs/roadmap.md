@@ -25,28 +25,6 @@ ruled out from a run that short.
 This needs a deployment-focused session with real hours available. It gates
 nothing else.
 
-### Theme in the graph
-
-[`theme-in-graph-plan.md`](theme-in-graph-plan.md) proposes moving the visual
-theme into the graph, so the last hardcoded part of the app definition becomes
-a record like everything else. Cheap because `global.css` is already 228 CSS
-custom properties, and small enough (well under 1 KB) that the file-and-image
-reasoning does not apply.
-
-T1 through T5 are complete: the project's first Content Security Policy, an
-allowlisted set of sixteen colour roles with a closed value grammar, per-role
-light and dark fields on the Settings record, and a generated stylesheet rather
-than inline custom properties. Only the vendored fonts (T6) remain, and they
-are the most optional part.
-
-Two things it rules out on purpose, so they are not later mistaken for
-oversights: **webfont URLs in the graph**, because JSON import is a supported
-path and a stored URL would make importing someone's backup silently fetch from
-their server, ending the "no network code on any path" property unpaired mode
-currently has honestly; and **font bytes in the graph**, which stay deferred
-under the existing file-and-image decision below rather than being decided
-separately.
-
 ---
 
 ## Deferred by decision
@@ -92,6 +70,15 @@ listed so they are not mistaken for oversights.
 - **IndexedDB or windowed subscriptions.** Considered and rejected in an
   earlier tranche. The 4 MB cap and the full-store startup load remain, and
   everything built since has been sized to live under them.
+- **Font choice, of any kind.** The system stack is the answer: it renders
+  readable text in the typeface the device is designed around, at no bundle
+  cost and with no network surface. Vendored fonts were planned and then
+  declined — this is an opinionated tool, and typeface selection is the start
+  of a typography surface with no end and no reason to compete on. Webfont URLs
+  in the graph are separately refused, because import is a supported path and a
+  stored URL would make importing a backup fetch from a third party;
+  `font-src 'self'` enforces that in the browser. Font bytes in the graph fall
+  under the file-and-image deferral above.
 - **Joins, reverse lookups, rollups, relationship constraints, cascading
   record behaviour.** References stay one-directional. They now *display* as
   the target's label everywhere rather than as a raw id, but that is a lookup
@@ -103,6 +90,21 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### Theme in the graph
+
+[`theme-in-graph-plan.md`](theme-in-graph-plan.md) moved the visual theme into
+the graph, so the last hardcoded part of the app definition became a record
+like everything else. Sixteen colour roles, each with a light and a dark value,
+as optional fields on the Settings record — so an unthemed graph is unchanged,
+and a theme syncs, backs up and undoes like any other edit. Applying it
+generates a stylesheet with a real `prefers-color-scheme` media query rather
+than inline custom properties, which would have collapsed both palettes into
+whichever was written last.
+
+It also landed the project's first Content Security Policy, which was worth
+having on its own merits.
+
 
 ### Multi-tenancy and identity tracks
 

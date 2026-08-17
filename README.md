@@ -204,8 +204,13 @@ Only colours are configurable, and only in a closed set of forms (`#rgb`,
 that is not one of those is ignored in favour of the built-in colour and
 flagged in the Settings field. That strictness is deliberate: a backup you
 import, or a vault someone else shares, can contain any string, and a theme
-must never be able to make the app fetch from another server. Fonts follow the
-same rule — the app uses your system font stack and does not load webfonts.
+must never be able to make the app fetch from another server.
+
+The typeface is not configurable at all. The app uses your system font stack:
+readable text in the face your device is designed around, with nothing to
+download. That is a deliberate limit rather than a missing feature — colour is
+worth making yours on something you look at daily, typography is a surface
+without an end, and this is a tracker rather than a design tool.
 
 ## Storage and synchronization
 

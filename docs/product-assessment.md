@@ -192,6 +192,11 @@ how reasonable the ask sounds against how much damage it does.
   one of very few claims here that is literally true.
 - **Joins, reverse lookups, rollups.** Asking for these is asking it to be a
   database product.
+- **Typeface selection.** Colours are configurable because a tracker looked at
+  daily is worth making yours. Fonts were planned, then declined: the system
+  stack already renders readable text at no cost, and typeface choice is the
+  first step of a typography surface with no end. Asking for it is asking this
+  to be a design tool.
 
 ## Two earlier criticisms, and where they now stand
 
