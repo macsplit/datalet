@@ -281,9 +281,30 @@ a {
     height: 1.25rem;
 }
 
+/* The icon links are rounded hit targets, so colouring their bottom border
+   draws the indicator around the corner radius: the line curves up and thins
+   out at both ends, reading as a smear rather than a mark. The bar is drawn
+   separately instead, straight and the same weight as the text links' own
+   underline. The transparent border above stays for alignment. */
+.app-nav-links a.nav-icon-link {
+    position: relative;
+}
+
 .app-nav-links a.nav-icon-link.active {
     color: var(--color-accent-text);
-    border-bottom-color: var(--color-accent-text);
+    /* Beats the shared `a.active` rule below, which would otherwise still
+       colour the curved border. */
+    border-bottom-color: transparent;
+}
+
+.app-nav-links a.nav-icon-link.active::after {
+    content: "";
+    position: absolute;
+    left: 0.35rem;
+    right: 0.35rem;
+    bottom: -2px;
+    height: 2px;
+    background: var(--color-accent-text);
 }
 
 .app-nav-links a {
