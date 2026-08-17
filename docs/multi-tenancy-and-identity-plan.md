@@ -391,8 +391,7 @@ B5 handle the cases where a human would otherwise type it.
 
 **Notable property: no server change.** Encoding and decoding happen entirely
 in the client, which decodes to the same `vaultId` + `vaultToken` the API
-already expects. The join form must also still accept the legacy two-field
-input so existing pairings keep working.
+already expects.
 
 **Landed detail.** The 320-bit payload is 64 Crockford characters followed by
 the standard mod-37 check symbol, grouped as thirteen five-character groups
@@ -533,7 +532,7 @@ asserts on:
 | **A6** | Delete removes every `vault:<id>:*` key, index membership, and both Neo4j node kinds; an attached SSE client is disconnected; a subsequent request with the old token 401s. `lastActiveAt` advances on accepted writes only. |
 | **A7** | `adminStatsHttp.test.ts`: reported per-vault numbers match independently computed Redis state; the admin endpoint rejects a vault token *and* an anonymous request; an unset `ADMIN_TOKEN` makes the route 404; paging covers every vault with no repeats; an unknown vault is a 404 rather than an empty report. |
 | **B1/B2** | Playwright in `tests/data-blocks.spec.ts`: a reference column sorts by label rather than id; reader search matches label text; exported JSON carries the label and still carries `@id`; the print table shows labels. Fallback: a target schema with no text or enum property still renders the id without crashing. Unit: `lookupRecordLabel` on a missing target returns the id. |
-| **B3** | Pure-function property tests — encode/decode round-trip; the check symbol catches every single-character substitution and adjacent transposition; `0/O` and `1/I/L` decode identically; case-insensitivity; a legacy two-field entry still pairs. This is the cheapest high-value test surface in the plan. |
+| **B3** | Pure-function property tests — encode/decode round-trip; the check symbol catches every single-character substitution and adjacent transposition; `0/O` and `1/I/L` decode identically; case-insensitivity. This is the cheapest high-value test surface in the plan. |
 | **B4** | QR encode → decode round-trip as a unit test. Playwright asserts the QR renders and that the manual field remains present and usable. Camera capture is a documented manual test — it cannot run in the plain-HTTP contexts CI uses, which is itself the constraint worth recording. |
 | **B5** | Expired code rejected; a code redeems exactly once and the second attempt fails; redemption is rate-limited per IP; token rotation invalidates outstanding codes; a redeemed pair actually syncs end to end — extend `fullStackSmoke.ts` to pair its second browser context via a code rather than a pasted token. |
 | **B6** | A slug resolves to the right tab; a raw-id URL still resolves; a colliding slug falls back to the id; an unknown slug produces the not-found path rather than an error boundary. |

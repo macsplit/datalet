@@ -353,25 +353,3 @@ test("a mistyped pairing code is rejected before a network request", async ({ pa
   await expect(page.getByText(/pairing code has a typo/i)).toBeVisible();
   expect(snapshotRequests).toBe(0);
 });
-
-test("legacy vault ID and token entry remains available", async ({ page }) => {
-  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ seq: 0, records: {} }),
-  }));
-  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ ticket: "legacy-ticket" }),
-  }));
-  await page.route("**/sync/stream?*", (route) => route.abort());
-
-  await page.goto("/settings");
-  await page.getByText("Use legacy vault ID and token").click();
-  await page.getByLabel("Vault ID").fill(VAULT_ID);
-  await page.getByLabel("Pairing token").fill(VAULT_TOKEN);
-  await page.getByRole("button", { name: "Join with legacy credentials" }).click();
-
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-});

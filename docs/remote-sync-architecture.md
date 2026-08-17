@@ -448,8 +448,11 @@ e.g. `src/utils/remoteSyncEngine.ts`, that:
    message does today, just from a different origin.
 4. Pairing UI: the Settings page calls `POST /sync/vaults`, then encodes the
    returned UUID and token as one versioned, checksummed `LG1` Crockford-base32
-   string. Joining decodes that string locally before using the unchanged API;
-   a collapsed legacy vaultId + token form remains available. The client also
+   string. Joining decodes that string locally before using the unchanged API.
+   The `LG1` string is the interface's only credential form: the vault id and
+   token stay two fields in the HTTP API and in stored configuration, but are
+   never shown or entered separately, so there is one thing to copy and one
+   thing to get wrong. The client also
    renders that LG1 value as a dependency-free QR and scans it with
    `BarcodeDetector` when the browser is in a secure context. The manual field
    remains the fallback on plain-HTTP LAN origins and unsupported browsers.

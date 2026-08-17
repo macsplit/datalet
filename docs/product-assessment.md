@@ -236,7 +236,8 @@ system.
   locally instead of returning an unexplained 401. It can be scanned as a QR
   where the browser allows a camera, and a device that is not to hand can be
   given a ten-minute, single-use, rate-limited `PAIR-…` code so the durable
-  credential is never read aloud. The old two-field entry still works.
+  credential is never read aloud. There is exactly one credential format; the
+  vault id and token are never shown separately.
 - JSON export and import provide an explicit local backup path covering both
   records and builder metadata. Each data block additionally exports its own
   matching records as JSON and prints them as a plain black-and-white table

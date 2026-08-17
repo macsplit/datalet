@@ -314,9 +314,9 @@ The Settings UI represents the vault UUID and 24-byte bearer token as one
 versioned Crockford-base32 pairing code. Its trailing mod-37 symbol catches
 single-character substitutions and adjacent transpositions before any network
 request. Decoding is case-insensitive and accepts Crockford's `0/O` and
-`1/I/L` aliases. Existing installations can still join through the collapsed
-legacy two-field form; the HTTP API and stored sync configuration are
-unchanged. The same code is rendered as an in-app QR with no third-party
+`1/I/L` aliases. This is the only credential form the interface offers — the
+vault id and token are never displayed or entered separately — while the HTTP
+API and the stored sync configuration keep them as two fields. The same code is rendered as an in-app QR with no third-party
 service or runtime dependency. Camera scanning uses the browser's
 `BarcodeDetector` only where it is available in a secure context; plain-HTTP
 LAN clients retain the manual field and receive an explanation instead.

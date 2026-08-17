@@ -209,7 +209,7 @@ unexplained authentication failure. The connected device also renders that
 string as a QR code to scan. For a device that is not to hand, it can issue a
 short `PAIR-…` code that expires in ten minutes, works exactly once, and is
 rate-limited against guessing — so the durable credential never has to be read
-aloud or retyped. Entering a separate vault id and token still works.
+aloud or retyped.
 
 Pairing switches the app to the vault graph but does not automatically migrate
 records from the previous unpaired graph. To seed a new vault with existing

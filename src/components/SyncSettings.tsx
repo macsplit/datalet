@@ -30,8 +30,6 @@ export function SyncSettings() {
   const [error, setError] = useState<string | undefined>();
   const [showPairingCode, setShowPairingCode] = useState(false);
   const [joinCode, setJoinCode] = useState("");
-  const [joinVaultId, setJoinVaultId] = useState("");
-  const [joinToken, setJoinToken] = useState("");
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState<string | undefined>();
@@ -141,11 +139,6 @@ export function SyncSettings() {
     } finally {
       setGeneratingTemporary(false);
     }
-  }
-
-  async function handleLegacyJoin() {
-    if (!joinVaultId.trim() || !joinToken.trim()) return;
-    await join(joinVaultId.trim(), joinToken.trim());
   }
 
   async function handleRotate() {
@@ -310,37 +303,6 @@ export function SyncSettings() {
           {joining ? "Joining…" : "Join vault"}
         </button>
         <PairingScanner onCode={setJoinCode} />
-        <details>
-          <summary>Use legacy vault ID and token</summary>
-          <div className="section-stack">
-            <div className="field-group">
-              <label className="field-label" htmlFor="join-vault-id">Vault ID</label>
-              <input
-                id="join-vault-id"
-                className="input"
-                value={joinVaultId}
-                onChange={(event) => setJoinVaultId(event.target.value)}
-              />
-            </div>
-            <div className="field-group">
-              <label className="field-label" htmlFor="join-vault-token">Pairing token</label>
-              <input
-                id="join-vault-token"
-                className="input"
-                value={joinToken}
-                onChange={(event) => setJoinToken(event.target.value)}
-              />
-            </div>
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={handleLegacyJoin}
-              disabled={joining || !joinVaultId.trim() || !joinToken.trim()}
-            >
-              {joining ? "Joining…" : "Join with legacy credentials"}
-            </button>
-          </div>
-        </details>
       </div>
     </section>
   );
