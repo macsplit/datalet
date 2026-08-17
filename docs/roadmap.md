@@ -27,6 +27,83 @@ nothing else.
 
 ---
 
+### Durable local storage
+
+`navigator.storage.persist()` is never called. Until it is, a browser's "clear
+browsing data" destroys the only local copy, which
+[`product-assessment.md`](product-assessment.md) has to carry as a condition of
+the privacy use case rather than a caveat beside it. Chrome generally grants
+persistence to an installed app without prompting, so requesting it and
+surfacing whether it was granted turns "your data survives until you clear
+browsing data" into something closer to a guarantee. A few lines, and the
+largest honesty gain available for the size.
+
+### Server suite flakiness
+
+`pnpm test:server` intermittently stalls partway through when the runner
+executes files concurrently. `materializerSharding.test.ts` passes 4/4 when run
+alone against identical Redis state, so it is contention rather than a broken
+test. It cost real time twice on 2026-08-17 and will mislead whoever hits it
+next into suspecting their own change. Not reproduced deterministically yet.
+
+---
+
+## Under consideration, not decided
+
+### A desktop shell, and what the app already is
+
+Recorded so the question is not re-derived from scratch.
+
+**It is already a PWA.** `public/manifest.webmanifest` is complete — name,
+scope, `display: standalone`, both maskable icons — and the service worker
+registered in `src/index.tsx` gives the offline cold start the offline suite
+verifies. Served over HTTPS, Chrome offers to install it today. Nothing to
+build.
+
+Two things would make an installed app better, and both are inside the
+product's identity rather than extensions of it: the storage-persistence
+request above, and a live `theme_color`. The manifest pins `#6d4de6` and
+`index.html` carries a matching static `<meta name="theme-color">`, so now that
+the palette lives in the graph the installed window chrome disagrees with the
+user's chosen colours. The meta tag is updatable at runtime, so
+`applyThemeToDocument` could set it alongside the stylesheet it already writes.
+
+**Electron or Tauri is a much larger step**, and only one piece of it is real
+work. The renderer uses no Node APIs at all, so it can run with
+`contextIsolation: true`, `nodeIntegration: false` and no preload bridge. The
+shape would be:
+
+- Serve from a custom scheme (`app://`, registered `standard`+`secure`), not
+  `loadFile()`. Under `file://` the service worker cannot register at all,
+  storage partitioning is fragile, `connect-src 'self'` stops meaning anything,
+  and the absolute `/assets/…` paths Vite emits (no `base` is set) break. The
+  protocol handler is a port of `staticServer.ts`, SPA fallback included.
+- Skip the service worker in that build; an app served from disk does not need
+  an offline shell.
+- **The one substantive change: a configurable sync origin.** Every call is
+  root-relative — `fetch("/sync/…")` throughout `remoteSyncEngine.ts` and
+  `SyncSettings.tsx`, and `new EventSource("/sync/stream…")` — and there is no
+  server at `app://`. CORS is already handled and the stream-ticket design
+  already exists because `EventSource` cannot set headers, so cross-origin SSE
+  works unchanged. This invalidates the same-origin assumption documented in
+  `remote-sync-architecture.md` §9 and
+  [`remote-sync-deployment.md`](remote-sync-deployment.md), and widens
+  `connect-src` beyond `'self'`.
+
+**The caveats that should decide it.** A desktop shell removes the
+clear-browsing-data hazard and puts records in OS backups — a genuine gain for
+the "data that should not be in anyone's SaaS" use case. Against that: it costs
+the "open a URL, nothing to install" property, adds a signing and update
+pipeline to a project whose value is partly its smallness, and fixes none of
+the ceiling — the 4 MB cap and the full-store startup load are decisions, and
+lifting them because a desktop shell makes it easy is exactly the creep
+[`product-assessment.md`](product-assessment.md) warns about. If it is ever
+built, **Tauri deserves weighing over Electron**: the renderer needs nothing
+from Node, so the same custom-protocol model applies at a tenth of the size.
+
+Note that the storage-persistence item above delivers most of the durability
+benefit without any of this.
+
 ## Deferred by decision
 
 ### File and image fields
