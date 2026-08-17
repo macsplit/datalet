@@ -231,6 +231,14 @@ async function flushOutbox(config: VaultConfig) {
         return;
       }
 
+      if (response.status === 429) {
+        // A rate limit is transient: keep this exact batch at the head of the
+        // durable outbox. The scheduler below retries it with exponential
+        // backoff. Never merge this into the terminal 409 path, which removes
+        // a batch because LWW has already made its patches permanently lose.
+        break;
+      }
+
       // Rejections are terminal under field-level LWW, but no longer silent:
       // the response counts cover both an all-rejected 409 and patches dropped
       // from an otherwise accepted batch.

@@ -14,15 +14,13 @@ import { redis } from "./client.js";
  * Fixed-window request counter (not a sliding window or token bucket) - a
  * request right at a window boundary can technically let slightly more than
  * `limit` through over time. Acceptable here: this guards an abuse-
- * mitigation path (POST /sync/vaults), not a security-critical accept/
- * reject decision like applyBatch.lua's, so the simpler primitive is fine.
+ * mitigation path (vault creation, pair-code redemption, or authenticated
+ * vault writes), not a security-critical accept/reject decision like
+ * applyBatch.lua's, so the simpler primitive is fine.
  * Returns true if the request is within the limit (and counts it either
  * way, so a client kept refused doesn't get free additional counted tries).
  */
 export async function checkRateLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
-  const count = await redis().incr(key);
-  if (count === 1) {
-    await redis().expire(key, windowSeconds);
-  }
+  const count = await redis().incrementRateLimit(key, String(windowSeconds));
   return count <= limit;
 }

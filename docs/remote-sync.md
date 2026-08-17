@@ -153,6 +153,9 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 - Temporary-code redemption is limited to ten attempts per client IP per
   minute by default. Codes carry 40 random bits plus a check symbol, expire in
   ten minutes, work once, and stop redeeming after token rotation.
+- Authenticated writes are limited per vault to 600 batches per minute by
+  default. A 429 leaves the browser's durable outbox untouched and retries with
+  exponential backoff; it is not treated like a terminal conflict refusal.
 - TLS is terminated at the reverse proxy, not in the app itself.
 - Explicitly out of scope: user accounts, per-record permissions,
   multi-user sharing, encryption at rest.
@@ -224,6 +227,8 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 - **Vault-creation flooding** — rate-limited per client IP; trusts a
   reverse proxy's `X-Forwarded-For`, so it's only meaningful with one in
   front (already required for TLS anyway).
+- **One vault flooding writes** — authenticated batches have a per-vault fixed
+  window. Rate-limited batches remain queued locally and resume automatically.
 - **Testing sync-server outages via `pnpm dev`** — Vite's dev proxy
   doesn't propagate an upstream connection dying to the browser, so the
   reconnect warning above won't appear in that specific dev setup even

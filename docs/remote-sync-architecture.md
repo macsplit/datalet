@@ -317,11 +317,12 @@ Use **Redis Streams**, not bare Pub/Sub, for the vault's patch log:
   bytes back. Existing stores without a counter are measured on their first
   write.
 - Also used for: idempotency dedupe (`SET batch:<id> 1 NX EX 300` before
-  commit), per-vault sequence counter, lightweight presence
-  (`SETEX vault:<id>:node:<nodeId> 30 <ts>`, refreshed on each SSE
+  commit), per-vault sequence counter, and the implemented authenticated
+  per-vault write limit (`vault:<id>:wrate`, atomic increment + first expiry).
+  A future lightweight presence design could use
+  `SETEX vault:<id>:node:<nodeId> 30 <ts>`, refreshed on each SSE
   heartbeat — cheap "who's currently connected" for future UI, not required
-  for v1), and per-node rate limiting (`INCR` + expiring window) to bound
-  abuse from a single misbehaving or looping node.
+  for v1.
 - Config: `appendonly yes` (AOF) so the stream survives a Redis restart —
   Redis here is not "just a cache," it's the durable ingest buffer between
   the network and Neo4j, so treat its persistence seriously even though
@@ -505,6 +506,10 @@ per-user records. Concretely:
   credential), so it's the one open abuse/storage-exhaustion vector a
   bearer token can't close. See `remote-sync-deployment.md` §3 for the
   reverse-proxy assumption this relies on (`X-Forwarded-For`).
+- Authenticated `POST /sync/patches` calls are rate-limited per vault
+  (`VAULT_WRITE_RATE_LIMIT`, default 600 per 60 seconds). A 429 is transient:
+  the browser retains the outbox batch and backs off rather than discarding it
+  like a terminal LWW/quota 409.
 - Without at least the bearer-token check, any client that discovers the
   server URL could read or write any vault.
 - TLS: terminate at the reverse proxy (Caddy gets this for free via

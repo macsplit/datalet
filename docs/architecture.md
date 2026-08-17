@@ -397,6 +397,11 @@ stops retrying — under last-write-wins a rejection is terminal, and the winnin
 value arrives over SSE — but raises a visible warning naming the dropped count
 and the reason. A quota refusal is likewise terminal and all-or-nothing; no
 patch, HLC, sequence, stream entry or dedupe record from that batch is retained.
+Before entering the Lua transaction, each authenticated, structurally valid
+batch increments `vault:<id>:wrate`. Past the default 600-per-60-second limit,
+the server returns 429 without attempting the write. Unlike a terminal 409, the
+client keeps that batch at the head of its durable outbox and retries with
+exponential backoff until a later attempt is accepted.
 
 ### 3.3 Redis's role
 
@@ -408,6 +413,7 @@ Redis is the ingest and fanout tier, not the durable store. Per vault:
 | `vault:<id>:seq` | Monotonic sequence counter |
 | `vault:<id>:store` | Materialized current record per subject |
 | `vault:<id>:bytes` | Exact serialized bytes in `store`, atomically maintained for quota enforcement |
+| `vault:<id>:wrate` | Fixed-window authenticated batch counter, short TTL |
 | `vault:<id>:hlc` | Per-field last-write HLC |
 | `vault:<id>:stream` | The ordered accepted-patch log, trimmed to ~5,000 entries |
 | `vault:<id>:tombstones` | Deleted subject → deletion HLC |

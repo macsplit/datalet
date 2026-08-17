@@ -42,22 +42,41 @@ async function seedPendingSync(page: Page, patchCount: number) {
 
 test("an all-rejected sync batch raises the server reason", async ({ page }) => {
   await seedPendingSync(page, 1);
-  await page.route("**/sync/patches?*", (route) => route.fulfill({
-    status: 409,
-    contentType: "application/json",
-    body: JSON.stringify({
-      accepted: false,
-      acceptedCount: 0,
-      submittedCount: 1,
-      reason: "superseded by a newer edit to the same field",
-    }),
-  }));
+  let pendingAttempts = 0;
+  await page.route("**/sync/patches?*", (route) => {
+    const body = route.request().postDataJSON() as { batchId?: string; patches?: unknown[] };
+    if (body.batchId !== "pending-batch") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          accepted: true,
+          acceptedCount: body.patches?.length ?? 0,
+          submittedCount: body.patches?.length ?? 0,
+        }),
+      });
+    }
+    pendingAttempts += 1;
+    return route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accepted: false,
+        acceptedCount: 0,
+        submittedCount: 1,
+        reason: "superseded by a newer edit to the same field",
+      }),
+    });
+  });
   await page.goto("/");
 
   const warning = page.getByRole("alert");
   await expect(warning).toContainText("Remote sync discarded changes");
   await expect(warning).toContainText("1 of 1 local change was not applied");
   await expect(warning).toContainText("superseded by a newer edit to the same field");
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY))
+    .toBe("[]");
+  expect(pendingAttempts).toBe(1);
 });
 
 test("a vault quota refusal reaches the discarded-changes warning", async ({ page }) => {
@@ -78,6 +97,53 @@ test("a vault quota refusal reaches the discarded-changes warning", async ({ pag
   await expect(warning).toContainText("Remote sync discarded changes");
   await expect(warning).toContainText("2 of 2 local changes were not applied");
   await expect(warning).toContainText("vault storage quota exceeded");
+});
+
+test("a 429 keeps the batch queued, backs off, and eventually delivers it", async ({ page }) => {
+  await seedPendingSync(page, 1);
+  let pendingAttempts = 0;
+  let storedValue: unknown;
+  await page.route("**/sync/patches?*", async (route) => {
+    const body = route.request().postDataJSON() as {
+      batchId?: string;
+      patches?: Array<{ value?: unknown }>;
+    };
+    if (body.batchId !== "pending-batch") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          accepted: true,
+          acceptedCount: body.patches?.length ?? 0,
+          submittedCount: body.patches?.length ?? 0,
+        }),
+      });
+      return;
+    }
+    pendingAttempts += 1;
+    if (pendingAttempts === 1) {
+      await route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: JSON.stringify({ reason: "vault write rate limit exceeded - try again later" }),
+      });
+      return;
+    }
+    storedValue = body.patches?.[0]?.value;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ accepted: true, acceptedCount: 1, submittedCount: 1 }),
+    });
+  });
+  await page.goto("/");
+
+  await expect.poll(() => pendingAttempts).toBe(1);
+  expect(await page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY)).not.toBe("[]");
+  await expect.poll(() => storedValue, { timeout: 10_000 }).toBe("value-0");
+  expect(pendingAttempts).toBe(2);
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), OUTBOX_KEY))
+    .toBe("[]");
 });
 
 test("a partially accepted sync batch reports its dropped count", async ({ page }) => {

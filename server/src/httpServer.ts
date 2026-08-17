@@ -31,6 +31,8 @@ import {
   PAIR_REDEEM_RATE_WINDOW_SECONDS,
   VAULT_CREATE_RATE_LIMIT,
   VAULT_CREATE_RATE_WINDOW_SECONDS,
+  VAULT_WRITE_RATE_LIMIT,
+  VAULT_WRITE_RATE_WINDOW_SECONDS,
 } from "./redis/config.js";
 import type { Patch } from "./patchApply.js";
 
@@ -98,7 +100,21 @@ function clientIp(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createSyncServer(staticDir: string) {
+export type SyncServerOptions = {
+  vaultWriteRateLimit?: number;
+  vaultWriteRateWindowSeconds?: number;
+};
+
+export function createSyncServer(staticDir: string, options: SyncServerOptions = {}) {
+  const vaultWriteRateLimit = options.vaultWriteRateLimit ?? VAULT_WRITE_RATE_LIMIT;
+  const vaultWriteRateWindowSeconds =
+    options.vaultWriteRateWindowSeconds ?? VAULT_WRITE_RATE_WINDOW_SECONDS;
+  if (!Number.isInteger(vaultWriteRateLimit) || vaultWriteRateLimit < 1) {
+    throw new Error("vault write rate limit must be a positive integer");
+  }
+  if (!Number.isInteger(vaultWriteRateWindowSeconds) || vaultWriteRateWindowSeconds < 1) {
+    throw new Error("vault write rate window must be a positive integer");
+  }
   return createServer(async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") {
@@ -218,6 +234,19 @@ export function createSyncServer(staticDir: string) {
           !Array.isArray(body.patches)
         ) {
           sendJson(res, 400, { accepted: false, reason: "malformed request" });
+          return;
+        }
+
+        const withinLimit = await checkRateLimit(
+          `vault:${vaultId}:wrate`,
+          vaultWriteRateLimit,
+          vaultWriteRateWindowSeconds,
+        );
+        if (!withinLimit) {
+          sendJson(res, 429, {
+            accepted: false,
+            reason: "vault write rate limit exceeded - try again later",
+          });
           return;
         }
 

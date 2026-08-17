@@ -1,7 +1,7 @@
 # Plan: Multi-Tenant Hosting and User-Facing Identity
 
-**Status: active.** Track B (B1 through B6) and Track A1 through A4 were
-completed 2026-08-17; A5 through A7 have not started. Written 2026-08-16 from
+**Status: active.** Track B (B1 through B6) and Track A1 through A5 were
+completed 2026-08-17; A6 and A7 have not started. Written 2026-08-16 from
 the code as it stood at `b707800` and kept current as work lands.
 
 Two independent tracks, plannable and shippable separately:
@@ -220,7 +220,7 @@ exactly one winner between concurrent individually-fitting batches whose sum
 would exceed the quota. Playwright proves the existing discarded-changes
 warning carries the quota reason.
 
-### A5. Per-vault write rate limit — **small, with one sharp edge**
+### A5. Per-vault write rate limit — **completed 2026-08-17**
 
 **Problem.** Only vault *creation* is limited (`VAULT_CREATE_RATE_LIMIT`,
 10/hour, keyed on `X-Forwarded-For`). Nothing limits writes, so one tenant can
@@ -239,6 +239,19 @@ therefore needs an explicit 429 branch that keeps the batch in the outbox and
 backs off, distinct from the terminal branches. Getting this wrong loses
 writes silently, which makes it the highest-risk item in Track A despite being
 the smallest.
+
+**Landed detail.** After authentication and structural request validation,
+`POST /sync/patches` increments the fixed-window `vault:<id>:wrate` counter and
+returns 429 before calling `applyBatch.lua` once the configured limit is
+exceeded. Defaults are 600 batches per 60 seconds. Counter increment and
+first-expiry assignment now share a small Lua transaction, removing the old
+process-crash gap that could leave a limiter key without a TTL. The client has
+an explicit 429 branch that preserves the exact head outbox batch and lets the
+existing exponential scheduler retry it, separate from terminal 409 conflict
+or quota refusal. HTTP integration proves refusal and acceptance after window
+expiry. Playwright holds the batch through a real backoff, applies its value to
+a fake server store on retry, and checks the outbox empties; the paired 409
+regression proves the same batch is removed and attempted only once.
 
 ### A6. Vault lifecycle — **medium**
 

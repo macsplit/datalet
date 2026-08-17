@@ -47,3 +47,14 @@ export const VAULT_CREATE_RATE_WINDOW_SECONDS = Number(process.env.VAULT_CREATE_
 export const PAIR_CODE_TTL_SECONDS = Number(process.env.PAIR_CODE_TTL_SECONDS ?? 10 * 60);
 export const PAIR_REDEEM_RATE_LIMIT = Number(process.env.PAIR_REDEEM_RATE_LIMIT ?? 10);
 export const PAIR_REDEEM_RATE_WINDOW_SECONDS = Number(process.env.PAIR_REDEEM_RATE_WINDOW_SECONDS ?? 60);
+
+const configuredVaultWriteRateLimit = Number(process.env.VAULT_WRITE_RATE_LIMIT ?? 600);
+const configuredVaultWriteRateWindowSeconds = Number(process.env.VAULT_WRITE_RATE_WINDOW_SECONDS ?? 60);
+if (!Number.isInteger(configuredVaultWriteRateLimit) || configuredVaultWriteRateLimit < 1) {
+  throw new Error("VAULT_WRITE_RATE_LIMIT must be a positive integer.");
+}
+if (!Number.isInteger(configuredVaultWriteRateWindowSeconds) || configuredVaultWriteRateWindowSeconds < 1) {
+  throw new Error("VAULT_WRITE_RATE_WINDOW_SECONDS must be a positive integer.");
+}
+export const VAULT_WRITE_RATE_LIMIT = configuredVaultWriteRateLimit;
+export const VAULT_WRITE_RATE_WINDOW_SECONDS = configuredVaultWriteRateWindowSeconds;
