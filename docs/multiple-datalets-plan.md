@@ -169,10 +169,12 @@ render and took the whole Settings page with it, which is precisely the page
 someone would visit to repair or leave a broken vault; that is now caught and
 reported in place.
 
-## D4. Where cloning lands — **out of scope here, noted for shape**
+## D4. Where cloning lands — **planned separately**
 
 A cloned datalet becomes **a new entry in the list**, leaving the current one
-undisturbed. Without D2 a clone would have to replace what you are working on,
+undisturbed. Now planned in
+[`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md), together with
+the rest of how a datalet is gained. Without D2 a clone would have to replace what you are working on,
 which is a strange thing to do to someone. That is the whole reason this plan
 comes first.
 
