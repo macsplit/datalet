@@ -26,8 +26,15 @@ import {
 } from "./localNgEngine";
 import { dismissRuntimeIssue, reportRuntimeIssue } from "./runtimeHealth";
 import { randomUuid } from "./randomId";
+import {
+  activeDatalet,
+  ensureLocalDatalet,
+  pairActiveDatalet,
+  unpairActiveDatalet,
+} from "./datalets";
 
-const CONFIG_KEY = "meta-ui-builder:sync-vault";
+// Vault configuration lives in the datalet registry now, so that "am I
+// paired?" is answerable per datalet rather than once for the browser.
 const CURSOR_PREFIX = "meta-ui-builder:sync-cursor:";
 const OUTBOX_PREFIX = "meta-ui-builder:sync-outbox:";
 const HLC_KEY = "meta-ui-builder:sync-hlc";
@@ -55,8 +62,9 @@ function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+/** The active datalet's vault, if it has one. */
 export function getVaultConfig(): VaultConfig | undefined {
-  return readJson<VaultConfig>(CONFIG_KEY);
+  return activeDatalet()?.vault;
 }
 
 async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately = false) {
@@ -80,7 +88,8 @@ export async function setVaultConfig(vaultId: string, vaultToken: string) {
   // Otherwise providers can bootstrap defaults before the asynchronous sync
   // connection delivers its first snapshot, creating a newer conflicting edit.
   await fetchAndReconcileSnapshot(config, true);
-  writeJson(CONFIG_KEY, config);
+  ensureLocalDatalet();
+  pairActiveDatalet(config);
   return config;
 }
 
@@ -102,7 +111,7 @@ export async function rotateVaultToken(): Promise<string> {
   });
   if (!response.ok) throw new Error(`rotate failed with status ${response.status}`);
   const { vaultToken } = (await response.json()) as { vaultToken: string };
-  writeJson(CONFIG_KEY, { ...config, vaultToken });
+  pairActiveDatalet({ ...config, vaultToken });
   if (started) void connectStream({ ...config, vaultToken });
   return vaultToken;
 }
@@ -110,7 +119,7 @@ export async function rotateVaultToken(): Promise<string> {
 export function clearVaultConfig() {
   const config = getVaultConfig();
   stopSync();
-  localStorage.removeItem(CONFIG_KEY);
+  unpairActiveDatalet();
   if (config) {
     localStorage.removeItem(CURSOR_PREFIX + config.vaultId);
     localStorage.removeItem(OUTBOX_PREFIX + config.vaultId);

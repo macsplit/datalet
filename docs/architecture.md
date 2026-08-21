@@ -639,6 +639,7 @@ src/
     ├── pairingCode.ts          LG1 Crockford-base32 credential encode / decode
     ├── qrCode.ts               Dependency-free QR matrix generation
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
+    ├── datalets.ts             The registry of datalets and which one is active
     ├── storagePersistence.ts   Asks the browser to keep this origin's storage
     ├── themeTokens.ts          The allowlisted colour roles and value grammar
     ├── themeStylesheet.ts      Stored theme → one <style> with a dark media query

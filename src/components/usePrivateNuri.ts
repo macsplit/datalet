@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { session, sessionPromise, type LocalSession } from "../utils/ngSession";
-import { getVaultConfig } from "../utils/remoteSyncEngine";
+import { activeDatalet, dataletGraph } from "../utils/datalets";
 
 /**
  * When a sync vault is paired (Settings > Remote sync), the app's active
@@ -21,9 +21,9 @@ import { getVaultConfig } from "../utils/remoteSyncEngine";
  * react to vault config changes mid-session.
  */
 function activeGraph(currentSession: LocalSession | undefined): string | undefined {
-  const vault = getVaultConfig();
-  if (vault) return `did:ng:${vault.vaultId}`;
-  return currentSession && `did:ng:${currentSession.private_store_id}`;
+  const localGraph = currentSession && `did:ng:${currentSession.private_store_id}`;
+  const datalet = activeDatalet();
+  return datalet ? dataletGraph(datalet, localGraph) : localGraph;
 }
 
 /** Return the NURI of the store this device's data currently lives in. */
