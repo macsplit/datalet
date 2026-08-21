@@ -8,6 +8,7 @@
 | [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
 | [`product-assessment.md`](product-assessment.md) | What the project *is*, what it is good for, and which additions would cost it that. Kept accurate as work lands. |
 | [`multiple-datalets-plan.md`](multiple-datalets-plan.md) | **Proposed, not started.** Holding several datalets and using one at a time, why only the active one can be resident, and why that makes more than one require sync. Includes the storage arithmetic it turns on. |
+| [`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) | **Proposed, not started.** How a datalet is gained — started, joined, cloned or restored — why joining and cloning are opposites, and why a clone code hands over everything. |
 
 ## Sync tier
 

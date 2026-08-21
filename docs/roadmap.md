@@ -51,8 +51,18 @@ so only the active datalet is resident, and the rest must be recoverable from
 their vaults. **Holding more than one therefore requires pairing** — local-only
 use stays exactly as it is, with one datalet and no network.
 
-Cloning a datalet (giving someone a reference they redeem for their own copy)
-is the feature this unblocks, and belongs on top of it rather than before it.
+The registry, switcher and eviction rules have landed; nothing in the interface
+creates a second datalet yet. That flow, and cloning, are planned together in
+[`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) — they share a
+destination, since every way of gaining a datalet ends in a vault that is
+paired, added and switched to.
+
+A clone is the **whole** graph, given by a code that redeems into a copy rather
+than into access. Joining and cloning are opposites and are named as such: join
+is the same datalet in a second place, clone is a new datalet that began as a
+copy. Publishing a code hands over every record in that datalet to anyone
+holding it, the server can read all of it, and revoking stops future copies but
+not copies already taken — three facts to be stated rather than softened.
 
 ## Under consideration, not decided
 
