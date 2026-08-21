@@ -1,6 +1,6 @@
 # Plan: Gaining a Datalet — Adding, Joining and Cloning
 
-**Status: proposed.** Not started. Written 2026-08-21 from the code as it
+**Status: active.** A1 and A2 landed 2026-08-21, without the backup route; A3 to A5 have not started. Written 2026-08-21 from the code as it
 stands at `65e3be4`, and depends on
 [`multiple-datalets-plan.md`](multiple-datalets-plan.md), whose registry,
 switcher and eviction rules already exist.
@@ -62,9 +62,15 @@ into a hidden vault", using the same primitive, if it ever earns its place.
 **Not encrypted, and said so.** See A4 below; the plan is to state it rather
 than to soften it.
 
+**Not, for now, a datalet from a backup file.** Adopting a vault reloads the
+page, so a backup's contents would have to survive the reload and be applied
+afterwards - real machinery for the least essential of the four routes, with
+whole-graph import already available beside it. Left out rather than bolted on;
+the other three routes do not need it.
+
 ---
 
-## A1. Add a datalet — **medium, do first**
+## A1. Add a datalet — **completed 2026-08-21, less the backup route**
 
 One control in the Datalets panel, with a source step: start empty, or paste a
 code, or choose a backup file. The code field routes on prefix, as the join
@@ -81,7 +87,7 @@ already refuses; the add flow needs to say *why* rather than only *no*.
 through the same restore-before-evict path a switch already uses, so the datalet
 being left is evicted only after the new one is in hand.
 
-## A2. The adoption size check — **small, and it belongs to A1**
+## A2. The adoption size check — **completed 2026-08-21**
 
 Before a fetched graph is adopted, measure it against this browser's budget and
 refuse if it does not fit — with a message naming both numbers.
@@ -89,6 +95,16 @@ refuse if it does not fit — with a message naming both numbers.
 This is the only place the question can be answered, because it is the only
 place both numbers are known. It covers joining, redeeming a clone and
 restoring a backup with one guard.
+
+**Landed detail.** Writing it exposed an ordering fault in the switch. Restore
+was applying the incoming graph and flushing *before* evicting the one being
+left, which put both graphs in localStorage at once - the state the
+one-resident rule exists to prevent, and enough on its own to trip the cap on a
+switch that would otherwise fit. Fetching is now separate from applying:
+`fetchVaultSnapshot` returns the records, the size is checked, the old graph is
+evicted, and only then is the new one written. "Restore before evict" still
+holds in the sense that matters, since the records are in hand before anything
+is discarded.
 
 **Why not fix it by making the caps match.** The server quota and the client
 cap do different jobs — one bounds an abusive tenant, the other keeps a store

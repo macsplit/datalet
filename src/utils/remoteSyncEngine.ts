@@ -67,12 +67,31 @@ export function getVaultConfig(): VaultConfig | undefined {
   return activeDatalet()?.vault;
 }
 
-async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately = false) {
+/**
+ * Fetch a vault's graph without applying it.
+ *
+ * Split out so a switch can have the incoming records in hand before evicting
+ * the datalet it is leaving. Applying first would put both graphs in
+ * localStorage at once - the very state the one-resident rule exists to avoid,
+ * and enough to trip the storage cap on a switch that would otherwise fit.
+ */
+export async function fetchVaultSnapshot(
+  config: VaultConfig,
+): Promise<{ seq: number; records: Store }> {
   const response = await fetch(`/sync/snapshot?vault=${encodeURIComponent(config.vaultId)}`, {
     headers: { Authorization: `Bearer ${config.vaultToken}` },
   });
   if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
-  const snapshot = (await response.json()) as { seq: number; records: Store };
+  return (await response.json()) as { seq: number; records: Store };
+}
+
+/** Record where a restored graph's replay should resume from. */
+export function setDataletCursor(vaultId: string, seq: number) {
+  setCursor(vaultId, seq);
+}
+
+async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately = false) {
+  const snapshot = await fetchVaultSnapshot(config);
   const graph = `did:ng:${config.vaultId}`;
   if (!reconcileGraphSnapshot(graph, snapshot.records)) {
     throw new Error("snapshot failed local validation");

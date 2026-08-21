@@ -46,6 +46,32 @@ async function seedDatalets(page: Page, seed: Seed) {
 // Tokens are 24 random bytes as base64url, so 32 characters. A short stand-in
 // makes the pairing-code encoder throw, which is a real behaviour, not a
 // fixture detail worth working around.
+/** Accept sync traffic so bootstrap writes drain and a switch is not refused. */
+async function stubSync(page: Page, opts: { snapshotRecords: Record<string, unknown> }) {
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ seq: 1, records: opts.snapshotRecords }),
+  }));
+  await page.route("**/sync/patches?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ accepted: true, acceptedCount: 1, submittedCount: 1 }),
+  }));
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ ticket: "t" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+}
+
+const registry = (page: Page) => page.evaluate(({ key }) =>
+  JSON.parse(localStorage.getItem(key) ?? "{}") as { activeId: string; entries: { id: string }[] },
+  { key: REGISTRY_KEY });
+
+/** Bootstrap writes queue in the outbox, and a queued outbox refuses a switch. */
+const drainOutbox = (page: Page, vaultId: string) =>
+  expect.poll(() => page.evaluate(({ prefix, vaultId }) =>
+    JSON.parse(localStorage.getItem(prefix + vaultId) ?? "[]").length,
+    { prefix: OUTBOX_PREFIX, vaultId })).toBe(0);
+
 const vaultA = {
   vaultId: "aaaaaaaa-0000-0000-0000-000000000000",
   vaultToken: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -57,11 +83,77 @@ const vaultB = {
   nodeId: "nb",
 };
 
-test("one datalet shows no switcher", async ({ page }) => {
-  // The panel has to earn its place: with nothing to choose between, it is noise.
+test("the panel offers to add one even when there is only one", async ({ page }) => {
   await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
   await page.goto("/settings");
-  await expect(page.getByText("Switch datalet")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start an empty one" })).toBeVisible();
+});
+
+test("an unpaired datalet cannot gain a second one, and says why", async ({ page }) => {
+  // Forced rather than chosen: only the open datalet is resident, so the one
+  // being left has to be recoverable from somewhere.
+  await seedDatalets(page, { activeId: "local", entries: [{ id: "local" }] });
+  await page.goto("/settings");
+  await expect(page.getByText(/not paired, so there is no copy anywhere else/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start an empty one" })).toBeDisabled();
+});
+
+test("starting an empty datalet adds it and leaves the first one listed", async ({ page }) => {
+  await stubSync(page, { snapshotRecords: {} });
+  await page.route("**/sync/vaults", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({
+      vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken,
+    }),
+  }));
+  await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
+  await page.goto("/settings");
+  await drainOutbox(page, vaultA.vaultId);
+  await page.getByRole("button", { name: "Start an empty one" }).click();
+
+  await expect.poll(() => registry(page)).toMatchObject({ activeId: vaultB.vaultId });
+  const state = await registry(page);
+  // Joining or starting must add, not replace: the datalet left behind is still
+  // there to come back to.
+  expect(state.entries.map((e: { id: string }) => e.id)).toEqual(["a", vaultB.vaultId]);
+});
+
+test("a code adds a second datalet rather than replacing the first", async ({ page }) => {
+  await stubSync(page, { snapshotRecords: {} });
+  await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
+  await page.goto("/settings");
+  await drainOutbox(page, vaultA.vaultId);
+
+  const code = await page.evaluate(async ({ vaultId, token }) => {
+    const mod = await import("/src/utils/pairingCode.ts");
+    return mod.encodePairingCode(vaultId, token);
+  }, { vaultId: vaultB.vaultId, token: vaultB.vaultToken });
+
+  await page.getByLabel("Or open one from a code").fill(code);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect.poll(() => registry(page)).toMatchObject({ activeId: vaultB.vaultId });
+  expect((await registry(page)).entries).toHaveLength(2);
+});
+
+test("a datalet too large for this browser is refused before anything is created", async ({ page }) => {
+  // The check has to fire before a vault exists, or it has not helped.
+  const huge: Record<string, unknown> = {};
+  for (let i = 0; i < 60; i += 1) {
+    huge[`did:ng:${vaultB.vaultId}|did:ng:z:big${i}`] = {
+      "@graph": `did:ng:${vaultB.vaultId}`, "@id": `did:ng:z:big${i}`,
+      "@type": "did:ng:z:Big", value: "x".repeat(100_000),
+    };
+  }
+  await stubSync(page, { snapshotRecords: huge });
+  await seedDatalets(page, {
+    activeId: "a", entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
+  });
+  await page.goto("/settings");
+  await drainOutbox(page, vaultA.vaultId);
+  await page.getByRole("button", { name: "Open" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("Nothing has been created");
+  expect(await registry(page)).toMatchObject({ activeId: "a" });
 });
 
 test("two datalets are listed, with the open one marked", async ({ page }) => {

@@ -1217,6 +1217,33 @@ export function evictGraph(graph: string): number {
   return evicted;
 }
 
+/**
+ * Characters one graph occupies once persisted, key names included - the same
+ * unit the storage budget is measured in, so the two can be compared.
+ */
+export function graphFootprint(graph: string): number {
+  let total = 0;
+  for (const [key, record] of Object.entries(store)) {
+    if (record?.["@graph"] !== graph) continue;
+    total += recordKey(key).length + JSON.stringify(record).length;
+  }
+  return total;
+}
+
+/**
+ * Characters a set of records would occupy if adopted into `graph`. Measured
+ * before anything is written, because a check that fires afterwards has not
+ * helped.
+ */
+export function projectedGraphFootprint(graph: string, records: Store): number {
+  let total = 0;
+  for (const [key, record] of Object.entries(records)) {
+    const subject = key.includes("|") ? key.slice(key.indexOf("|") + 1) : key;
+    total += recordKey(`${graph}|${subject}`).length + JSON.stringify(record).length;
+  }
+  return total;
+}
+
 /** Create a portable backup of one graph, including builder metadata. */
 export function exportGraphBackup(graph: string): LocalGraphBackup {
   return {

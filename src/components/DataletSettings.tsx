@@ -12,7 +12,13 @@ import { useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
 import { listDatalets, type Datalet } from "../utils/datalets";
-import { canLeaveActiveDatalet, switchToDatalet } from "../utils/dataletSwitch";
+import {
+  adoptVaultAsDatalet,
+  canLeaveActiveDatalet,
+  switchToDatalet,
+} from "../utils/dataletSwitch";
+import { decodePairingCode } from "../utils/pairingCode";
+import { randomUuid } from "../utils/randomId";
 
 /**
  * Only the active datalet is resident, so this lists the others by what is
@@ -33,11 +39,45 @@ export function DataletSettings() {
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState("");
 
-  // One datalet is the ordinary case and needs no list; the panel only earns
-  // its place once there is something to choose between.
-  if (entries.length < 2) return null;
-
   const leaving = canLeaveActiveDatalet();
+  const [adding, setAdding] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+
+  const adopt = async (work: () => Promise<{ vaultId: string; vaultToken: string }>) => {
+    setAdding(true);
+    setError("");
+    try {
+      const vault = await work();
+      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "That datalet could not be added.");
+      setAdding(false);
+    }
+  };
+
+  const startEmpty = () => adopt(async () => {
+    const response = await fetch("/sync/vaults", { method: "POST" });
+    if (!response.ok) throw new Error(`The sync server answered with status ${response.status}.`);
+    return (await response.json()) as { vaultId: string; vaultToken: string };
+  });
+
+  const joinFromCode = () => adopt(async () => {
+    const code = joinCode.trim();
+    if (code.toUpperCase().startsWith("PAIR")) {
+      const response = await fetch("/sync/pair-redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const body = (await response.json()) as
+        { vaultId?: string; vaultToken?: string; reason?: string };
+      if (!response.ok || !body.vaultId || !body.vaultToken) {
+        throw new Error(body.reason ?? `Redeeming that code failed with status ${response.status}.`);
+      }
+      return { vaultId: body.vaultId, vaultToken: body.vaultToken };
+    }
+    return decodePairingCode(code);
+  });
 
   const goTo = async (entry: Datalet) => {
     setSwitching(entry.id);
@@ -60,7 +100,9 @@ export function DataletSettings() {
       </div>
       <p className="helper-text">
         Each datalet is a separate set of records, schemas and screens. One is open at a
-        time; the others live in their vaults until you switch to them.
+        time; the others live in their vaults until you open them. Because only the open
+        one is held in this browser, every datalet you keep has to be paired — a datalet
+        with no vault has no other copy to come back from.
       </p>
       {!leaving.ok && <p className="helper-text danger-text">{leaving.message}</p>}
       {error && <p className="danger-text" role="alert">{error}</p>}
@@ -77,7 +119,7 @@ export function DataletSettings() {
                 <button
                   type="button"
                   className="secondary-btn"
-                  disabled={!leaving.ok || switching !== ""}
+                  disabled={!leaving.ok || switching !== "" || adding}
                   onClick={() => void goTo(entry)}
                 >
                   {switching === entry.id ? "Opening…" : "Open"}
@@ -86,6 +128,49 @@ export function DataletSettings() {
             </div>
           );
         })}
+      </div>
+
+      <div className="section-stack">
+        <p className="label-accent">Add a datalet</p>
+        <div className="layout-row">
+          <button
+            type="button"
+            className="secondary-btn"
+            disabled={!leaving.ok || adding}
+            onClick={() => void startEmpty()}
+          >
+            {adding ? "Working…" : "Start an empty one"}
+          </button>
+        </div>
+        <div className="field-group">
+          <label className="field-label" htmlFor="datalet-join-code">
+            Or open one from a code
+          </label>
+          <div className="layout-row">
+            <input
+              id="datalet-join-code"
+              className="input"
+              value={joinCode}
+              placeholder="LG1-…"
+              spellCheck={false}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              onChange={(event) => setJoinCode(event.target.value)}
+            />
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={!leaving.ok || adding || joinCode.trim() === ""}
+              onClick={() => void joinFromCode()}
+            >
+              Add
+            </button>
+          </div>
+          <p className="helper-text">
+            An <strong>LG1</strong> or <strong>PAIR</strong> code opens the same datalet
+            here as well, so edits made in either place meet. It does not make a copy.
+          </p>
+        </div>
       </div>
     </section>
   );

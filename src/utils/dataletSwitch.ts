@@ -1,26 +1,46 @@
 /**
- * Moving between datalets.
+ * Gaining a datalet, and moving between them.
  *
- * Only the active datalet is resident, so a switch is a restore followed by an
- * eviction - in that order, always, because the reverse would leave the old
- * one gone and the new one unfetched. The rules that refuse a switch are here
- * rather than in the UI, so no future caller can route around them.
+ * Only the active datalet is resident, so a switch fetches the incoming graph,
+ * checks it fits, evicts the one being left, and only then writes. Applying
+ * before evicting would put both graphs in localStorage at once - the state
+ * the one-resident rule exists to avoid, and enough on its own to trip the
+ * storage cap on a switch that would otherwise be fine.
+ *
+ * The rules that refuse a switch live here rather than in a component, so no
+ * later caller can route around them.
  */
 
-import { evictGraph } from "./localNgEngine";
-import { pendingOutboxCount, restoreDatalet } from "./remoteSyncEngine";
-import { activeDatalet, dataletGraph, setActiveDatalet, type Datalet } from "./datalets";
+import {
+  evictGraph,
+  flushLocalPersistence,
+  graphFootprint,
+  projectedGraphFootprint,
+  readStorageUsage,
+  reconcileGraphSnapshot,
+  type Store,
+} from "./localNgEngine";
+import {
+  fetchVaultSnapshot,
+  pendingOutboxCount,
+  setDataletCursor,
+  type VaultConfig,
+} from "./remoteSyncEngine";
+import {
+  activeDatalet,
+  addDatalet,
+  dataletGraph,
+  setActiveDatalet,
+  type Datalet,
+} from "./datalets";
 
-export type SwitchRefusal =
-  | { ok: false; reason: "unpaired"; message: string }
-  | { ok: false; reason: "pending"; message: string }
-  | { ok: false; reason: "unknown-target"; message: string };
-
-export type SwitchCheck = { ok: true } | SwitchRefusal;
+export type SwitchCheck =
+  | { ok: true }
+  | { ok: false; reason: "unpaired" | "pending"; message: string };
 
 /**
- * Whether the datalet in use can be left. Separated from the switch itself so
- * the UI can explain the answer before anyone commits to it.
+ * Whether the datalet in use can be left. Separate from the switch so the
+ * interface can explain the answer before anyone commits to it.
  */
 export function canLeaveActiveDatalet(): SwitchCheck {
   const active = activeDatalet();
@@ -31,7 +51,7 @@ export function canLeaveActiveDatalet(): SwitchCheck {
       reason: "unpaired",
       message:
         "This datalet is not paired, so there is no copy anywhere else. Pair it before "
-        + "switching away, or its records would be lost.",
+        + "adding or opening another, or its records would be lost.",
     };
   }
   const pending = pendingOutboxCount(active.vault.vaultId);
@@ -49,26 +69,73 @@ export function canLeaveActiveDatalet(): SwitchCheck {
   return { ok: true };
 }
 
+const mb = (value: number) => `${(value / 1_000_000).toFixed(1)} MB`;
+
 /**
- * Switch, or throw with a message worth showing. Reloads on success, because
+ * Whether an incoming graph fits once the current one has gone.
+ *
+ * The only place the question is answerable, because it is the only place both
+ * numbers are known: the server's quota counts UTF-8 bytes of one vault's
+ * records, while this browser's budget counts UTF-16 code units across the
+ * whole origin. They are not the same measure and must not be reconciled into
+ * one - see `docs/datalet-add-and-clone-plan.md`.
+ */
+export function adoptionFits(graph: string, records: Store, leaving: string | undefined) {
+  const usage = readStorageUsage();
+  const reclaimed = leaving ? graphFootprint(leaving) : 0;
+  const incoming = projectedGraphFootprint(graph, records);
+  const after = usage.used - reclaimed + incoming;
+  if (after <= usage.cap) return { ok: true as const };
+  return {
+    ok: false as const,
+    message:
+      `That datalet needs ${mb(incoming)} and this browser has ${mb(usage.cap - usage.used + reclaimed)} `
+      + "free. Nothing has been created. Make room here, or open it on a device with more space.",
+  };
+}
+
+async function adopt(target: Datalet, localGraph: string | undefined) {
+  if (!target.vault) throw new Error("That datalet has no vault to open from.");
+  const active = activeDatalet();
+  const leaving = active && active.id !== target.id ? dataletGraph(active, localGraph) : undefined;
+  const targetGraph = dataletGraph(target, localGraph);
+  if (!targetGraph) throw new Error("This device's local graph is not ready yet.");
+
+  // Fetch first: a failure here must leave the current datalet exactly as it was.
+  const snapshot = await fetchVaultSnapshot(target.vault);
+
+  const fits = adoptionFits(targetGraph, snapshot.records, leaving);
+  if (!fits.ok) throw new Error(fits.message);
+
+  if (leaving) evictGraph(leaving);
+  if (!reconcileGraphSnapshot(targetGraph, snapshot.records)) {
+    throw new Error("That datalet's records failed local validation.");
+  }
+  flushLocalPersistence();
+  setDataletCursor(target.vault.vaultId, snapshot.seq);
+  setActiveDatalet(target.id);
+  window.location.reload();
+}
+
+/**
+ * Open a datalet already in the registry. Reloads on success, because
  * replacing the whole graph is simpler and more robust than re-targeting every
  * live subscription - the same reason pairing and import reload.
  */
 export async function switchToDatalet(target: Datalet, localGraph: string | undefined) {
   const leaving = canLeaveActiveDatalet();
   if (!leaving.ok) throw new Error(leaving.message);
-  if (!target.vault) {
-    throw new Error("That datalet has no vault to restore from.");
-  }
+  await adopt(target, localGraph);
+}
 
-  const active = activeDatalet();
-  const activeGraph = active ? dataletGraph(active, localGraph) : undefined;
-
-  // Restore first. A failure here must leave the current datalet untouched.
-  await restoreDatalet(target.vault);
-
-  const targetGraph = dataletGraph(target, localGraph);
-  if (activeGraph && activeGraph !== targetGraph) evictGraph(activeGraph);
-  setActiveDatalet(target.id);
-  window.location.reload();
+/**
+ * Take on a vault as a *new* datalet and open it, leaving the current one in
+ * the registry rather than replacing it. This is what separates joining from
+ * the first pairing, which converts the datalet you already have.
+ */
+export async function adoptVaultAsDatalet(vault: VaultConfig, localGraph: string | undefined) {
+  const leaving = canLeaveActiveDatalet();
+  if (!leaving.ok) throw new Error(leaving.message);
+  const entry = addDatalet(vault);
+  await adopt(entry, localGraph);
 }
