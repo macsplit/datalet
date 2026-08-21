@@ -124,3 +124,35 @@ test("the policy blocks a font from another origin", async ({ page }) => {
   });
   expect(outcome).toContain("font-src");
 });
+
+test("the built app is installable, with a stable identity", async ({ page }) => {
+  await page.goto("/");
+
+  // Chromium is the authority on whether this parses, so ask it rather than
+  // inferring from the file. An empty `errors` is what makes the install
+  // prompt possible at all.
+  const cdp = await page.context().newCDPSession(page);
+  const manifest = await cdp.send("Page.getAppManifest" as Parameters<typeof cdp.send>[0]) as {
+    errors?: Array<{ message: string }>;
+    data?: string;
+  };
+  expect(manifest.errors ?? []).toEqual([]);
+  expect(manifest.data).toBeTruthy();
+
+  const parsed = JSON.parse(manifest.data ?? "{}") as Record<string, unknown> & {
+    icons?: Array<{ sizes?: string }>;
+  };
+
+  // `id` is what keeps an installed app the same app if start_url ever moves.
+  // Changing it after release orphans every existing install with no migration
+  // path, so it is pinned here rather than left to drift.
+  expect(parsed.id).toBe("/");
+  expect(parsed.start_url).toBe("/");
+  expect(parsed.scope).toBe("/");
+  expect(parsed.display).toBe("standalone");
+  expect(parsed.name).toBeTruthy();
+
+  const sizes = (parsed.icons ?? []).map((icon) => icon.sizes);
+  expect(sizes).toContain("192x192");
+  expect(sizes).toContain("512x512");
+});

@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Local Graph UI Builder",
   "short_name": "Local Graph",
   "description": "A browser-local builder for personal record-management apps.",
