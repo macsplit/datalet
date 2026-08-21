@@ -37,6 +37,23 @@ next into suspecting their own change. Not reproduced deterministically yet.
 
 ---
 
+### More than one datalet
+
+[`multiple-datalets-plan.md`](multiple-datalets-plan.md) plans holding several
+datalets and using one at a time, in the shape of Joplin's profiles. It adds no
+capability to a datalet — nothing new can be modelled, stored or rendered — and
+the engine is already multi-graph, so it is largely exposing what exists.
+
+It turns on a measured constraint: Chromium refuses localStorage past ~5.2
+million characters for an origin, while one datalet may use 4 million. Several
+resident at once would make the same action succeed or fail depending on sizes,
+so only the active datalet is resident, and the rest must be recoverable from
+their vaults. **Holding more than one therefore requires pairing** — local-only
+use stays exactly as it is, with one datalet and no network.
+
+Cloning a datalet (giving someone a reference they redeem for their own copy)
+is the feature this unblocks, and belongs on top of it rather than before it.
+
 ## Under consideration, not decided
 
 ### A desktop shell, and what the app already is
