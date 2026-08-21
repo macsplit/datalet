@@ -19,6 +19,10 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
+  // Chromium parses a manifest whatever the type, but octet-stream is wrong
+  // and stricter consumers - Safari, Lighthouse, link checkers - are entitled
+  // to reject it.
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".ico": "image/x-icon",
   ".png": "image/png",
   ".woff2": "font/woff2",

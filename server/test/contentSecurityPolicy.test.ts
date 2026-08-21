@@ -37,6 +37,7 @@ test("every static response carries the policy, not just the document", async ()
   const staticDir = mkdtempSync(join(tmpdir(), "localgraph-csp-"));
   writeFileSync(join(staticDir, "index.html"), "<!doctype html><title>t</title>");
   writeFileSync(join(staticDir, "app.js"), "export const ok = true;\n");
+  writeFileSync(join(staticDir, "manifest.webmanifest"), '{"name":"t"}');
 
   const server = createServer((req, res) => serveStatic(staticDir, req, res));
   server.listen(0, "127.0.0.1");
@@ -47,11 +48,15 @@ test("every static response carries the policy, not just the document", async ()
   try {
     // A policy that only covered index.html would leave a directly-opened
     // asset unprotected, so both are checked.
-    for (const path of ["/", "/app.js"]) {
+    for (const path of ["/", "/app.js", "/manifest.webmanifest"]) {
       const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
       assert.equal(response.status, 200);
       assert.equal(response.headers.get("content-security-policy"), CONTENT_SECURITY_POLICY);
     }
+    // The web app manifest has to be served as a manifest: an installable app
+    // that ships it as octet-stream works in Chromium by tolerance alone.
+    const manifest = await fetch(`http://127.0.0.1:${address.port}/manifest.webmanifest`);
+    assert.match(manifest.headers.get("content-type") ?? "", /^application\/manifest\+json/);
   } finally {
     server.close();
     await once(server, "close");
