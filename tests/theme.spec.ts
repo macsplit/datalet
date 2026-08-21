@@ -235,3 +235,54 @@ test("a colour that would be unreadable is moved, and says so", async ({ page })
   const applied = await page.evaluate(() => getComputedStyle(document.body).color);
   expect(applied).not.toBe("rgb(250, 250, 250)");
 });
+
+test("the window chrome colour follows the theme, per scheme", async ({ page }) => {
+  // index.html ships one static theme-color so an installed app has a colour
+  // before any script runs, but one tag cannot express two palettes. These are
+  // media-qualified and must sit ahead of it in tree order to take effect.
+  await seedTheme(page, { themeColorAccentLight: "#123456", themeColorAccentDark: "#654321" });
+  await page.goto("/");
+  // The tags are written once the Settings record loads, like the stylesheet,
+  // so this has to wait rather than read on first paint.
+  await expect.poll(() => page.getAttribute(
+    'meta[name="theme-color"][data-graph-theme="light"]', "content")).toBe("#123456");
+
+  const tags = await page.evaluate(() =>
+    [...document.head.querySelectorAll('meta[name="theme-color"]')].map((tag) => ({
+      media: tag.getAttribute("media"),
+      content: tag.getAttribute("content"),
+      managed: tag.hasAttribute("data-graph-theme"),
+    })));
+
+  // Order between the two managed tags is irrelevant — their media queries are
+  // mutually exclusive. What has to hold is that both precede the static
+  // fallback, since the browser takes the first tag whose media matches.
+  const managed = tags.filter((tag) => tag.managed);
+  const fallbackAt = tags.findIndex((tag) => !tag.managed);
+  expect(managed).toHaveLength(2);
+  expect(tags.slice(0, 2).every((tag) => tag.managed)).toBe(true);
+  expect(fallbackAt).toBe(2);
+  expect(managed.find((tag) => tag.media === "(prefers-color-scheme: light)")?.content)
+    .toBe("#123456");
+  expect(managed.find((tag) => tag.media === "(prefers-color-scheme: dark)")?.content)
+    .toBe("#654321");
+});
+
+test("an unthemed app keeps the chrome colour it always had", async ({ page }) => {
+  await seedTheme(page, {});
+  await page.goto("/");
+  const light = await page.getAttribute(
+    'meta[name="theme-color"][data-graph-theme="light"]', "content");
+  expect(light).toBe("#6d4de6");
+});
+
+test("editing the accent updates the chrome without duplicating tags", async ({ page }) => {
+  await seedTheme(page, {});
+  await page.goto("/settings/theme");
+  await page.locator("#theme-accent-light").fill("#0a5fa0");
+  await expect.poll(() => page.getAttribute(
+    'meta[name="theme-color"][data-graph-theme="light"]', "content")).toBe("#0a5fa0");
+  // Re-applied on every render, so a tag appended rather than rewritten would
+  // pile up unboundedly.
+  expect(await page.locator('meta[name="theme-color"][data-graph-theme="light"]').count()).toBe(1);
+});

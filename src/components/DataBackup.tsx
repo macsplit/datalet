@@ -1,11 +1,35 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMetaStore } from "../hooks/MetaStoreContext";
 import { exportGraphBackup, importGraphBackup } from "../utils/localNgEngine";
+import {
+  readStoragePersistence,
+  requestStoragePersistence,
+  type StoragePersistence,
+} from "../utils/storagePersistence";
 
 export function DataBackup() {
   const { privateNuri } = useMetaStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
+  const [persistence, setPersistence] = useState<StoragePersistence>("unsupported");
+  const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readStoragePersistence().then((state) => {
+      if (!cancelled) setPersistence(state);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const askToKeep = async () => {
+    setAsking(true);
+    try {
+      setPersistence(await requestStoragePersistence());
+    } finally {
+      setAsking(false);
+    }
+  };
 
   const exportData = () => {
     if (!privateNuri) return;
@@ -63,6 +87,24 @@ export function DataBackup() {
         A backup contains every record, schema, tab, block, widget, and setting in the active graph.
         Import replaces that graph and reloads the app.
       </p>
+      {persistence === "persisted" && (
+        <p className="helper-text">
+          This browser has agreed to keep your data: it will not be removed to reclaim
+          space, and ordinary cleanup leaves it alone. Keep exporting backups anyway —
+          nothing here survives losing the device.
+        </p>
+      )}
+      {persistence === "not-persisted" && (
+        <div className="layout-row">
+          <p className="helper-text">
+            This browser has not agreed to keep your data, so clearing site data deletes
+            it. There is no copy anywhere else unless you have paired or exported one.
+          </p>
+          <button type="button" className="secondary-btn" onClick={askToKeep} disabled={asking}>
+            {asking ? "Asking…" : "Ask to keep data"}
+          </button>
+        </div>
+      )}
       {error && <p className="danger-text" role="alert">{error}</p>}
     </section>
   );

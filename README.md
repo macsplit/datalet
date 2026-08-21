@@ -238,6 +238,11 @@ tabs for the same site. Records are stored under separate keys, so an ordinary
 edit persists only the touched records rather than serializing the whole
 store.
 
+Settings shows whether this browser has agreed to keep your data. If it has,
+your records are exempt from routine cleanup; if it has not, the panel says so
+and offers to ask. Either way, exporting a backup is still the only thing that
+survives losing the device.
+
 When optional remote sync is configured, the same data and builder metadata
 are copied to a paired vault across devices. Synced data is not end-to-end
 encrypted: the server can read it. Clearing browser storage still deletes the

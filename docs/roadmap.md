@@ -27,17 +27,6 @@ nothing else.
 
 ---
 
-### Durable local storage
-
-`navigator.storage.persist()` is never called. Until it is, a browser's "clear
-browsing data" destroys the only local copy, which
-[`product-assessment.md`](product-assessment.md) has to carry as a condition of
-the privacy use case rather than a caveat beside it. Chrome generally grants
-persistence to an installed app without prompting, so requesting it and
-surfacing whether it was granted turns "your data survives until you clear
-browsing data" into something closer to a guarantee. A few lines, and the
-largest honesty gain available for the size.
-
 ### Server suite flakiness
 
 `pnpm test:server` intermittently stalls partway through when the runner
@@ -60,13 +49,9 @@ registered in `src/index.tsx` gives the offline cold start the offline suite
 verifies. Served over HTTPS, Chrome offers to install it today. Nothing to
 build.
 
-Two things would make an installed app better, and both are inside the
-product's identity rather than extensions of it: the storage-persistence
-request above, and a live `theme_color`. The manifest pins `#6d4de6` and
-`index.html` carries a matching static `<meta name="theme-color">`, so now that
-the palette lives in the graph the installed window chrome disagrees with the
-user's chosen colours. The meta tag is updatable at runtime, so
-`applyThemeToDocument` could set it alongside the stylesheet it already writes.
+The two things that would make an installed app better are **both now done** —
+see Delivered: the storage-persistence request, and a `theme_color` that
+follows the stored palette per scheme.
 
 **Electron or Tauri is a much larger step**, and only one piece of it is real
 work. The renderer uses no Node APIs at all, so it can run with
@@ -101,8 +86,9 @@ lifting them because a desktop shell makes it easy is exactly the creep
 built, **Tauri deserves weighing over Electron**: the renderer needs nothing
 from Node, so the same custom-protocol model applies at a tenth of the size.
 
-Note that the storage-persistence item above delivers most of the durability
-benefit without any of this.
+Note that the storage-persistence work already delivers most of the durability
+benefit without any of this, which is the main reason a native shell is not
+urgent.
 
 ## Deferred by decision
 
@@ -167,6 +153,22 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### Durable local storage and a live window colour
+
+`navigator.storage.persist()` is now offered, and the result reported honestly:
+the backup panel says whether this browser has agreed to keep the data, and a
+refusal is shown as a refusal rather than as success. The request is
+deliberately not made on load — Chrome decides silently, but Firefox raises a
+permission prompt, and an unprompted prompt on first paint is worse than the
+problem. It is offered where losing data is already the subject.
+
+The installed window chrome now follows the theme too. `index.html` still ships
+a static `theme-color` so an installed app has a colour before any script runs;
+two media-qualified tags are inserted ahead of it, mirroring the stylesheet's
+own light/dark split, and carry the accent role so an unthemed app looks
+exactly as it did.
+
 
 ### Theme in the graph
 

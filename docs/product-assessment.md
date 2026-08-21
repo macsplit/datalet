@@ -66,8 +66,11 @@ an outbound request even if some future change forgets why that matters. Almost 
 therapy notes, a legal-matter chronology, salary and finance notes, anything
 about other people that is not yours to hand to a vendor. Two conditions belong
 to the use case rather than beside it: it holds only while **unpaired** (paired,
-the server reads plaintext), and durability rests entirely on the user's own
-JSON exports. Backup discipline is part of this scenario's definition.
+the server reads plaintext), and durability rests on the browser keeping the
+data. The app now asks for persistent storage and reports whether the browser
+agreed, which exempts a granted origin from routine clearing — but a refusal is
+real, and nothing survives losing the device. Backup discipline is still part
+of this scenario's definition.
 
 **3. Schema elicitation with a stakeholder in the room.** Build the model live
 while they talk, put working screens in front of them in the same meeting,

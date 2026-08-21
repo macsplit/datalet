@@ -83,10 +83,39 @@ export function themeStylesheet(theme: StoredTheme): string {
 }
 
 /**
+ * Keep the browser's window chrome in step with the theme.
+ *
+ * `index.html` ships a static `<meta name="theme-color">` so an installed app
+ * has a colour before any script runs, but one tag cannot express two
+ * palettes. These are media-qualified and inserted ahead of it: the browser
+ * uses the first tag in tree order whose media matches, so the static one stays
+ * as the pre-script fallback and stops applying once these exist.
+ *
+ * The accent role is used because that is what the static tag already carries,
+ * so an unthemed app looks exactly as it did.
+ */
+function applyThemeColorMeta(theme: StoredTheme, doc: Document): void {
+  for (const scheme of THEME_SCHEMES) {
+    const { colors } = enforceContrast(scheme, storedColorsFor(theme, scheme));
+    const selector = `meta[name="theme-color"][data-graph-theme="${scheme}"]`;
+    const existing = doc.head.querySelector(selector);
+    const tag = existing ?? doc.createElement("meta");
+    if (!existing) {
+      tag.setAttribute("name", "theme-color");
+      tag.setAttribute("data-graph-theme", scheme);
+      tag.setAttribute("media", `(prefers-color-scheme: ${scheme})`);
+      doc.head.prepend(tag);
+    }
+    tag.setAttribute("content", colors.accent);
+  }
+}
+
+/**
  * Apply a stored theme to the document. Rewrites one style element rather than
  * appending, so repeated calls cannot accumulate stale rules.
  */
 export function applyThemeToDocument(theme: StoredTheme, doc: Document = document): void {
+  applyThemeColorMeta(theme, doc);
   const css = themeStylesheet(theme);
   const existing = doc.getElementById(THEME_STYLE_ELEMENT_ID);
   if (css.length === 0) {

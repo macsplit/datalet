@@ -296,6 +296,13 @@ because `@vitejs/plugin-react` serves its dev refresh preamble as an inline
 module script that `script-src 'self'` would block, and weakening the shipped
 policy for a dev-only script would defeat the point.
 
+The stored theme also drives the installed window chrome. `index.html` ships a
+static `theme-color` so an installed app has a colour before any script runs,
+and `applyThemeToDocument` inserts two media-qualified tags ahead of it — the
+browser uses the first tag whose media matches, so the static one remains the
+pre-script fallback. They carry the accent role, which is what the static tag
+already held, so an unthemed app is unchanged.
+
 Fonts are the system stack, and there is no font setting at all. Vendored
 open-licensed families were planned and then declined: they would add bundle
 weight and a precache list to maintain, to support a preference that changes
@@ -632,6 +639,7 @@ src/
     ├── pairingCode.ts          LG1 Crockford-base32 credential encode / decode
     ├── qrCode.ts               Dependency-free QR matrix generation
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
+    ├── storagePersistence.ts   Asks the browser to keep this origin's storage
     ├── themeTokens.ts          The allowlisted colour roles and value grammar
     ├── themeStylesheet.ts      Stored theme → one <style> with a dark media query
     └── runtimeHealth.ts        Limits and the issue reporter
