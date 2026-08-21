@@ -1,11 +1,44 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMetaStore } from "../hooks/MetaStoreContext";
-import { exportGraphBackup, importGraphBackup } from "../utils/localNgEngine";
+import { exportGraphBackup, importGraphBackup, readStorageUsage } from "../utils/localNgEngine";
+import { subscribeRuntimeIssues } from "../utils/runtimeHealth";
 import {
   readStoragePersistence,
   requestStoragePersistence,
   type StoragePersistence,
 } from "../utils/storagePersistence";
+
+/**
+ * Quiet while there is room, plain as it fills, insistent at the limit. The
+ * failure it exists to pre-empt is the app silently refusing to persist, which
+ * today arrives as a runtime banner with no warning that it was coming.
+ */
+function StorageUsageNote({ usage }: { usage: ReturnType<typeof readStorageUsage> }) {
+  const percent = Math.min(999, Math.round(usage.fraction * 100));
+  const megabytes = (value: number) => `${(value / 1_000_000).toFixed(1)} MB`;
+  const measure = `${megabytes(usage.used)} of ${megabytes(usage.cap)} used (${percent}%)`;
+
+  if (usage.paused) {
+    return (
+      <p className="helper-text danger-text" role="alert">
+        Storage is full — {measure}. Saving is paused. Export a backup, then delete
+        records or unused schemas to make room.
+      </p>
+    );
+  }
+  if (usage.fraction >= 0.9) {
+    return (
+      <p className="helper-text danger-text">
+        Storage is nearly full — {measure}. Saving stops when it fills, so export a
+        backup and make room now.
+      </p>
+    );
+  }
+  if (usage.fraction >= 0.6) {
+    return <p className="helper-text">Storage: {measure}.</p>;
+  }
+  return <p className="helper-text">{measure}.</p>;
+}
 
 export function DataBackup() {
   const { privateNuri } = useMetaStore();
@@ -13,6 +46,17 @@ export function DataBackup() {
   const [error, setError] = useState("");
   const [persistence, setPersistence] = useState<StoragePersistence>("unsupported");
   const [asking, setAsking] = useState(false);
+  const [usage, setUsage] = useState(() => readStorageUsage());
+
+  // Re-read on the same signal the issue banner uses, so a store that has just
+  // stopped saving reports it here rather than only in the banner, and on an
+  // interval so ordinary editing moves the figure.
+  useEffect(() => {
+    const refresh = () => setUsage(readStorageUsage());
+    const timer = setInterval(refresh, 5_000);
+    const unsubscribe = subscribeRuntimeIssues(refresh);
+    return () => { clearInterval(timer); unsubscribe(); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +131,7 @@ export function DataBackup() {
         A backup contains every record, schema, tab, block, widget, and setting in the active graph.
         Import replaces that graph and reloads the app.
       </p>
+      <StorageUsageNote usage={usage} />
       {persistence === "persisted" && (
         <p className="helper-text">
           This browser has agreed to keep your data: it will not be removed to reclaim

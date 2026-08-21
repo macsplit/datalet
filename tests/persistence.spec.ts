@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { RUNTIME_LIMITS } from "../src/utils/runtimeHealth";
 
 const STORE_KEY = "meta-ui-builder:ng-local-store";
 const INDEX_KEY = `${STORE_KEY}:index`;
@@ -8,9 +9,9 @@ const SESSION_KEY = "meta-ui-builder:local-session";
 const PRIVATE_STORE_ID = "test-private-store";
 const GRAPH = `did:ng:${PRIVATE_STORE_ID}`;
 
-async function seedSession(page: Page, setup?: () => void) {
+async function seedSession(page: Page, setup?: (arg: number) => void, setupArg = 0) {
   await page.addInitScript(
-    ({ sessionKey, privateStoreId, setupSource }) => {
+    ({ sessionKey, privateStoreId, setupSource, setupArg }) => {
       if (localStorage.getItem(sessionKey)) return;
       localStorage.clear();
       localStorage.setItem(
@@ -22,9 +23,16 @@ async function seedSession(page: Page, setup?: () => void) {
           public_store_id: "test-public-store",
         }),
       );
-      if (setupSource) (0, eval)(`(${setupSource})()`);
+      // The setup body is serialised across the boundary, so it cannot close
+      // over anything; whatever it needs arrives as its one argument.
+      if (setupSource) (0, eval)(`(${setupSource})`)(setupArg);
     },
-    { sessionKey: SESSION_KEY, privateStoreId: PRIVATE_STORE_ID, setupSource: setup?.toString() },
+    {
+      sessionKey: SESSION_KEY,
+      privateStoreId: PRIVATE_STORE_ID,
+      setupSource: setup?.toString(),
+      setupArg,
+    },
   );
 }
 
@@ -86,7 +94,11 @@ test("migrates the legacy blob without losing record bytes", async ({ page }) =>
 });
 
 test("rejects oversized data without modifying it", async ({ page }) => {
-  await seedSession(page, () => {
+  // Sized from the limit rather than a literal: this test encoded the old
+  // 4,000,000 and silently stopped testing anything when the cap was
+  // re-derived, because the record it seeded was no longer oversized.
+  const oversized = RUNTIME_LIMITS.storedBytes + 10_000;
+  await seedSession(page, (oversized: number) => {
     const indexKey = "meta-ui-builder:ng-local-store:index";
     const prefix = "meta-ui-builder:ng-local-store:record:";
     const id = "did:ng:test-private-store|did:ng:z:oversized";
@@ -94,11 +106,11 @@ test("rejects oversized data without modifying it", async ({ page }) => {
       "@graph": "did:ng:test-private-store",
       "@id": "did:ng:z:oversized",
       "@type": "did:ng:z:Oversized",
-      value: "x".repeat(4_010_000),
+      value: "x".repeat(oversized),
     });
     localStorage.setItem(indexKey, JSON.stringify([id]));
     localStorage.setItem(prefix + id, raw);
-  });
+  }, oversized);
 
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("Local data safety circuit opened");

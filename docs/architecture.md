@@ -218,7 +218,7 @@ The stack lives in the page session. Reloading starts empty, deliberately.
 
 | Limit | Value | Guards |
 | --- | --- | --- |
-| `storedBytes` | 4,000,000 | Total persisted size; loading or flushing beyond it stops rather than corrupting |
+| `storedBytes` | 4,500,000 | Whole-origin localStorage budget in characters, key names included; loading or flushing beyond it stops rather than corrupting |
 | `patchBatch` | 5,000 | Patches accepted in one batch from any source |
 | `graphNodes` | 10,000 | Records in an imported backup or a reconciled snapshot; block-graph traversal |
 | `blockDepth` | 32 | Recursive block nesting |

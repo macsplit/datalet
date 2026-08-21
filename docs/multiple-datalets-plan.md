@@ -1,7 +1,8 @@
 # Plan: More Than One Datalet
 
-**Status: proposed.** Not started. Written 2026-08-21 from the code as it
-stands at `bc82c8c`.
+**Status: active.** D1 landed 2026-08-21; D2 and D3 have not started. Written
+2026-08-21 from the code as it stood at `bc82c8c` and kept current as work
+lands.
 
 Today the app holds exactly one graph. `usePrivateNuri` resolves to either this
 device's `private_store_id` or, once paired, the vault's id — and pairing
@@ -74,7 +75,7 @@ the arithmetic above, accepted knowingly.
 
 ---
 
-## D1. Account for storage honestly — **small, do first**
+## D1. Account for storage honestly — **completed 2026-08-21**
 
 Useful immediately with a single datalet, and a prerequisite for the rest.
 
@@ -96,6 +97,20 @@ everything else and is defensible against the smallest plausible browser.
 reached for: it reports the origin's overall storage quota, which is orders of
 magnitude larger than the separate localStorage sub-limit, so it would report
 gigabytes of headroom that localStorage will not give.
+
+**Landed detail, and one thing writing the test found.** Two paths, because
+they want different things. The write path keeps its incremental projection and
+measures foreign keys only once the cheap figure crosses 80% of the budget —
+below that, no plausible outbox closes the gap. The settings panel scans the
+origin physically instead, and that difference is not cosmetic: a store
+rejected at load for being over the cap *clears its own accounting while every
+record stays on disk*, so a figure derived from bookkeeping would report near
+zero for a browser that is completely full. The scan is affordable there
+because it is not on the write path.
+
+Record key names are now counted too. The browser charges for `key + value`,
+and a record key carries a graph-qualified id, so at a few thousand records the
+names are not noise.
 
 **Surface it.** A usage figure in Settings — used against cap, as a percentage
 — that becomes prominent as it climbs. Quiet under a low threshold, plain

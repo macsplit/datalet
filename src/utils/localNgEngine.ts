@@ -326,6 +326,84 @@ let persistenceDisabled = loadWasRejected;
  * partial write. Accepted as a rare, defensive-only edge case given the
  * margin RUNTIME_LIMITS.storedBytes already leaves below real browser caps.
  */
+/**
+ * Characters held in localStorage by keys this store does not own - the sync
+ * outbox and cursor, the session, the vault config, anything else on the
+ * origin. They share the same browser budget, so a projection that counted
+ * only records would authorise a write the browser then refuses. The outbox is
+ * the plausible one: it grows through a long offline stretch, which is exactly
+ * when editing continues.
+ *
+ * Key names count too. The browser charges for `key + value`, and a record key
+ * carries a graph-qualified id, so at a few thousand records the names alone
+ * are not noise.
+ */
+function measureForeignUsage(): number {
+  let total = 0;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null) continue;
+      if (key === INDEX_KEY || key.startsWith(RECORD_KEY_PREFIX)) continue;
+      total += key.length + (localStorage.getItem(key)?.length ?? 0);
+    }
+  } catch {
+    // Storage unreadable: report nothing rather than block writes on a number
+    // that could not be taken.
+    return 0;
+  }
+  return total;
+}
+
+/**
+ * A full scan is too costly to run on every flush, and unnecessary while there
+ * is room to spare: below this share of the budget, no plausible amount of
+ * foreign data closes the gap. Above it, every write measures exactly.
+ */
+const FOREIGN_MEASUREMENT_THRESHOLD = 0.8;
+
+let cachedForeignUsage = 0;
+
+export type StorageUsage = {
+  /** Characters used across the whole origin, not this store alone. */
+  used: number;
+  /** The budget from RUNTIME_LIMITS.storedBytes. */
+  cap: number;
+  /** `used / cap`, which may exceed 1 on data written before a lower cap. */
+  fraction: number;
+  /** Whether writes have already been stopped. */
+  paused: boolean;
+};
+
+/**
+ * What the origin is physically holding, for the usage indicator in Settings.
+ *
+ * A full scan rather than the incremental bookkeeping, because the two diverge
+ * exactly when the number matters: a store rejected at load for being over the
+ * cap clears its own accounting while every record stays on disk, so a figure
+ * derived from bookkeeping would report near zero for a browser that is full.
+ * This path is read by a settings panel, not by the write path, so the scan is
+ * affordable.
+ */
+export function readStorageUsage(): StorageUsage {
+  let used = 0;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null) continue;
+      used += key.length + (localStorage.getItem(key)?.length ?? 0);
+    }
+  } catch {
+    used = 0;
+  }
+  return {
+    used,
+    cap: RUNTIME_LIMITS.storedBytes,
+    fraction: used / RUNTIME_LIMITS.storedBytes,
+    paused: persistenceDisabled,
+  };
+}
+
 function persistNow() {
   if (persistenceDisabled) return;
   if (persistTimer !== undefined) clearTimeout(persistTimer);
@@ -365,6 +443,21 @@ function persistNow() {
       projected += nextIndexStr.length - indexByteLength;
     }
 
+    // Key names and everything else on the origin share the same budget. The
+    // exact foreign figure is only taken when the cheap projection says it
+    // could matter; below that threshold the headroom is larger than any
+    // plausible outbox.
+    let names = INDEX_KEY.length;
+    for (const id of recordByteLengths.keys()) names += recordKey(id).length;
+    for (const [id, value] of writes) {
+      if (value === null) names -= recordKey(id).length;
+      else if (!recordByteLengths.has(id)) names += recordKey(id).length;
+    }
+    if (projected + names > RUNTIME_LIMITS.storedBytes * FOREIGN_MEASUREMENT_THRESHOLD) {
+      cachedForeignUsage = measureForeignUsage();
+    }
+    projected += names + cachedForeignUsage;
+
     if (projected > RUNTIME_LIMITS.storedBytes) {
       persistenceDisabled = true;
       throw new Error(
@@ -385,7 +478,10 @@ function persistNow() {
       localStorage.setItem(INDEX_KEY, nextIndexStr);
       indexByteLength = nextIndexStr.length;
     }
-    storedBytesTotal = projected;
+    // storedBytesTotal stays the record-and-index figure the incremental path
+    // maintains; `projected` above additionally carried key names and foreign
+    // usage, which are recomputed rather than accumulated.
+    storedBytesTotal = projected - names - cachedForeignUsage;
     dirtyIds.clear();
   } catch (error) {
     persistenceDisabled = true;

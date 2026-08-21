@@ -70,5 +70,19 @@ export const RUNTIME_LIMITS = {
   blockDepth: 32,
   graphNodes: 10_000,
   patchBatch: 5_000,
-  storedBytes: 4_000_000,
+  /**
+   * The localStorage budget for this origin, in characters - the unit
+   * `String.length` reports and the unit browsers count.
+   *
+   * Derived rather than guessed. Chromium refuses past ~5.2 million characters
+   * for an origin (measured); 5 MiB is the long-standing convention across
+   * browsers old enough to have localStorage at all; Firefox allows 10 MiB.
+   * 4.5M leaves roughly 700k of headroom below the smallest of those.
+   *
+   * `navigator.storage.estimate()` is the wrong instrument for this and must
+   * not be substituted: it reports the origin's overall storage quota, orders
+   * of magnitude larger than the separate localStorage sub-limit, so it would
+   * promise gigabytes that localStorage will not give.
+   */
+  storedBytes: 4_500_000,
 } as const;
