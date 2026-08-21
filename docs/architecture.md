@@ -640,6 +640,7 @@ src/
     ├── qrCode.ts               Dependency-free QR matrix generation
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
     ├── datalets.ts             The registry of datalets and which one is active
+    ├── dataletSwitch.ts        Switching between them, and the rules that refuse it
     ├── storagePersistence.ts   Asks the browser to keep this origin's storage
     ├── themeTokens.ts          The allowlisted colour roles and value grammar
     ├── themeStylesheet.ts      Stored theme → one <style> with a dark media query

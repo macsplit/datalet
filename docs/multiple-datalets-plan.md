@@ -1,6 +1,8 @@
 # Plan: More Than One Datalet
 
-**Status: active.** D1 landed 2026-08-21; D2 and D3 have not started. Written
+**Status: active.** D1, D2 and D3 landed 2026-08-21. Adding a second datalet
+from the interface is the remaining gap - the switcher and its rules exist, but
+nothing yet creates a second entry. Written
 2026-08-21 from the code as it stood at `bc82c8c` and kept current as work
 lands.
 
@@ -118,7 +120,7 @@ above it, insistent near the limit. The failure it exists to prevent is the app
 silently refusing to persist, which today produces a runtime issue banner with
 no warning that it was coming.
 
-## D2. Datalets: a list, a name, and a switcher — **medium**
+## D2. Datalets: a list, a name, and a switcher — **completed 2026-08-21**
 
 A datalet needs identity the user recognises. **The name already exists**: each
 graph has its own `Settings.appTitle`. The list labels itself from data.
@@ -136,7 +138,7 @@ graph has its own `Settings.appTitle`. The list labels itself from data.
 - Each entry shows its size, so the cost of keeping another is visible at the
   moment you would add one.
 
-## D3. Evict on switch, restore on return — **medium, the risky one**
+## D3. Evict on switch, restore on return — **completed 2026-08-21**
 
 Leaving a datalet removes its records from localStorage; returning fetches them
 back from its vault. `fetchAndReconcileSnapshot` already does the restoring
@@ -153,6 +155,19 @@ Three rules, each protecting against a way this loses data:
   switching must say so rather than proceed.
 - **Evict after the restore succeeds, not before.** Switching should never
   leave both the old datalet gone and the new one unfetched.
+
+**Landed detail.** The rules live in `dataletSwitch.ts`, not in the component,
+so no later caller can route around them, and `canLeaveActiveDatalet()` is
+separate from the switch so the interface can explain the answer before anyone
+commits to it.
+
+Two things writing the tests exposed. The pending-changes rule fired on the
+*happy path*, because bootstrap writes queue in the outbox and the test had not
+stubbed `/sync/patches` - the rule was right and the test was wrong, which is
+the good way round. And a stored credential that cannot be encoded threw during
+render and took the whole Settings page with it, which is precisely the page
+someone would visit to repair or leave a broken vault; that is now caught and
+reported in place.
 
 ## D4. Where cloning lands — **out of scope here, noted for shape**
 

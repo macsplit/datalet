@@ -183,7 +183,18 @@ export function SyncSettings() {
   }
 
   if (config) {
-    const pairingCode = encodePairingCode(config.vaultId, config.vaultToken);
+    // A stored credential that cannot be encoded must not take the page down
+    // with it: Settings is where someone would go to repair or leave a vault,
+    // so throwing here would remove the only way out.
+    let pairingCode = "";
+    let pairingCodeError = "";
+    try {
+      pairingCode = encodePairingCode(config.vaultId, config.vaultToken);
+    } catch (caught) {
+      pairingCodeError = caught instanceof Error
+        ? caught.message
+        : "This vault's stored credential could not be read.";
+    }
     return (
       <section className="panel">
         <div className="panel-header">
@@ -220,7 +231,12 @@ export function SyncSettings() {
             {copied ? "Copied." : "Anyone with this code can read and write this vault — share it only with your own devices."}
           </p>
         </div>
-        {showPairingCode && <PairingQr value={pairingCode} />}
+        {pairingCodeError && (
+          <p className="helper-text danger-text" role="alert">
+            {pairingCodeError} You can still leave this vault or rotate its token.
+          </p>
+        )}
+        {showPairingCode && pairingCode !== "" && <PairingQr value={pairingCode} />}
         <div className="field-group">
           <button
             type="button"

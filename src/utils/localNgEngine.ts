@@ -1195,6 +1195,28 @@ export function replaceGraphAndReload(graph: string, records: Store) {
   window.location.reload();
 }
 
+/**
+ * Drop one graph's records from memory and from localStorage.
+ *
+ * Only ever called for a datalet whose vault holds the durable copy - see
+ * `docs/multiple-datalets-plan.md`. Evicting a graph with no second copy would
+ * destroy it, which is why the caller, not this function, owns that rule.
+ */
+export function evictGraph(graph: string): number {
+  let evicted = 0;
+  for (const key of Object.keys(store)) {
+    if (store[key]?.["@graph"] !== graph) continue;
+    delete store[key];
+    delete undoSnapshotStore[key];
+    dirtyIds.add(key);
+    evicted += 1;
+  }
+  // Flush synchronously: a switch reloads immediately afterwards, and a
+  // debounced flush would not survive the reload.
+  persistNow();
+  return evicted;
+}
+
 /** Create a portable backup of one graph, including builder metadata. */
 export function exportGraphBackup(graph: string): LocalGraphBackup {
   return {

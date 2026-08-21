@@ -126,6 +126,20 @@ export function clearVaultConfig() {
   }
 }
 
+/** How many local batches are still waiting to reach this vault. */
+export function pendingOutboxCount(vaultId: string): number {
+  return loadOutbox(vaultId).length;
+}
+
+/**
+ * Fetch a vault's graph into the local store without making it active. Used
+ * when switching to a datalet whose records were evicted: the restore has to
+ * succeed before anything is thrown away.
+ */
+export async function restoreDatalet(vault: VaultConfig): Promise<void> {
+  await fetchAndReconcileSnapshot(vault, true);
+}
+
 function nextHlc(nodeId: string): string {
   const previous = readJson<{ lastMs: number; counter: number }>(HLC_KEY) ?? { lastMs: 0, counter: 0 };
   const now = Date.now();

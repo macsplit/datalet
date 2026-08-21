@@ -132,3 +132,38 @@ export function unpairActiveDatalet(): void {
     entry.id === registry.activeId ? { id: entry.id } : entry);
   writeDatalets({ ...registry, entries });
 }
+
+/** Add a datalet for a vault this browser has just created or joined. */
+export function addDatalet(vault: DataletVault): Datalet {
+  const registry = readDatalets() ?? { activeId: "", entries: [] };
+  const existing = registry.entries.find((entry) => entry.vault?.vaultId === vault.vaultId);
+  if (existing) return existing;
+  const entry: Datalet = { id: vault.vaultId, vault };
+  writeDatalets({ activeId: registry.activeId || entry.id, entries: [...registry.entries, entry] });
+  return entry;
+}
+
+/** Make `id` the datalet in use. The caller reloads; nothing here does. */
+export function setActiveDatalet(id: string): void {
+  const registry = readDatalets();
+  if (!registry?.entries.some((entry) => entry.id === id)) return;
+  writeDatalets({ ...registry, activeId: id });
+}
+
+/** Forget a datalet. Its vault is untouched, so the data is not destroyed. */
+export function forgetDatalet(id: string): void {
+  const registry = readDatalets();
+  if (!registry) return;
+  const entries = registry.entries.filter((entry) => entry.id !== id);
+  if (entries.length === 0) return;
+  const activeId = entries.some((entry) => entry.id === registry.activeId)
+    ? registry.activeId
+    : entries[0].id;
+  writeDatalets({ activeId, entries });
+}
+
+/** Every datalet this browser knows about, active first. */
+export function listDatalets(): { entries: Datalet[]; activeId: string } {
+  const registry = readDatalets();
+  return registry ? { entries: registry.entries, activeId: registry.activeId } : { entries: [], activeId: "" };
+}
