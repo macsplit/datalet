@@ -99,8 +99,14 @@ test("the carried records are queued for the server, not only written locally", 
   await expect.poll(() => sent.length, { timeout: 10_000 }).toBeGreaterThan(0);
   const paths = sent.flatMap((batch) =>
     ((batch.patches ?? []) as Array<{ path: string }>).map((p) => p.path));
-  expect(paths).toContain("/book-1/Title");
-  expect(paths).toContain("/did:ng:z:SettingsSingleton/appTitle");
+  // Graph-qualified, and carrying @graph. This assertion previously demanded
+  // the bare-id form, and so pinned the bug rather than the requirement: a
+  // vault populated that way produces a snapshot the client rejects forever.
+  const vaultGraph = `did:ng:${VAULT_ID}`;
+  expect(paths).toContain(`/${vaultGraph}|book-1/Title`);
+  expect(paths).toContain(`/${vaultGraph}|book-1/@graph`);
+  expect(paths).toContain(`/${vaultGraph}|did:ng:z:SettingsSingleton/appTitle`);
+  expect(paths.some((p) => !p.startsWith(`/${vaultGraph}|`))).toBe(false);
 });
 
 test("joining an existing vault does not upload local records over it", async ({ page }) => {

@@ -559,7 +559,15 @@ function encodePathSegment(segment: string): string {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
-function snapshotPatches(key: string, record: OrmRecord): Patch[] {
+/**
+ * The wire form of a record: exported because anything that uploads records
+ * has to use exactly this shape. The subject path is the graph-qualified key
+ * and `@graph`/`@id` are emitted as properties, because `validGraphSnapshot`
+ * requires a snapshot's keys to be `graph|id` and each record's `@graph` to
+ * match. A caller inventing its own encoding produces a vault whose snapshot
+ * can never be read back.
+ */
+export function snapshotPatches(key: string, record: OrmRecord): Patch[] {
   const root = `/${encodePathSegment(key)}`;
   const patches: Patch[] = [
     { op: "add", path: root, value: {} },

@@ -23,6 +23,7 @@ import {
   flushLocalPersistence,
   onLocalPatch,
   reconcileGraphSnapshot,
+  snapshotPatches,
   type Patch,
   type Store,
 } from "./localNgEngine";
@@ -106,30 +107,14 @@ async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately =
 /**
  * Turn a datalet's records into the patches that would have created them.
  *
- * Used to carry an unpaired datalet into a vault it has just been given. The
- * server has to receive them as ordinary patches, because a record that only
- * ever existed locally is invisible to it, and the first resync from an empty
- * server snapshot would then delete it.
+ * Delegates to `snapshotPatches` rather than encoding this itself. A first
+ * version did encode it itself, keyed subjects by their bare `@id` and left
+ * `@graph` unset - so the vault's own snapshot failed `validGraphSnapshot`
+ * ever afterwards, and switching to it reported records that failed local
+ * validation. There is one wire convention and exactly one place that knows it.
  */
 function patchesForRecords(records: Store): Patch[] {
-  const patches: Patch[] = [];
-  for (const record of Object.values(records)) {
-    const id = record["@id"];
-    patches.push({ op: "add", path: `/${encodePathSegment(id)}` });
-    for (const [property, value] of Object.entries(record)) {
-      if (property === "@id" || property === "@graph" || value === undefined) continue;
-      const path = `/${encodePathSegment(id)}/${encodePathSegment(property)}`;
-      patches.push(Array.isArray(value)
-        ? { op: "add", path, value, valType: "set" }
-        : { op: "add", path, value });
-    }
-  }
-  return patches;
-}
-
-/** RFC 6901: `~` becomes `~0` and `/` becomes `~1`, matching patchTarget's decode. */
-function encodePathSegment(segment: string): string {
-  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+  return Object.entries(records).flatMap(([key, record]) => snapshotPatches(key, record));
 }
 
 /**
