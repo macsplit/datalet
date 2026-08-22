@@ -60,7 +60,9 @@ test("a full store says saving has stopped and what to do", async ({ page }) => 
   await seedUsage(page, RUNTIME_LIMITS.storedBytes + 10_000);
   await page.goto("/settings/datalets");
   await expect(page.getByText(/Storage is full/)).toBeVisible();
-  await expect(page.getByText(/Export a backup/)).toBeVisible();
+  // Scoped to the panel: the app-wide banner says the same thing, which is the
+  // point of it, so an unscoped match now finds two.
+  await expect(page.locator("#storage").getByText(/Export a backup/)).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Browser storage used" }))
     .toHaveClass(/storage-bar-danger/);
 });

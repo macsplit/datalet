@@ -114,7 +114,7 @@ test("rejects oversized data without modifying it", async ({ page }) => {
   }, oversized);
 
   await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText("Local data safety circuit opened");
+  await expect(page.locator("#runtime-issue-banner")).toContainText("Local data safety circuit opened");
   const before = await page.evaluate(
     ({ indexKey, prefix }) => ({
       index: localStorage.getItem(indexKey),
@@ -166,7 +166,7 @@ test("retries an interrupted migration without letting bootstrap overwrite the l
   });
 
   await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText("Local storage migration was paused");
+  await expect(page.locator("#runtime-issue-banner")).toContainText("Local storage migration was paused");
   expect(await page.evaluate((key) => localStorage.getItem(key), STORE_KEY)).not.toBeNull();
   expect(await page.evaluate((key) => localStorage.getItem(key), INDEX_KEY)).toBeNull();
   await page.waitForTimeout(300);
@@ -198,7 +198,7 @@ test("skips one corrupted record while preserving valid records", async ({ page 
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Valid survivor" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("One saved record could not be loaded");
+  await expect(page.locator("#runtime-issue-banner")).toContainText("One saved record could not be loaded");
   await expect
     .poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "[]"), INDEX_KEY))
     .not.toContain(`${GRAPH}|did:ng:z:meta:tab:corrupt`);

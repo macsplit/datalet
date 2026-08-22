@@ -724,6 +724,16 @@ a {
     opacity: 0.45;
 }
 
+/* The two storage bands read differently on purpose: the notice is
+   informational and dismissible, the urgent one is not. */
+.storage-banner-notice {
+    border-left: 4px solid var(--color-label);
+}
+
+.storage-banner-urgent {
+    border-left: 4px solid var(--color-danger);
+}
+
 .datalet-archive {
     margin-top: var(--space-6);
 }

@@ -74,7 +74,7 @@ export function RuntimeIssueBanner() {
   if (!issue) return null;
 
   return (
-    <aside className="runtime-banner" role="alert">
+    <aside id="runtime-issue-banner" className="runtime-banner" role="alert">
       <div>
         <strong>{issue.context}</strong>
         <span>{issue.message}</span>

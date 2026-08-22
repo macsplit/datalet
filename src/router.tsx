@@ -29,6 +29,7 @@ import { BlocksBuilderPage } from "./pages/BlocksBuilderPage";
 import { SettingsProvider, useSettings } from "./hooks/useSettings";
 import { useTabs } from "./hooks/useTabs";
 import { RuntimeIssueBanner } from "./components/RuntimeSafety";
+import { StorageBanner } from "./components/StorageBanner";
 import { MetaStoreProvider } from "./hooks/MetaStoreContext";
 import { UndoControl } from "./components/UndoControl";
 import { GearIcon, HouseIcon } from "./components/icons";
@@ -88,6 +89,7 @@ function RootLayout() {
   return (
     <div className="app-shell">
       <RuntimeIssueBanner />
+      <StorageBanner />
       <nav className="app-nav">
         <div className="app-nav-inner">
           <span className="app-nav-brand">{appTitle}</span>
