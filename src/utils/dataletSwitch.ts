@@ -32,6 +32,7 @@ import {
   dataletGraph,
   rememberActiveDataletTitle,
   setActiveDatalet,
+  setDataletArchived,
   type Datalet,
 } from "./datalets";
 import { SETTINGS_ID } from "../hooks/useSettings";
@@ -131,6 +132,10 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
   flushLocalPersistence();
   setDataletCursor(target.vault.vaultId, snapshot.seq);
   setActiveDatalet(target.id);
+  // Opening an archived datalet brings it back: something you are working in
+  // is not put away, and leaving it archived would make the list disagree with
+  // what the app is showing.
+  setDataletArchived(target.id, false);
   if (incomingTitle) rememberActiveDataletTitle(incomingTitle);
   window.location.reload();
 }

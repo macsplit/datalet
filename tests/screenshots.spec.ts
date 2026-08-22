@@ -144,12 +144,17 @@ test("datalets and devices", async ({ page }) => {
         { id: "a", vault: vault("a") },
         { id: "b", title: "Field notes", vault: vault("b") },
         { id: "c", title: "Recipes", vault: vault("c"), copiedAt: COPIED_AT },
+        { id: "d", title: "Conference notes", vault: vault("d"), archivedAt: COPIED_AT },
+        { id: "e", title: "Old sketches", vault: vault("e"), archivedAt: COPIED_AT },
       ],
     },
   });
   await page.goto("/settings/datalets");
   await shot(page, "datalets");
   await shot(page, "switch-datalet", "#switch-datalet");
+  // Expanded, or the shot shows a closed row and explains nothing.
+  await page.getByText("Archived (2)").click();
+  await shot(page, "switch-datalet-archived", "#switch-datalet");
   await shot(page, "storage", "#storage");
   await shot(page, "copy-codes", "#copy-codes");
   await shot(page, "sync-paired", "#sync");

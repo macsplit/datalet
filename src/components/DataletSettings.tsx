@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
-import { listDatalets, type Datalet } from "../utils/datalets";
+import { listDatalets, setDataletArchived, type Datalet } from "../utils/datalets";
 import {
   adoptVaultAsDatalet,
   canLeaveActiveDatalet,
@@ -44,7 +44,8 @@ function dataletName(entry: Datalet, isActive: boolean, activeTitle: string): st
 export function DataletSettings() {
   const { appTitle } = useSettings();
   const privateNuri = usePrivateNuri();
-  const { entries, activeId } = listDatalets();
+  const { entries, archived, activeId } = listDatalets();
+  const [, forceRender] = useState(0);
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState("");
 
@@ -127,6 +128,62 @@ export function DataletSettings() {
     }
   };
 
+  const setArchived = (entry: Datalet, archived: boolean) => {
+    setDataletArchived(entry.id, archived);
+    // The registry is localStorage, not React state, so nothing re-renders on
+    // its own.
+    forceRender((tick) => tick + 1);
+  };
+
+  const renderRow = (entry: Datalet) => {
+    const isActive = entry.id === activeId;
+    const isArchived = entry.archivedAt !== undefined;
+    return (
+      <div className="layout-row" key={entry.id}>
+        <span className="datalet-name">
+          {dataletName(entry, isActive, appTitle)}
+          {isActive && <span className="badge">Open</span>}
+          {entry.vault && (
+            <span className="helper-text datalet-vault-id">
+              {` vault ${entry.vault.vaultId.slice(0, 8)}`}
+            </span>
+          )}
+          {entry.copiedAt !== undefined && (
+            <span className="helper-text">
+              {` copied ${new Date(entry.copiedAt).toLocaleDateString()}`}
+            </span>
+          )}
+        </span>
+        {/* Both buttons in one child, because `.layout-row > *` gives every
+            child a 360px basis that does not shrink: a third child overflows
+            the panel instead of fitting. */}
+        {!isActive && (
+          <div className="datalet-row-actions">
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={!leaving.ok || switching !== "" || adding}
+              onClick={() => void goTo(entry)}
+            >
+              {switching === entry.id ? "Opening…" : "Open"}
+            </button>
+            {/* The open datalet cannot be archived: that would be an eviction
+                and a switch in one gesture, and would leave the app choosing
+                where you land. */}
+            <button
+              type="button"
+              className="secondary-btn"
+              disabled={switching !== "" || adding}
+              onClick={() => setArchived(entry, !isArchived)}
+            >
+              {isArchived ? "Restore" : "Archive"}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <section className="panel" id="switch-datalet">
       <div className="panel-header">
@@ -144,38 +201,25 @@ export function DataletSettings() {
       {!leaving.ok && <p className="helper-text danger-text">{leaving.message}</p>}
       {error && <p className="danger-text" role="alert">{error}</p>}
       <div className="section-stack">
-        {entries.map((entry) => {
-          const isActive = entry.id === activeId;
-          return (
-            <div className="layout-row" key={entry.id}>
-              <span className="datalet-name">
-                {dataletName(entry, isActive, appTitle)}
-                {isActive && <span className="badge">Open</span>}
-                {entry.vault && (
-                  <span className="helper-text datalet-vault-id">
-                    {` vault ${entry.vault.vaultId.slice(0, 8)}`}
-                  </span>
-                )}
-                {entry.copiedAt !== undefined && (
-                  <span className="helper-text">
-                    {` copied ${new Date(entry.copiedAt).toLocaleDateString()}`}
-                  </span>
-                )}
-              </span>
-              {!isActive && (
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  disabled={!leaving.ok || switching !== "" || adding}
-                  onClick={() => void goTo(entry)}
-                >
-                  {switching === entry.id ? "Opening…" : "Open"}
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {entries.map((entry) => renderRow(entry))}
       </div>
+
+      {archived.length > 0 && (
+        <details className="datalet-archive">
+          <summary className="field-label datalet-archive-summary">
+            {`Archived (${archived.length})`}
+          </summary>
+          <p className="helper-text">
+            Put away, not deleted. Each one's vault and every record in it are
+            untouched, and opening one brings it back to the list above.
+          </p>
+          {/* Its own stack, so the rows here are spaced exactly like the rows
+              above rather than inheriting whatever the <details> does. */}
+          <div className="section-stack">
+            {archived.map((entry) => renderRow(entry))}
+          </div>
+        </details>
+      )}
 
       <div className="section-stack">
         <p className="label-accent">Add a datalet</p>

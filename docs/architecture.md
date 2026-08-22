@@ -650,7 +650,8 @@ src/
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
     ├── randomId.ts             UUIDs, with a fallback where randomUUID is absent
     ├── clipboard.ts            Copy with a legacy fallback; reports whether it worked
-    ├── datalets.ts             The registry of datalets and which one is active
+    ├── datalets.ts             The registry: which datalets exist, which is
+    │                           active, which are archived
     ├── dataletSwitch.ts        Switching between them, and the rules that refuse it
     ├── storagePersistence.ts   Asks the browser to keep this origin's storage
     ├── themeTokens.ts          The allowlisted colour roles and value grammar

@@ -289,15 +289,26 @@ tabs, blocks, widgets and theme. You can keep several and use one at a time,
 switching between them from **Settings → Manage datalets**, which is also where
 pairing, copies, storage and backups live.
 
-![The datalet switcher listing three datalets — Reading list marked Open,
-Field notes, and Recipes marked as copied — each with its vault
-id.](docs/images/switch-datalet.png)
+![The datalet switcher: Reading list marked Open, Field notes and Recipes each
+with Open and Archive buttons, and an expanded Archived section holding two
+more with Open and Restore.](docs/images/switch-datalet-archived.png)
 
 Only the datalet you have open is held in this browser, which is why keeping
 more than one requires each to be paired: the ones you are not using live in
 their vaults until you open them. A datalet with no vault has no other copy to
 come back from, so the app will ask you to pair the one you have before adding
 another.
+
+Datalets are cheap to make, and some are made to be finished with. **Archive**
+puts one out of the way without deleting anything: its vault, its credentials
+and every record in it are untouched, it drops out of the list into a collapsed
+**Archived** section, and opening it brings it back. Nothing is reclaimed by
+archiving — an archived datalet still occupies its vault on the sync server —
+so it is a way to find the two you are using, not a way to free space.
+
+The datalet you have open cannot be archived. That would mean evicting it and
+switching in one gesture, and would leave the app deciding which datalet you
+land in; open another one first.
 
 Two things that look alike and are opposites:
 

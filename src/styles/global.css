@@ -726,6 +726,26 @@ a {
     opacity: 0.45;
 }
 
+.datalet-archive {
+    margin-top: var(--space-6);
+}
+
+/* One row child holding both actions, so the row keeps to the two-child shape
+   `.layout-row > *` is sized for. */
+.datalet-row-actions {
+    display: flex;
+    gap: var(--space-4);
+}
+
+.datalet-row-actions > .secondary-btn {
+    flex: 1 1 auto;
+}
+
+.datalet-archive-summary {
+    cursor: pointer;
+    margin-bottom: var(--space-4);
+}
+
 /* A datalet's row is named with the title its owner chose, so it must not take
    `.field-label`, which uppercases and letterspaces its content: that styles a
    person's name for their app as though it were a form label, and "Reading

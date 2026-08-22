@@ -50,6 +50,16 @@ export type Datalet = {
    * `Vault 1586f18f` never did.
    */
   title?: string;
+  /**
+   * When this datalet was put out of the way, if it was.
+   *
+   * Archiving is emphatically not deleting: the vault, its credentials and
+   * every record stay exactly as they were, and restoring is one click. It
+   * exists because datalets are cheap to make and some are made to be
+   * finished with - a list that only ever grows makes the three you are using
+   * harder to find, which is the opposite of what the list is for.
+   */
+  archivedAt?: number;
 };
 
 /**
@@ -190,6 +200,34 @@ export function setActiveDatalet(id: string): void {
   writeDatalets({ ...registry, activeId: id });
 }
 
+/**
+ * Put a datalet out of the way, or bring it back.
+ *
+ * The open datalet cannot be archived. Archiving it would mean evicting and
+ * switching in one gesture, which is the operation `canLeaveActiveDatalet`
+ * exists to guard - and it would leave the app deciding on its own which
+ * datalet you land in. Open another one first.
+ */
+export function setDataletArchived(id: string, archived: boolean): void {
+  const registry = readDatalets();
+  if (!registry) return;
+  if (archived && id === registry.activeId) return;
+  writeDatalets({
+    ...registry,
+    entries: registry.entries.map((entry) =>
+      entry.id === id
+        ? archived
+          ? { ...entry, archivedAt: Date.now() }
+          : stripArchive(entry)
+        : entry),
+  });
+}
+
+function stripArchive(entry: Datalet): Datalet {
+  const { archivedAt: _archivedAt, ...rest } = entry;
+  return rest;
+}
+
 /** Forget a datalet. Its vault is untouched, so the data is not destroyed. */
 export function forgetDatalet(id: string): void {
   const registry = readDatalets();
@@ -202,8 +240,17 @@ export function forgetDatalet(id: string): void {
   writeDatalets({ activeId, entries });
 }
 
-/** Every datalet this browser knows about, active first. */
-export function listDatalets(): { entries: Datalet[]; activeId: string } {
+/**
+ * Every datalet this browser knows about, split by whether it has been put
+ * away. The active one is never in `archived`, because it cannot be archived
+ * while it is open.
+ */
+export function listDatalets(): { entries: Datalet[]; archived: Datalet[]; activeId: string } {
   const registry = readDatalets();
-  return registry ? { entries: registry.entries, activeId: registry.activeId } : { entries: [], activeId: "" };
+  if (!registry) return { entries: [], archived: [], activeId: "" };
+  return {
+    entries: registry.entries.filter((entry) => entry.archivedAt === undefined),
+    archived: registry.entries.filter((entry) => entry.archivedAt !== undefined),
+    activeId: registry.activeId,
+  };
 }

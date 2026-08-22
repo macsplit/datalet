@@ -12,6 +12,7 @@ type Seed = {
   entries: Array<{
     id: string;
     title?: string;
+    archivedAt?: number;
     vault?: { vaultId: string; vaultToken: string; nodeId: string };
   }>;
   activeId: string;
@@ -311,4 +312,53 @@ test("renaming the app records the name against the datalet", async ({ page }) =
     const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
     return registry.entries?.[0]?.title;
   })).toBe("Field notes");
+});
+
+test("a datalet can be put away and brought back without touching its vault", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [{ id: "a", vault: vaultA }, { id: "b", title: "Old experiment", vault: vaultB }],
+  });
+  await page.goto("/settings/datalets");
+
+  await page.getByRole("button", { name: "Archive" }).click();
+  await expect(page.getByText("Archived (1)")).toBeVisible();
+
+  // The credentials survive: archiving is not forgetting, and the datalet must
+  // still be openable afterwards.
+  expect(await page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
+    const entry = registry.entries.find((e: { id: string }) => e.id === "b");
+    return { hasVault: entry.vault?.vaultToken !== undefined, archived: entry.archivedAt !== undefined };
+  })).toEqual({ hasVault: true, archived: true });
+
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("Archived (")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
+});
+
+test("the open datalet offers no way to archive itself", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
+  });
+  await page.goto("/settings/datalets");
+  // One Archive button, for the one that is not open. Archiving the open one
+  // would be an eviction and a switch at once.
+  await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(1);
+});
+
+test("archived datalets are out of the main list until expanded", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.goto("/settings/datalets");
+  await expect(page.getByText("Old sketches")).not.toBeVisible();
+  await page.getByText("Archived (1)").click();
+  await expect(page.getByText("Old sketches")).toBeVisible();
 });
