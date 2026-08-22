@@ -146,10 +146,16 @@ test("datalet operations survive a random walk", async ({ page }) => {
 
   for (let step = 0; step < STEPS; step += 1) {
     const operations = await availableOperations(page);
-    if (operations.length === 0) break;
+    if (operations.length === 0) {
+      console.log(`fuzz: step ${step + 1}/${STEPS}: no operation is available; walk complete`);
+      break;
+    }
 
     const operation = operations[Math.floor(next() * operations.length)];
     log.push(operation.name);
+    console.log(
+      `fuzz: step ${step + 1}/${STEPS}: ${operation.name} (${operations.length} available)`,
+    );
     await operation.run();
 
     // Several operations reload; wait for the page to be usable again rather
@@ -173,6 +179,7 @@ test("datalet operations survive a random walk", async ({ page }) => {
         + server.violations.map((violation) => `  - vault ${violation.vaultId}: ${violation.reason}`).join("\n"),
       );
     }
+    console.log(`fuzz: step ${step + 1}/${STEPS}: invariants hold`);
   }
 
   console.log(`fuzz: seed ${SEED}, ${log.length} operations, no invariant breached`);

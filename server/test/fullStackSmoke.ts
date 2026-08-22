@@ -1,4 +1,5 @@
 import { chromium, expect } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { closeNeo4j, neo4jSession } from "../src/neo4j/client.js";
 import { redis } from "../src/redis/client.js";
@@ -18,7 +19,9 @@ const browser = await chromium.launch({
 });
 
 try {
-  const firstDevice = await browser.newContext();
+  const firstDevice = await browser.newContext({
+    extraHTTPHeaders: { "X-Forwarded-For": `smoke-test-${randomUUID()}` },
+  });
   const firstPage = await firstDevice.newPage();
   const patchResponses: Array<{ status: number; request: string | null; body: string }> = [];
   firstPage.on("response", async (response) => {
@@ -26,19 +29,21 @@ try {
       patchResponses.push({
         status: response.status(),
         request: response.request().postData(),
-        body: await response.text(),
+        body: await response.text().catch(() => "<body unavailable after navigation>"),
       });
     }
   });
-  await firstPage.goto(`${baseUrl}/settings`);
+  await firstPage.goto(`${baseUrl}/settings/datalets`);
   await firstPage.getByRole("button", { name: "Create sync vault" }).click();
   await expect(firstPage.getByText("Connected", { exact: true })).toBeVisible({ timeout: 15_000 });
   await firstPage.getByRole("button", { name: "Show" }).click();
-  const pairingCode = await firstPage.getByLabel("Pairing code").inputValue();
+  const pairingCode = await firstPage.getByRole("textbox", { name: "Pairing code", exact: true }).inputValue();
   ({ vaultId, vaultToken } = decodePairingCode(pairingCode));
   await firstPage.getByRole("button", { name: "Create temporary code" }).click();
-  const temporaryCode = await firstPage.getByLabel("Temporary pair code").inputValue();
+  const temporaryCode = await firstPage.getByRole("textbox", { name: "Temporary pair code", exact: true }).inputValue();
   expect(temporaryCode).toMatch(/^PAIR-/);
+
+  await firstPage.goto(`${baseUrl}/settings`);
 
   // Pairing reloads immediately, while the deterministic Settings singleton
   // is created after its ORM subscription becomes ready. Wait for that real
@@ -96,12 +101,15 @@ try {
     await neo4j.close();
   }
 
-  const secondDevice = await browser.newContext();
+  const secondDevice = await browser.newContext({
+    extraHTTPHeaders: { "X-Forwarded-For": `smoke-test-${randomUUID()}` },
+  });
   const secondPage = await secondDevice.newPage();
-  await secondPage.goto(`${baseUrl}/settings`);
-  await secondPage.getByLabel("Pairing code").fill(temporaryCode);
+  await secondPage.goto(`${baseUrl}/settings/datalets`);
+  await secondPage.getByRole("textbox", { name: "Pairing code", exact: true }).fill(temporaryCode);
   await secondPage.getByRole("button", { name: "Join vault" }).click();
   await expect(secondPage.getByText("Connected", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await secondPage.goto(`${baseUrl}/settings`);
   await expect(secondPage.getByLabel("Shown in the nav bar and browser tab")).toHaveValue(
     marker,
     { timeout: 20_000 },

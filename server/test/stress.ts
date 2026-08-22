@@ -28,6 +28,8 @@ import { createSyncServer } from "../src/httpServer.js";
 import { redis } from "../src/redis/client.js";
 import { snapshot, deleteVault } from "../src/vaultStore.js";
 import { VAULT_QUOTA_BYTES } from "../src/redis/config.js";
+import { MaterializerService } from "../src/materializer.js";
+import { closeNeo4j, neo4jDriver } from "../src/neo4j/client.js";
 
 const SEED = Number(process.env.STRESS_SEED ?? Math.floor(Math.random() * 1e9));
 const VAULTS = Number(process.env.STRESS_VAULTS ?? 4);
@@ -47,12 +49,12 @@ function random(seed: number) {
 
 const next = random(SEED);
 
+const progress = (line: string) => process.stdout.write(`stress: ${line}\n`);
+
 function fail(what: string, detail: unknown): never {
-  console.error(`\nstress: ${what}`);
-  console.error(typeof detail === "string" ? detail : JSON.stringify(detail, null, 2));
-  console.error(`\nReplay with: STRESS_SEED=${SEED} STRESS_VAULTS=${VAULTS} `
-    + `STRESS_WRITERS=${WRITERS} STRESS_ROUNDS=${ROUNDS} STRESS_RECORD_BYTES=${RECORD_BYTES} pnpm stress`);
-  process.exit(1);
+  throw new Error(
+    `${what}\n${typeof detail === "string" ? detail : JSON.stringify(detail, null, 2)}`,
+  );
 }
 
 /** The client's snapshot rule, enforced here so a vault cannot become unreadable. */
@@ -71,8 +73,8 @@ function hlc(millis: number, counter: number, node: string): string {
 }
 
 async function main() {
-  await redis().ping();
-  console.log(`stress: seed ${SEED}, ${VAULTS} vaults x ${WRITERS} writers x ${ROUNDS} rounds, `
+  await Promise.all([redis().ping(), neo4jDriver().verifyConnectivity()]);
+  progress(`seed ${SEED}, ${VAULTS} vaults x ${WRITERS} writers x ${ROUNDS} rounds, `
     + `${RECORD_BYTES}B records`);
 
   const server = createSyncServer("/tmp/localgraph-no-static-files");
@@ -82,25 +84,45 @@ async function main() {
   const base = `http://127.0.0.1:${port}`;
 
   const vaults: Array<{ vaultId: string; vaultToken: string }> = [];
-  for (let i = 0; i < VAULTS; i += 1) {
-    const response = await fetch(`${base}/sync/vaults`, { method: "POST" });
-    if (!response.ok) fail("vault creation failed", `status ${response.status}`);
-    vaults.push(await response.json() as { vaultId: string; vaultToken: string });
-  }
-
-  const post = (vault: { vaultId: string; vaultToken: string }, body: unknown) =>
-    fetch(`${base}/sync/patches?vault=${encodeURIComponent(vault.vaultId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${vault.vaultToken}` },
-      body: JSON.stringify(body),
-    });
-
+  let materializer: MaterializerService | undefined;
   try {
+    const creationIdentity = `stress-test-${SEED}-${randomUUID()}`;
+    for (let i = 0; i < VAULTS; i += 1) {
+      progress(`creating vault ${i + 1}/${VAULTS}`);
+      const response = await fetch(`${base}/sync/vaults`, {
+        method: "POST",
+        headers: { "X-Forwarded-For": creationIdentity },
+      });
+      if (!response.ok) fail("vault creation failed", `status ${response.status}`);
+      vaults.push(await response.json() as { vaultId: string; vaultToken: string });
+    }
+
+    const post = (vault: { vaultId: string; vaultToken: string }, body: unknown) =>
+      fetch(`${base}/sync/patches?vault=${encodeURIComponent(vault.vaultId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${vault.vaultToken}` },
+        body: JSON.stringify(body),
+      });
+
+    const vaultIds = new Set(vaults.map(({ vaultId }) => vaultId));
+    materializer = new MaterializerService({
+      claimShard: false,
+      discoveryIntervalMs: 50,
+      blockMs: 50,
+      consumerName: `stress-${randomUUID()}`,
+      ownsVault: (vaultId) => vaultIds.has(vaultId),
+    });
+    await materializer.start();
     for (let round = 0; round < ROUNDS; round += 1) {
-      for (const vault of vaults) {
+      progress(`round ${round + 1}/${ROUNDS} starting`);
+      for (const [vaultIndex, vault] of vaults.entries()) {
         const graph = `did:ng:${vault.vaultId}`;
         const subject = `${graph}|record-${Math.floor(next() * 5)}`;
         const path = `/${subject.replace(/~/g, "~0").replace(/\//g, "~1")}`;
+        progress(
+          `round ${round + 1}/${ROUNDS}, vault ${vaultIndex + 1}/${VAULTS}: `
+          + `racing ${WRITERS} writers`,
+        );
 
         // Concurrent writers on one field. Per-field LWW has to settle on the
         // highest HLC no matter what order they arrive in.
@@ -134,30 +156,53 @@ async function main() {
           }
         }
 
-        if (accepted.length > 0) {
-          // Idempotency: replaying an accepted batch must not apply twice.
-          const body = {
-            nodeId: "node-replay",
-            batchId: "fixed-replay-batch",
-            hlc: hlc(1_700_000_000_000 + round, 900, "node-replay"),
-            shape: "did:ng:z:Stress",
-            patches: [{ op: "add", path, value: {} }],
-          };
-          const first = await post(vault, body);
-          const second = await post(vault, body);
-          if (first.ok && second.ok) {
-            const a = await first.json() as { seq: number };
-            const b = await second.json() as { seq: number };
-            if (a.seq !== b.seq) {
-              fail("a replayed batchId produced a new sequence number",
-                `first seq ${a.seq}, replay seq ${b.seq}`);
-            }
-          }
+        if (accepted.length === 0) {
+          fail("every concurrent writer was refused", `round ${round}, vault ${vaultIndex}`);
         }
 
-        // The snapshot must stay readable by the client, and the winning value
-        // must be the highest HLC among writers that were accepted.
-        const state = await snapshot(vault.vaultId);
+        // Idempotency: replaying an accepted field update must not apply twice.
+        // A distinct id per round avoids accidentally checking an older dedupe
+        // entry, and a field patch (not duplicate root creation) is accepted.
+        const replayBody = {
+          nodeId: "node-replay",
+          batchId: `fixed-replay-batch-${round}`,
+          hlc: hlc(1_700_000_000_000 + round, 900, "node-replay"),
+          shape: "did:ng:z:Stress",
+          patches: [{ op: "add", path: `${path}/replay`, value: round }],
+        };
+        const first = await post(vault, replayBody);
+        const second = await post(vault, replayBody);
+        if (!first.ok || !second.ok) {
+          fail(
+            "an idempotency probe was refused",
+            `first ${first.status}: ${await first.text()}; second ${second.status}: ${await second.text()}`,
+          );
+        }
+        const a = await first.json() as { seq: number };
+        const b = await second.json() as { seq: number };
+        if (a.seq !== b.seq) {
+          fail("a replayed batchId produced a new sequence number",
+            `first seq ${a.seq}, replay seq ${b.seq}`);
+        }
+
+        // Neo4j is asynchronous. Poll until the highest-HLC contender is
+        // materialized, then apply the same key-shape invariant as the client.
+        const winner = contenders[contenders.length - 1];
+        let state = await snapshot(vault.vaultId);
+        let record = state.records[subject] as Record<string, unknown> | undefined;
+        const deadline = Date.now() + 8_000;
+        while (record?.field !== winner.value && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          state = await snapshot(vault.vaultId);
+          record = state.records[subject] as Record<string, unknown> | undefined;
+        }
+        if (record?.field !== winner.value) {
+          fail(
+            "the highest-HLC writer did not reach the durable snapshot",
+            `expected writer ${winner.writer}, stored ${JSON.stringify(record?.field)}`,
+          );
+        }
+
         const problem = snapshotProblem(graph, state.records as Record<string, Record<string, unknown>>);
         if (problem) fail("the server holds a snapshot the client would reject", problem);
 
@@ -166,19 +211,30 @@ async function main() {
           fail("stored bytes exceeded the vault quota",
             `${stored} > ${VAULT_QUOTA_BYTES} after round ${round}`);
         }
+        progress(
+          `round ${round + 1}/${ROUNDS}, vault ${vaultIndex + 1}/${VAULTS}: `
+          + `durable winner w${winner.writer}, ${stored} bytes`,
+        );
       }
+      progress(`round ${round + 1}/${ROUNDS} complete`);
     }
 
-    console.log(`stress: seed ${SEED}, ${ROUNDS} rounds over ${VAULTS} vaults, no invariant breached`);
+    progress(`seed ${SEED}, ${ROUNDS} rounds over ${VAULTS} vaults, no invariant breached`);
   } finally {
+    progress("cleaning up materializer and test vaults");
+    await materializer?.stop().catch(() => undefined);
     for (const vault of vaults) await deleteVault(vault.vaultId).catch(() => undefined);
     server.close();
+    await once(server, "close");
     redis().disconnect();
+    await closeNeo4j();
   }
 }
 
 main().catch((error) => {
   console.error(error);
-  console.error(`\nReplay with: STRESS_SEED=${SEED} pnpm stress`);
+  console.error(`\nReplay with: STRESS_SEED=${SEED} STRESS_VAULTS=${VAULTS} `
+    + `STRESS_WRITERS=${WRITERS} STRESS_ROUNDS=${ROUNDS} `
+    + `STRESS_RECORD_BYTES=${RECORD_BYTES} pnpm stress`);
   process.exit(1);
 });

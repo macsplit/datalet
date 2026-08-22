@@ -8,6 +8,8 @@ import { createSyncServer } from "../src/httpServer.js";
 import { redis } from "../src/redis/client.js";
 import { deleteVault, snapshot } from "../src/vaultStore.js";
 import { sanitizeLabel, BOUNDED_RECORD_TYPE_LABELS } from "../src/neo4j/labels.js";
+import { closeNeo4j, neo4jDriver } from "../src/neo4j/client.js";
+import { MaterializerService } from "../src/materializer.js";
 
 /**
  * The weaknesses worth checking on a server anyone can reach: whether one
@@ -22,7 +24,10 @@ import { sanitizeLabel, BOUNDED_RECORD_TYPE_LABELS } from "../src/neo4j/labels.j
  * test is actually about.
  */
 
-after(() => redis().disconnect());
+after(async () => {
+  redis().disconnect();
+  await closeNeo4j();
+});
 
 async function withServer<T>(run: (base: string) => Promise<T>): Promise<T> {
   const server = createSyncServer("/tmp/localgraph-no-static-files");
@@ -33,12 +38,13 @@ async function withServer<T>(run: (base: string) => Promise<T>): Promise<T> {
     return await run(`http://127.0.0.1:${port}`);
   } finally {
     server.close();
+    await once(server, "close");
   }
 }
 
 async function reachable(t: { skip: (reason: string) => void }): Promise<boolean> {
   try {
-    await redis().ping();
+    await Promise.all([redis().ping(), neo4jDriver().verifyConnectivity()]);
     return true;
   } catch (error) {
     if (process.env.REQUIRE_SYNC_INTEGRATION === "1") throw error;
@@ -48,9 +54,19 @@ async function reachable(t: { skip: (reason: string) => void }): Promise<boolean
 }
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-const newVault = async (base: string) =>
-  await (await fetch(`${base}/sync/vaults`, { method: "POST" })).json() as
-    { vaultId: string; vaultToken: string };
+const newVault = async (base: string) => {
+  // Creation is intentionally rate-limited. A unique trusted-proxy identity
+  // keeps repeated local security runs independent of an earlier run's Redis
+  // counter; silently parsing a 429 as credentials turns every later failure
+  // into a misleading `vaultId === undefined` symptom.
+  const response = await fetch(`${base}/sync/vaults`, {
+    method: "POST",
+    headers: { "X-Forwarded-For": `security-test-${randomUUID()}` },
+  });
+  const raw = await response.text();
+  assert.equal(response.status, 200, `vault creation failed: ${raw}`);
+  return JSON.parse(raw) as { vaultId: string; vaultToken: string };
+};
 
 function patchBody(graph: string, id: string, fields: Record<string, string>, counter: number) {
   const subject = `${graph}|${id}`;
@@ -159,7 +175,15 @@ test("awkward text survives a round trip through Redis and Neo4j unchanged", asy
   await withServer(async (base) => {
     const vault = await newVault(base);
     const graph = `did:ng:${vault.vaultId}`;
+    const materializer = new MaterializerService({
+      claimShard: false,
+      discoveryIntervalMs: 50,
+      blockMs: 50,
+      consumerName: `security-${randomUUID()}`,
+      ownsVault: (vaultId) => vaultId === vault.vaultId,
+    });
     try {
+      await materializer.start();
       // Encoding and collation hazards, written as escapes so the source stays
       // ASCII: combining marks, a right-to-left override, zero-width joiner
       // and BOM, astral-plane emoji, dotted/dotless Turkish i, and characters
@@ -183,15 +207,23 @@ test("awkward text survives a round trip through Redis and Neo4j unchanged", asy
       });
       assert.equal(response.status, 200, await response.text());
 
-      const state = await snapshot(vault.vaultId);
-      const stored = state.records[subject] as Record<string, string> | undefined;
-      assert.ok(stored, `record missing; keys were ${Object.keys(state.records).join(", ")}`);
+      let stored: Record<string, string> | undefined;
+      let observedKeys: string[] = [];
+      const deadline = Date.now() + 8_000;
+      while (!stored && Date.now() < deadline) {
+        const state = await snapshot(vault.vaultId);
+        observedKeys = Object.keys(state.records);
+        stored = state.records[subject] as Record<string, string> | undefined;
+        if (!stored) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.ok(stored, `record missing; keys were ${observedKeys.join(", ")}`);
       for (const [key, value] of Object.entries(values)) {
         progress(`  checking ${key}: stored=${JSON.stringify(stored[key])} expected=${JSON.stringify(value)}`);
         assert.equal(stored[key], value, `${key} did not survive the round trip`);
       }
       assert.equal(stored["@graph"], graph, "the key form the client requires must survive too");
     } finally {
+      await materializer.stop();
       await deleteVault(vault.vaultId).catch(() => undefined);
     }
   });
