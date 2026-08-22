@@ -21,7 +21,10 @@ export const MIN_CONTRAST = 2.5;
  */
 const READABILITY_PAIRS: ReadonlyArray<readonly [ThemeColorRole, readonly ThemeColorRole[]]> = [
   ["text", ["bg", "surface"]],
-  ["text-muted", ["bg", "surface"]],
+  // Also against surface-alt: that is the secondary button fill, and its
+  // label is text-muted. Before the buttons were shaded, surface-alt carried
+  // no text at all and was decorative.
+  ["text-muted", ["bg", "surface", "surface-alt"]],
   ["text-subtle", ["bg", "surface"]],
   ["accent-text", ["bg", "surface"]],
   ["danger", ["bg", "surface"]],

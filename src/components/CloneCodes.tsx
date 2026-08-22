@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { getVaultConfig } from "../utils/remoteSyncEngine";
+import { copyText } from "../utils/clipboard";
 
 type CloneCode = { code: string; createdAt: number };
 
@@ -93,13 +94,14 @@ export function CloneCodes() {
   };
 
   const copy = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
+    if (await copyText(code)) {
       setCopied(code);
       setTimeout(() => setCopied(""), 2000);
-    } catch {
-      // Clipboard unavailable; the code is on screen to copy by hand.
+      return;
     }
+    // Never silently: a Copy button that does nothing is indistinguishable
+    // from a broken app, and the next paste would be of something stale.
+    setError("This browser would not let the page copy for you. Select the code and copy it by hand.");
   };
 
   return (
@@ -126,7 +128,12 @@ export function CloneCodes() {
             {codes.map((entry) => (
               <div className="layout-row" key={entry.code}>
                 <input className="input" readOnly aria-label={`Copy code ${entry.code}`} value={entry.code} />
-                <button type="button" className="secondary-btn" onClick={() => void copy(entry.code)}>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  aria-label={`Copy the code ${entry.code}`}
+                  onClick={() => void copy(entry.code)}
+                >
                   {copied === entry.code ? "Copied" : "Copy"}
                 </button>
                 <button

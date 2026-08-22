@@ -205,7 +205,7 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   await expect(page.getByRole("img", { name: "Pairing QR code" })).toHaveCount(0);
   await page.getByRole("button", { name: "Show" }).click();
   await expect(page.getByRole("img", { name: "Pairing QR code" })).toBeVisible();
-  await expect(page.getByLabel("Pairing code")).toHaveValue(/^LG1-/);
+  await expect(page.getByLabel("Pairing code", { exact: true })).toHaveValue(/^LG1-/);
   await expect.poll(() => submitted).toBeTruthy();
 
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -251,7 +251,7 @@ test("a connected device can issue a one-use temporary pair code", async ({ page
   await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create temporary code" }).click();
 
-  await expect(page.getByLabel("Temporary pair code")).toHaveValue("PAIR-K3RM-9T7A-X");
+  await expect(page.getByLabel("Temporary pair code", { exact: true })).toHaveValue("PAIR-K3RM-9T7A-X");
   await expect(page.getByText(/expires at/i)).toBeVisible();
 });
 
@@ -334,7 +334,7 @@ test("a redeemed code survives an initial snapshot failure as a durable retry", 
   await page.getByRole("button", { name: "Join vault" }).click();
 
   await expect(page.getByText(/retry with the durable pairing code now shown/i)).toBeVisible();
-  await expect(page.getByLabel("Pairing code")).toHaveValue(/^LG1-/);
+  await expect(page.getByLabel("Pairing code", { exact: true })).toHaveValue(/^LG1-/);
 });
 
 test("joining primes remote settings before reloading into the vault", async ({ page }) => {

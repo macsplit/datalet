@@ -12,6 +12,7 @@ import { useState } from "react";
 import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
 import { decodePairingCode, encodePairingCode } from "../utils/pairingCode";
 import { PairingQr, PairingScanner } from "./PairingQr";
+import { copyText } from "../utils/clipboard";
 
 /**
  * Pairing/unpairing switches which graph the whole app reads from
@@ -30,7 +31,12 @@ export function SyncSettings() {
   const [error, setError] = useState<string | undefined>();
   const [showPairingCode, setShowPairingCode] = useState(false);
   const [joinCode, setJoinCode] = useState("");
-  const [copied, setCopied] = useState(false);
+  // Keyed by which control was pressed, not a boolean. One flag for two Copy
+  // buttons meant copying the temporary code also reported success under the
+  // pairing code - and replaced its "anyone with this code can read and write
+  // this vault" warning with "Copied." for two seconds.
+  const [copied, setCopied] = useState<"" | "pairing" | "temporary">("");
+  const [copyFailed, setCopyFailed] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState<string | undefined>();
   const [generatingTemporary, setGeneratingTemporary] = useState(false);
@@ -171,15 +177,15 @@ export function SyncSettings() {
     window.location.reload();
   }
 
-  async function handleCopy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable (e.g. insecure context) — the value is
-      // still visible for manual copy, so this is a silent no-op.
+  async function handleCopy(text: string, which: "pairing" | "temporary") {
+    if (await copyText(text)) {
+      setCopyFailed(false);
+      setCopied(which);
+      setTimeout(() => setCopied(""), 2000);
+      return;
     }
+    setCopied("");
+    setCopyFailed(true);
   }
 
   if (config) {
@@ -223,13 +229,28 @@ export function SyncSettings() {
             <button type="button" className="secondary-btn" onClick={() => setShowPairingCode((value) => !value)}>
               {showPairingCode ? "Hide" : "Show"}
             </button>
-            <button type="button" className="secondary-btn" onClick={() => handleCopy(pairingCode)}>
-              Copy
+            <button
+              type="button"
+              className="secondary-btn"
+              aria-label="Copy pairing code"
+              onClick={() => void handleCopy(pairingCode, "pairing")}
+            >
+              {copied === "pairing" ? "Copied" : "Copy"}
             </button>
           </div>
+          {/* The warning stays put. It used to be replaced by "Copied.", so the
+              one moment someone was about to send this code elsewhere was the
+              moment the page stopped saying what it grants. */}
           <p className="helper-text">
-            {copied ? "Copied." : "Anyone with this code can read and write this vault — share it only with your own devices."}
+            Anyone with this code can read and write this vault — share it only with your
+            own devices.
           </p>
+          {copyFailed && (
+            <p className="helper-text danger-text" role="alert">
+              This browser would not let the page copy for you. Select the code and copy it
+              by hand.
+            </p>
+          )}
         </div>
         {pairingCodeError && (
           <p className="helper-text danger-text" role="alert">
@@ -252,8 +273,13 @@ export function SyncSettings() {
           {temporaryCode && (
             <div className="layout-row">
               <input className="input" aria-label="Temporary pair code" readOnly value={temporaryCode} />
-              <button type="button" className="secondary-btn" onClick={() => handleCopy(temporaryCode)}>
-                {copied ? "Copied" : "Copy"}
+              <button
+                type="button"
+                className="secondary-btn"
+                aria-label="Copy temporary pair code"
+                onClick={() => void handleCopy(temporaryCode, "temporary")}
+              >
+                {copied === "temporary" ? "Copied" : "Copy"}
               </button>
             </div>
           )}

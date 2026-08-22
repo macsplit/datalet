@@ -700,16 +700,23 @@ a {
     width: fit-content;
 }
 
+/* Shaded rather than flat. These used to take `--color-surface`, the exact
+   colour of the panel behind them, so a 1px border was the only thing marking
+   a button as a button. `surface-alt` is the role that already exists for a
+   near-neighbour of the panel: enough to catch the eye, still muted, and still
+   something a user can retheme. Hover steps up to `border`, which is a further
+   notch in the same neutral direction rather than a new colour. */
 .secondary-btn {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     padding: 0.45rem 0.75rem;
-    background: var(--color-surface);
+    background: var(--color-surface-alt);
     color: var(--color-text-muted);
     cursor: pointer;
 }
 
 .secondary-btn:hover:not(:disabled) {
+    background: var(--color-border);
     color: var(--color-text);
     border-color: var(--color-text-subtle);
 }
