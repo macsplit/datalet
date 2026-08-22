@@ -370,14 +370,13 @@ export function DataletSettings() {
             </button>
           </div>
           <p className="helper-text">
-            To start a datalet from a backup file, add an empty one and then use
-            <strong> Import backup</strong> below, which fills whichever datalet is open.
+            Use an <strong>LG1</strong> or <strong>PAIR</strong> code to add an existing
+            datalet to this device. A <strong>COPY</strong> code creates a separate datalet
+            from someone else's data. The original and the copy remain independent.
           </p>
           <p className="helper-text">
-            An <strong>LG1</strong> or <strong>PAIR</strong> code opens the same datalet
-            here as well, so edits made in either place meet. A <strong>COPY</strong> code
-            makes a new datalet of your own from someone else's — from then on the two are
-            unrelated, and nothing you do reaches theirs.
+            To start a datalet from a backup file, add an empty one and then use
+            <strong> Import backup</strong> below.
           </p>
         </div>
       </div>
