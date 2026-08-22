@@ -397,9 +397,20 @@ render them in a fresh browser profile.
 ## Fuzzing the datalet flows
 
 ```sh
-pnpm fuzz                      # a short random walk
-FUZZ_STEPS=200 pnpm fuzz       # a longer one; same harness, bigger budget
-FUZZ_SEED=12345 pnpm fuzz      # replay a specific walk exactly
+# One walk with a random seed, 40 steps. The seed is printed either way.
+pnpm fuzz
+
+# A longer walk: same harness, bigger budget.
+FUZZ_STEPS=200 pnpm fuzz
+
+# Replay a specific walk exactly, e.g. one a failure reported.
+FUZZ_SEED=12345 FUZZ_STEPS=200 pnpm fuzz
+
+# Many seeds, stopping at the first failure so you fix that one first.
+for seed in $(seq 1 50); do
+  echo "--- seed $seed ---"
+  FUZZ_SEED=$seed FUZZ_STEPS=60 pnpm fuzz || break
+done
 ```
 
 `tests/fuzz.spec.ts` drives datalet operations — create a vault, add one,

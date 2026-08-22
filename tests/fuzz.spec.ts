@@ -23,8 +23,20 @@ import { checkInvariants } from "./support/dataletInvariants";
  *   FUZZ_SEED=12345 pnpm fuzz        # replay
  */
 
-const SEED = Number(process.env.FUZZ_SEED ?? Math.floor(Math.random() * 1e9));
 const STEPS = Number(process.env.FUZZ_STEPS ?? 40);
+
+/**
+ * Resolved inside the test, never at module scope, and kept out of the test
+ * title. Playwright loads this file twice - once to collect tests, once in the
+ * worker - so a random value chosen at module scope differs between the two
+ * loads. Putting it in the title then made the titles disagree and the worker
+ * could not find the test at all, which is a confusing way for `pnpm fuzz`
+ * with no seed to fail.
+ */
+function resolveSeed(): number {
+  const configured = process.env.FUZZ_SEED;
+  return configured === undefined ? Math.floor(Math.random() * 1e9) : Number(configured);
+}
 
 /** mulberry32: small, seedable, and good enough to choose between buttons. */
 function random(seed: number) {
@@ -110,9 +122,11 @@ async function availableOperations(page: Page): Promise<Operation[]> {
   return operations;
 }
 
-test(`datalet operations survive a random walk (seed ${SEED}, ${STEPS} steps)`, async ({ page }) => {
+test("datalet operations survive a random walk", async ({ page }) => {
   test.setTimeout(STEPS * 4_000 + 60_000);
 
+  const SEED = resolveSeed();
+  console.log(`fuzz: seed ${SEED}, up to ${STEPS} steps`);
   const next = random(SEED);
   const log: string[] = [];
   let server: FakeSyncServer;
