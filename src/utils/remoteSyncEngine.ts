@@ -18,6 +18,8 @@
 
 import {
   applyRemoteSyncPatches,
+  evictGraph,
+  exportGraphBackup,
   flushLocalPersistence,
   onLocalPatch,
   reconcileGraphSnapshot,
@@ -100,13 +102,98 @@ async function fetchAndReconcileSnapshot(config: VaultConfig, flushImmediately =
   setCursor(config.vaultId, snapshot.seq);
 }
 
-/** Validate and prime a vault locally before the caller reloads into its graph. */
-export async function setVaultConfig(vaultId: string, vaultToken: string) {
+/**
+ * Turn a datalet's records into the patches that would have created them.
+ *
+ * Used to carry an unpaired datalet into a vault it has just been given. The
+ * server has to receive them as ordinary patches, because a record that only
+ * ever existed locally is invisible to it, and the first resync from an empty
+ * server snapshot would then delete it.
+ */
+function patchesForRecords(records: Store): Patch[] {
+  const patches: Patch[] = [];
+  for (const record of Object.values(records)) {
+    const id = record["@id"];
+    patches.push({ op: "add", path: `/${encodePathSegment(id)}` });
+    for (const [property, value] of Object.entries(record)) {
+      if (property === "@id" || property === "@graph" || value === undefined) continue;
+      const path = `/${encodePathSegment(id)}/${encodePathSegment(property)}`;
+      patches.push(Array.isArray(value)
+        ? { op: "add", path, value, valType: "set" }
+        : { op: "add", path, value });
+    }
+  }
+  return patches;
+}
+
+/** RFC 6901: `~` becomes `~0` and `/` becomes `~1`, matching patchTarget's decode. */
+function encodePathSegment(segment: string): string {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+/**
+ * Move an unpaired datalet's records into the vault it has just been given.
+ *
+ * Without this, creating a vault silently emptied the app: pairing repoints the
+ * active datalet at the vault's graph, the new vault is empty, and everything
+ * built beforehand stayed behind in the old graph - unreachable, and still
+ * occupying the browser's storage budget. It read as total data loss, and the
+ * only documented remedy was to have exported a backup first.
+ *
+ * The old graph is evicted before the records are written so the two never
+ * occupy storage at once, which would put a datalet near the cap over it. The
+ * records are held in memory across that gap, and put back if the write fails.
+ */
+function carryRecordsIntoVault(config: VaultConfig, fromGraph: string): void {
+  const backup = exportGraphBackup(fromGraph);
+  if (backup.records.length === 0) return;
+
+  const targetGraph = `did:ng:${config.vaultId}`;
+  const carried: Store = {};
+  for (const { record } of backup.records) {
+    carried[`${targetGraph}|${record["@id"]}`] = { ...record, "@graph": targetGraph };
+  }
+
+  evictGraph(fromGraph);
+  try {
+    if (!reconcileGraphSnapshot(targetGraph, carried)) {
+      throw new Error("The existing records failed validation on the way into the vault.");
+    }
+  } catch (error) {
+    // Put it back rather than leaving someone with neither copy.
+    reconcileGraphSnapshot(fromGraph, Object.fromEntries(
+      backup.records.map(({ key, record }) => [key, record]),
+    ));
+    flushLocalPersistence();
+    throw error;
+  }
+  flushLocalPersistence();
+
+  // Queued rather than sent: the outbox is durable, so this survives a failed
+  // request, a closed tab, and being offline at the moment of pairing.
+  enqueueOutbound(config, patchesForRecords(carried), "did:ng:z:Migration");
+}
+
+/**
+ * Validate and prime a vault locally before the caller reloads into its graph.
+ *
+ * `carryFrom` names the graph whose records should move into the vault, and is
+ * passed only when creating a vault for the datalet already in front of you.
+ * Joining an existing vault must never pass it: the vault's own contents are
+ * what you asked for, and uploading local records over them would be a merge
+ * nobody requested.
+ */
+export async function setVaultConfig(
+  vaultId: string,
+  vaultToken: string,
+  options: { carryFrom?: string } = {},
+) {
   const config: VaultConfig = { vaultId, vaultToken, nodeId: randomUuid() };
   // A joining browser must have the remote records on disk before reload.
   // Otherwise providers can bootstrap defaults before the asynchronous sync
   // connection delivers its first snapshot, creating a newer conflicting edit.
   await fetchAndReconcileSnapshot(config, true);
+  if (options.carryFrom) carryRecordsIntoVault(config, options.carryFrom);
   ensureLocalDatalet();
   pairActiveDatalet(config);
   return config;

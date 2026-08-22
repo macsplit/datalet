@@ -12,6 +12,7 @@ import { useState } from "react";
 import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
 import { decodePairingCode, encodePairingCode } from "../utils/pairingCode";
 import { PairingQr, PairingScanner } from "./PairingQr";
+import usePrivateNuri from "./usePrivateNuri";
 import { copyText } from "../utils/clipboard";
 
 /**
@@ -19,13 +20,20 @@ import { copyText } from "../utils/clipboard";
  * (usePrivateNuri.ts) — a full reload is the simplest way to get every
  * `useShape` subscription to restart scoped to the new graph.
  */
-async function applyAndReload(vaultId: string, vaultToken: string) {
-  await setVaultConfig(vaultId, vaultToken);
+async function applyAndReload(
+  vaultId: string,
+  vaultToken: string,
+  options: { carryFrom?: string } = {},
+) {
+  await setVaultConfig(vaultId, vaultToken, options);
   window.location.reload();
 }
 
 export function SyncSettings() {
   const config = getVaultConfig();
+  // The graph this datalet's records live in today, so creating a vault can
+  // bring them along instead of stranding them.
+  const privateNuri = usePrivateNuri();
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -62,7 +70,9 @@ export function SyncSettings() {
         );
       }
       const created = (await response.json()) as { vaultId: string; vaultToken: string };
-      await applyAndReload(created.vaultId, created.vaultToken);
+      // Creating a vault for the datalet in front of you must bring it with
+      // it. Joining one (below) must not.
+      await applyAndReload(created.vaultId, created.vaultToken, { carryFrom: privateNuri });
     } catch (err) {
       setError(
         err instanceof Error

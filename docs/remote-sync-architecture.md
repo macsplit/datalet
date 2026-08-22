@@ -86,8 +86,10 @@ enters into every device/browser they want kept in sync.
   configured. The implemented client switches the active graph and reloads;
   it does **not** automatically rename records already stored under the old
   local graph. Those records remain in browser storage but are not part of the
-  vault. Use the export under Settings → Manage datalets before pairing, and
-  import after pairing, when the
+  vault. *(Superseded: creating a vault now carries the datalet's records into
+  it — see `setVaultConfig`'s `carryFrom`. This still describes joining an
+  existing vault, where local records are deliberately not uploaded.)* Use the
+  export under Settings → Manage datalets before joining, and import after, when the
   existing local dataset should seed the vault. Until a vault is configured,
   nothing changes — the app is exactly as local-only as it is today.
 

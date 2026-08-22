@@ -363,9 +363,15 @@ short `PAIR-…` code that expires in ten minutes, works exactly once, and is
 rate-limited against guessing — so the durable credential never has to be read
 aloud or retyped.
 
-Pairing switches the app to the vault graph but does not automatically migrate
-records from the previous unpaired graph. To seed a new vault with existing
-local data, export a backup before pairing and import it after pairing.
+Creating a vault for the datalet you are using brings its records with it: they
+are moved into the vault's graph, queued for the server, and the old graph is
+released so it stops occupying storage. Nothing needs exporting first.
+
+Joining an *existing* vault is the opposite and deliberately so — you get that
+vault's contents, and the records already in this browser are not uploaded over
+them. To combine two sets of records, export a backup before joining and import
+it afterwards, which is a merge you have asked for rather than one the app
+performed on your behalf.
 
 Persistence writes are coalesced during rapid edits. Invalid or excessive
 updates, oversized local data, failing subscriptions, malformed block cycles,
