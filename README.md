@@ -1,8 +1,15 @@
 # Datalet Builder
 
-A browser-based builder for defining data schemas and turning them into working
-record-management screens. Schemas, navigation tabs, layouts, blocks, and field
-widgets are stored as graph data and can be changed through the Settings UI.
+Build your own record-keeping apps, kept in your browser.
+
+A **datalet** is one such app together with everything in it — its records, and
+the schemas, navigation tabs, layouts, blocks and field widgets that decide how
+they are shown. You define all of it through the Settings UI, keep as many
+datalets as you like, and use one at a time.
+
+Internally a datalet is one graph, and that is the term the code and the
+developer documentation use; "datalet" is the word the interface uses, because
+"graph" means a chart to most people and a network to the rest.
 
 The application is local-only by default: it needs no account, wallet, API
 key, or server to store and use data in the current browser profile. Open tabs

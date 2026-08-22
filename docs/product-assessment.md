@@ -10,6 +10,10 @@ design documents — not on user research or a field deployment.
 
 ## What it actually is
 
+The product is **Datalet Builder**, and the thing it builds is a **datalet**:
+one record-keeping app together with its contents, which is one graph
+underneath. A person may keep several and use one at a time.
+
 It is tempting to describe this as two products stacked — a no-code record-app
 builder, plus an optional sync tier. That framing is accurate and unhelpful,
 because "no-code app builder" is a category, and in that category this loses to
