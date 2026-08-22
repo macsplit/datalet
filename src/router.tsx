@@ -26,6 +26,7 @@ import { SchemaListPage } from "./pages/SchemaListPage";
 import { SchemaEditorPage } from "./pages/SchemaEditorPage";
 import { TabsManagerPage } from "./pages/TabsManagerPage";
 import { BlocksBuilderPage } from "./pages/BlocksBuilderPage";
+import { AboutPage } from "./pages/AboutPage";
 import { SettingsProvider, useSettings } from "./hooks/useSettings";
 import { useTabs } from "./hooks/useTabs";
 import { RuntimeIssueBanner } from "./components/RuntimeSafety";
@@ -210,6 +211,12 @@ const blocksBuilderRoute = createRoute({
   component: BlocksBuilderPage,
 });
 
+const aboutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/about",
+  component: AboutPage,
+});
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   tabRoute,
@@ -220,6 +227,7 @@ const routeTree = rootRoute.addChildren([
   schemaEditorRoute,
   tabsManagerRoute,
   blocksBuilderRoute,
+  aboutRoute,
 ]);
 
 export const router = createRouter({ routeTree });

@@ -647,6 +647,27 @@ a {
     line-height: var(--line-height-base);
 }
 
+/* Present but deliberately quieter than the settings themselves: About is
+   supporting information, reached after the things someone came to change. */
+.settings-footer {
+    padding: var(--space-2) 0;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.settings-footer a {
+    color: inherit;
+}
+
+.settings-footer a:hover {
+    color: var(--color-text);
+}
+
+.about-page {
+    max-width: 760px;
+}
+
 .small-margin {
     margin: 0.2rem 0 0;
 }

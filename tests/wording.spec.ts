@@ -14,6 +14,7 @@ const PAGES = [
   "/settings/theme",
   "/settings/schemas",
   "/settings/tabs",
+  "/settings/about",
 ];
 
 test("no page says \"graph\" to the user", async ({ page }) => {

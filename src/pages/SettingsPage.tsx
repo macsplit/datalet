@@ -97,6 +97,9 @@ export function SettingsPage() {
           />
         </div>
       </section>
+      <footer className="settings-footer">
+        <Link to="/settings/about">About Datalet, privacy, and browser storage</Link>
+      </footer>
     </div>
   );
 }
