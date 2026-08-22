@@ -1265,7 +1265,7 @@ export function exportGraphBackup(graph: string): LocalGraphBackup {
  */
 export function importGraphBackup(targetGraph: string, value: unknown): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("The selected file is not a Local Graph backup.");
+    throw new Error("The selected file is not a Datalet backup.");
   }
   const candidate = value as Partial<LocalGraphBackup>;
   if (

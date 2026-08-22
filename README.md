@@ -1,4 +1,4 @@
-# Local Graph UI Builder
+# Datalet Builder
 
 A browser-based builder for defining data schemas and turning them into working
 record-management screens. Schemas, navigation tabs, layouts, blocks, and field

@@ -55,7 +55,7 @@ async function persistedRecords(page: Page) {
 
 const singletonRecords = [
   { "@graph": GRAPH, "@id": HOME_ID, "@type": "did:ng:z:Tab", title: "Home", order: 0 },
-  { "@graph": GRAPH, "@id": "did:ng:z:SettingsSingleton", "@type": "did:ng:z:Settings", appTitle: "Local Graph" },
+  { "@graph": GRAPH, "@id": "did:ng:z:SettingsSingleton", "@type": "did:ng:z:Settings", appTitle: "Test datalet" },
 ];
 
 test("creates and edits a schema while preserving property order across reload", async ({ page }) => {

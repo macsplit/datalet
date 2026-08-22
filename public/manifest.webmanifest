@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Local Graph UI Builder",
-  "short_name": "Local Graph",
-  "description": "A browser-local builder for personal record-management apps.",
+  "name": "Datalet Builder",
+  "short_name": "Datalet",
+  "description": "Build your own record-keeping apps, kept in your browser.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
