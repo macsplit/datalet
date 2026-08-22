@@ -730,6 +730,33 @@ a {
     margin-top: var(--space-6);
 }
 
+/* Set apart from the row it belongs to, because it is the step where an
+   irreversible thing is agreed to. */
+.datalet-remove {
+    margin-top: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: var(--space-4);
+}
+
+.datalet-remove ul {
+    margin: 0;
+    padding-left: var(--space-6);
+}
+
+.datalet-remove-start {
+    margin-top: var(--space-4);
+}
+
+/* The name has to be shown exactly as it must be typed. */
+.datalet-remove-label {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: var(--font-size-sm);
+}
+
 /* One row child holding both actions, so the row keeps to the two-child shape
    `.layout-row > *` is sized for. */
 .datalet-row-actions {

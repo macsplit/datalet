@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
 import { listDatalets, setDataletArchived, type Datalet } from "../utils/datalets";
+import { removeDataletPermanently } from "../utils/dataletRemoval";
 import {
   adoptVaultAsDatalet,
   canLeaveActiveDatalet,
@@ -46,6 +47,9 @@ export function DataletSettings() {
   const privateNuri = usePrivateNuri();
   const { entries, archived, activeId } = listDatalets();
   const [, forceRender] = useState(0);
+  const [removing, setRemoving] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [erasing, setErasing] = useState(false);
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState("");
 
@@ -135,6 +139,93 @@ export function DataletSettings() {
     forceRender((tick) => tick + 1);
   };
 
+  const erase = async (entry: Datalet) => {
+    setErasing(true);
+    setError("");
+    try {
+      await removeDataletPermanently(entry);
+      setRemoving("");
+      setConfirmText("");
+      forceRender((tick) => tick + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "That datalet could not be erased.");
+    } finally {
+      setErasing(false);
+    }
+  };
+
+  /**
+   * The second step of removal, and the reason there is a second step.
+   *
+   * Erasure is not undoable and reaches a server, so this states what it does
+   * and does not reach before asking for the name back. The list of what
+   * survives is not hedging: someone erasing their data is entitled to know
+   * precisely which copies this removes and which it cannot.
+   */
+  const renderRemoval = (entry: Datalet) => {
+    const name = dataletName(entry, false, appTitle);
+    return (
+      <div className="datalet-remove" role="group" aria-label={`Remove ${name} permanently`}>
+        <p className="danger-text">
+          <strong>Erase this datalet? This cannot be undone.</strong>
+        </p>
+        <p className="helper-text">This removes:</p>
+        <ul className="helper-text">
+          <li>
+            its vault on the sync server — every record in it, and the server's own
+            durable copy
+          </li>
+          <li>this browser's record of it</li>
+        </ul>
+        <p className="helper-text">This cannot reach:</p>
+        <ul className="helper-text">
+          <li>copies anyone took with a <strong>COPY</strong> code — those became separate
+            datalets and are not yours to erase</li>
+          <li>another device that still has this datalet open or stored in its browser</li>
+          <li>backup files you exported</li>
+          <li>
+            the sync server operator's own backups, which may keep a copy until they
+            expire on whatever schedule that operator keeps
+          </li>
+        </ul>
+        <div className="field-group">
+          {/* Not `.field-label`: that uppercases, so the label read TYPE
+              CONFERENCE NOTES while the check below is case-sensitive - it
+              instructed you to type the one thing that would not work. */}
+          <label className="field-label datalet-remove-label" htmlFor={`confirm-${entry.id}`}>
+            {`Type ${name} to confirm`}
+          </label>
+          <input
+            id={`confirm-${entry.id}`}
+            className="input"
+            value={confirmText}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => setConfirmText(event.target.value)}
+          />
+        </div>
+        <div className="layout-row">
+          <button
+            type="button"
+            className="secondary-btn"
+            disabled={erasing}
+            onClick={() => { setRemoving(""); setConfirmText(""); }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="secondary-btn danger-text"
+            disabled={erasing || confirmText.trim() !== name}
+            onClick={() => void erase(entry)}
+          >
+            {erasing ? "Erasing…" : "Remove permanently"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderRow = (entry: Datalet) => {
     const isActive = entry.id === activeId;
     const isArchived = entry.archivedAt !== undefined;
@@ -216,7 +307,23 @@ export function DataletSettings() {
           {/* Its own stack, so the rows here are spaced exactly like the rows
               above rather than inheriting whatever the <details> does. */}
           <div className="section-stack">
-            {archived.map((entry) => renderRow(entry))}
+            {archived.map((entry) => (
+              <div key={entry.id}>
+                {renderRow(entry)}
+                {removing === entry.id
+                  ? renderRemoval(entry)
+                  : (
+                    <button
+                      type="button"
+                      className="secondary-btn danger-text datalet-remove-start"
+                      disabled={switching !== "" || adding}
+                      onClick={() => { setRemoving(entry.id); setConfirmText(""); setError(""); }}
+                    >
+                      Remove permanently…
+                    </button>
+                  )}
+              </div>
+            ))}
           </div>
         </details>
       )}

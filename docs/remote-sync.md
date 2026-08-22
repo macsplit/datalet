@@ -117,7 +117,7 @@ vault.](images/sync-paired.png)
 |---|---|
 | `GET /sync/health` | liveness check |
 | `POST /sync/vaults` | create a vault, returns `{ vaultId, vaultToken }` once |
-| `DELETE /sync/vaults?vault=` | permanently delete an authenticated vault from Redis and Neo4j |
+| `DELETE /sync/vaults?vault=` | permanently delete an authenticated vault from Redis and Neo4j; reached from the interface as **Remove permanently** on an archived datalet |
 | `POST /sync/vaults/rotate?vault=` | issue a new token, invalidate the old one |
 | `POST /sync/pair-code?vault=` | issue an authenticated, one-use ten-minute pairing code |
 | `POST /sync/pair-redeem` | rate-limited exchange of a temporary code for vault credentials |

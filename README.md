@@ -310,6 +310,24 @@ The datalet you have open cannot be archived. That would mean evicting it and
 switching in one gesture, and would leave the app deciding which datalet you
 land in; open another one first.
 
+An archived datalet can then be erased outright with **Remove permanently**,
+which is offered only once it is archived and asks you to type its name back
+rather than accepting a single click. It deletes the vault on the sync server —
+every record in it and the server's durable copy — and then this browser's
+record of it, in that order, because your browser holds the only copy of the
+vault token and forgetting it first would strand a vault nobody could ever
+authenticate against, and so nobody could ever delete.
+
+![The removal confirmation: what it removes, what it cannot reach, and a field
+requiring the datalet's name typed back before the button
+enables.](docs/images/remove-permanently.png)
+
+It cannot reach copies anyone took with a `COPY` code, another device that
+still holds the datalet, backup files you exported, or the server operator's
+own backups until those expire. The confirmation says all of this before you
+type anything, because someone erasing their data is entitled to know exactly
+which copies go and which do not.
+
 Two things that look alike and are opposites:
 
 - **Opening one from an `LG1` or `PAIR` code** gives you the *same* datalet in a

@@ -362,3 +362,133 @@ test("archived datalets are out of the main list until expanded", async ({ page 
   await page.getByText("Archived (1)").click();
   await expect(page.getByText("Old sketches")).toBeVisible();
 });
+
+test("only archived datalets can be erased", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Still in use", vault: vaultB },
+    ],
+  });
+  await page.goto("/settings/datalets");
+  // Neither the open one nor an unarchived one offers erasure.
+  await expect(page.getByRole("button", { name: "Remove permanently…" })).toHaveCount(0);
+});
+
+test("erasing needs the name typed back, not one click", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+
+  const confirm = page.getByRole("button", { name: "Remove permanently", exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketch");
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketches");
+  await expect(confirm).toBeEnabled();
+});
+
+test("erasing states what it does and does not reach", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+
+  const box = page.getByRole("group", { name: "Remove Old sketches permanently" });
+  // The wording is the feature. Someone erasing their data is entitled to know
+  // which copies this reaches and which it cannot.
+  await expect(box).toContainText("vault on the sync server");
+  await expect(box).toContainText("COPY");
+  await expect(box).toContainText("another device");
+  await expect(box).toContainText("backup files you exported");
+  await expect(box).toContainText("operator's own backups");
+});
+
+test("erasing deletes the vault on the server before forgetting it here", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  const deletes: string[] = [];
+  await page.route("**/sync/vaults?vault=*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletes.push(route.request().url());
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) });
+  });
+
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketches");
+  await page.getByRole("button", { name: "Remove permanently", exact: true }).click();
+
+  await expect.poll(() => deletes.length).toBe(1);
+  expect(deletes[0]).toContain(vaultB.vaultId);
+  await expect(page.getByText("Archived (")).toHaveCount(0);
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}").entries.length)).toBe(1);
+});
+
+test("a refused erase keeps the datalet, so it can be retried", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.route("**/sync/vaults?vault=*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    await route.fulfill({ status: 503, body: "server unavailable" });
+  });
+
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketches");
+  await page.getByRole("button", { name: "Remove permanently", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toContainText("Nothing has been removed");
+  // The entry holds the only copy of the vault token. Forgetting it on a failed
+  // delete would strand a vault nobody can ever authenticate against, and so
+  // nobody can ever erase.
+  expect(await page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
+    return registry.entries.find((e: { id: string }) => e.id === "b")?.vault?.vaultToken;
+  })).toBe(vaultB.vaultToken);
+});
+
+test("the confirmation shows the name exactly as it must be typed", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+  // The check is case-sensitive, so a label that uppercases the name would be
+  // instructing you to type the one thing that cannot work.
+  const label = page.locator(`label[for="confirm-b"]`);
+  await expect(label).toHaveCSS("text-transform", "none");
+  await expect(label).toHaveText("Type Old sketches to confirm");
+});

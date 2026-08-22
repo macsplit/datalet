@@ -155,6 +155,8 @@ test("datalets and devices", async ({ page }) => {
   // Expanded, or the shot shows a closed row and explains nothing.
   await page.getByText("Archived (2)").click();
   await shot(page, "switch-datalet-archived", "#switch-datalet");
+  await page.getByRole("button", { name: "Remove permanently…" }).first().click();
+  await shot(page, "remove-permanently", ".datalet-remove");
   await shot(page, "storage", "#storage");
   await shot(page, "copy-codes", "#copy-codes");
   await shot(page, "sync-paired", "#sync");

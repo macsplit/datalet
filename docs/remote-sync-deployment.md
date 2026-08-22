@@ -113,6 +113,16 @@ docker compose run --rm neo4j neo4j-admin database load neo4j --from-path=/backu
 docker compose start neo4j
 ```
 
+**Backups and erasure.** `DELETE /sync/vaults` removes a vault from Redis and
+Neo4j immediately and completely, and the interface offers it as *Remove
+permanently* on an archived datalet. It cannot reach a backup taken before the
+deletion. If you are operating this for other people, that gap is yours to
+close, not the application's: an erasure request is only satisfied once the
+copies in your backup rotation have aged out or been purged. Decide the
+retention window deliberately, and be able to state it — under the GDPR's right
+to erasure the controller has to account for backup copies too, not only the
+live store.
+
 Redis's AOF file (`redis-data` volume) is a convenience cache of recent
 patch history for fast catch-up, not a system of record — it's fine to lose
 it (worst case, more nodes fall back to `/sync/snapshot` from Neo4j after a
