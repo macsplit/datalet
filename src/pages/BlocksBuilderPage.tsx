@@ -745,8 +745,6 @@ function BlockListEditor({
   const { blocks, createBlock } = useBlocks(parent);
   const { properties: allProperties } = usePropertyDefs();
   const { createWidget } = useWidgets();
-  // Only a default for what a new data block starts on - the block's own
-  // editor is where the schema is actually chosen and changed.
   const [schemaId, setSchemaId] = useState(schemas[0]?.["@id"] ?? "");
   const schemaIds = schemas.map((schema) => schema["@id"]).join("|");
 
@@ -821,16 +819,23 @@ function BlockListEditor({
           <p className="label-accent">{depth === 0 ? "Structure" : "Inside this layout"}</p>
           <h3 className="title">{depth === 0 ? "Blocks on this tab" : "Nested blocks"}</h3>
         </div>
-        {/* Two direct actions rather than pick-a-type, pick-a-schema, submit.
-            Everywhere else in the builder an Add button creates a defaulted
-            item you then edit in place; this was the one screen that made you
-            fill a form first and press what read as Save. The schema a data
-            block uses is editable on the block itself, so choosing it up front
-            was asking for a decision twice. */}
         <div className="builder-actions">
           <button type="button" className="secondary-btn" onClick={() => addBlock("layout")}>
             + Add layout block
           </button>
+          <select
+            className="select builder-compact-select"
+            aria-label="Data block schema"
+            value={schemaId}
+            onChange={(event) => setSchemaId(event.target.value)}
+          >
+            {schemas.length === 0 && <option value="">No schemas</option>}
+            {schemas.map((schema) => (
+              <option value={schema["@id"]} key={schema["@id"]}>
+                {schema.name}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="primary-btn"

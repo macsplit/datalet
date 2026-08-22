@@ -245,29 +245,41 @@ test("deleting a schema removes its data blocks and repairs surviving references
   });
 });
 
-test("adding a block creates it directly, with no form to submit first", async ({ page }) => {
+test("adds a fully scaffolded data block from the chosen schema", async ({ page }) => {
   const tabId = "tab-idiom";
-  const schemaId = "did:ng:z:meta:schema:idiom";
+  const firstSchemaId = "did:ng:z:meta:schema:people";
+  const chosenSchemaId = "did:ng:z:meta:schema:things";
   await seedSession(page);
   await seedRecords(page, [
     ...singletonRecords,
     { "@graph": GRAPH, "@id": tabId, "@type": "did:ng:z:Tab", title: "Idiom", order: 1 },
-    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Things" },
-    { "@graph": GRAPH, "@id": "property-thing", "@type": "did:ng:z:PropertyDef", schemaId, name: "Name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": firstSchemaId, "@type": "did:ng:z:SchemaDef", name: "People" },
+    { "@graph": GRAPH, "@id": "property-person-name", "@type": "did:ng:z:PropertyDef", schemaId: firstSchemaId, name: "Person name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": chosenSchemaId, "@type": "did:ng:z:SchemaDef", name: "Things" },
+    { "@graph": GRAPH, "@id": "property-thing-name", "@type": "did:ng:z:PropertyDef", schemaId: chosenSchemaId, name: "Thing name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-thing-count", "@type": "did:ng:z:PropertyDef", schemaId: chosenSchemaId, name: "Count", order: 1, dataType: "did:ng:z:number", cardinality: "did:ng:z:one", enumOptions: [] },
   ]);
   await page.goto(`/settings/tabs/${tabId}/blocks`);
 
-  // The builder's idiom everywhere else: press Add, get a defaulted item, edit
-  // it in place. There is no type to choose and no schema to choose before the
-  // block exists, so nothing reads as a Save that consumes what you typed.
+  // Choosing the schema is part of the direct add action because it determines
+  // the complete widget scaffold. There is still no staged block form to save.
   await expect(page.getByLabel("New block type")).toHaveCount(0);
-  await expect(page.getByLabel("Data block schema")).toHaveCount(0);
+  await page.getByLabel("Data block schema").selectOption(chosenSchemaId);
 
   await page.getByRole("button", { name: "+ Add data block" }).click();
   const dataBlock = page.locator("article.builder-card").filter({ hasText: "Data block" }).first();
   await expect(dataBlock).toBeVisible();
-  // Defaulted to a real schema, and changeable on the block itself afterwards.
-  await expect(dataBlock.getByLabel("Schema", { exact: true })).toHaveValue(schemaId);
+  await expect(dataBlock.getByLabel("Schema", { exact: true })).toHaveValue(chosenSchemaId);
+  await expect(dataBlock.locator(".builder-widget-card")).toHaveCount(5);
+  const labels = dataBlock.getByLabel("Label");
+  await expect(labels.nth(0)).toHaveValue("Things");
+  await expect(labels.nth(1)).toHaveValue("Add Things");
+  await expect(labels.nth(2)).toHaveValue("Thing name");
+  await expect(labels.nth(3)).toHaveValue("Count");
+  const widgets = dataBlock.locator(".builder-widget-card");
+  await expect(widgets.nth(3).getByLabel("Schema property")).toHaveValue("Thing name");
+  await expect(widgets.nth(4).getByLabel("Schema property")).toHaveValue("Count");
+  await expect(dataBlock).not.toContainText("Person name");
 });
 
 test("a nested block list says which level it is", async ({ page }) => {
