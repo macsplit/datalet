@@ -12,6 +12,18 @@ operators who'd rather not run Docker. Pick one; don't mix them.
 
 ## 1. Docker Compose (recommended)
 
+> **There is now a working stack checked in at [`deploy/`](../deploy).**
+> `cp deploy/.env.example deploy/.env`, set `NEO4J_PASSWORD`, then
+> `./deploy/up.sh`. It builds, starts, and waits for `/sync/health` rather than
+> reporting success the moment containers exist.
+>
+> That stack assumes TLS is terminated in front of it — an existing Cloudflare
+> tunnel or reverse proxy pointing at `127.0.0.1:${SYNC_PORT}` — and caps
+> Neo4j and Redis for a small always-on machine. The sections below remain the
+> reference for everything it does not cover: the Caddy front (§1.4), the
+> native/systemd path (§2), backups, and the configuration table (§3). Where
+> the two disagree, the files in `deploy/` are what actually runs.
+
 ### 1.1 Layout
 
 ```

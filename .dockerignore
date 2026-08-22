@@ -1,0 +1,16 @@
+# The build stage installs and builds from a clean tree. Copying the host's
+# node_modules in would be both slow and wrong: pnpm's layout is a farm of
+# symlinks into a store that does not exist inside the image.
+node_modules
+**/node_modules
+dist
+server-dist
+.git
+.github
+test-results
+playwright-report
+.env
+.env.*
+!.env.example
+deploy/.env
+*.log

@@ -15,7 +15,7 @@
 | Document | What it is |
 | --- | --- |
 | [`remote-sync.md`](remote-sync.md) | Operational reference: endpoints, conflict rules, edge cases, non-functional characteristics. |
-| [`remote-sync-deployment.md`](remote-sync-deployment.md) | Deployment guide. Compose and systemd paths; the snippets are templates, not checked-in files. |
+| [`remote-sync-deployment.md`](remote-sync-deployment.md) | Deployment reference: options, the native/systemd path, backups, configuration and the post-deploy smoke test. The short path is the working stack in [`deploy/`](../deploy). |
 | [`remote-sync-architecture.md`](remote-sync-architecture.md) | Design rationale — what was considered and rejected, and why. Read for *why*, not *what*. Its section numbers are cited from `server/src/` doc comments, so they stay stable. |
 
 ## Historical

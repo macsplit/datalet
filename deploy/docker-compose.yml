@@ -1,0 +1,118 @@
+# Datalet Builder — sync tier.
+#
+# Sized for a small always-on box. Every limit here is deliberate: the defaults
+# for Neo4j alone would claim more memory than a NUC has spare, for a dataset
+# measured in megabytes. Raise them when the numbers say to, not before.
+#
+# TLS is not terminated here. The expected front is an existing Cloudflare
+# tunnel (or any reverse proxy) pointing at sync-server's published port, which
+# also keeps the app and /sync/* on one origin as the CSP requires. If you have
+# no such front, see docs/remote-sync-deployment.md §1.4 for the Caddy variant.
+name: datalet-sync
+
+services:
+  sync-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      REDIS_URL: "redis://redis:6379"
+      NEO4J_URL: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      VAULT_QUOTA_BYTES: "${VAULT_QUOTA_BYTES:-8388608}"
+      VAULT_CREATE_RATE_LIMIT: "${VAULT_CREATE_RATE_LIMIT:-10}"
+      VAULT_WRITE_RATE_LIMIT: "${VAULT_WRITE_RATE_LIMIT:-600}"
+    # Bound to loopback: the tunnel reaches it locally, and nothing on the LAN
+    # should hit an origin that terminates no TLS of its own.
+    ports:
+      - "127.0.0.1:${SYNC_PORT:-3000}:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  materializer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      ROLE: "materializer"
+      REDIS_URL: "redis://redis:6379"
+      NEO4J_URL: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}"
+      # One shard is right until materialization lag says otherwise. Changing
+      # the count is not a rolling operation - see the deployment doc §2.3.
+      MATERIALIZER_SHARD_COUNT: "${MATERIALIZER_SHARD_COUNT:-1}"
+      MATERIALIZER_SHARD_INDEX: "${MATERIALIZER_SHARD_INDEX:-0}"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF is not optional: without it a hard kill can lose already-accepted
+    # writes and a vault's identity. noeviction because this is a system of
+    # record, not a cache - a full Redis must refuse writes, never discard them.
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_MAXMEMORY:-1gb}
+      --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}"
+      # Capped hard. The durable copy here is a few megabytes per vault; the
+      # stock heap is provisioned for workloads thousands of times larger and
+      # would be the single biggest consumer on a small machine.
+      NEO4J_server_memory_heap_initial__size: "${NEO4J_HEAP:-512m}"
+      NEO4J_server_memory_heap_max__size: "${NEO4J_HEAP:-512m}"
+      NEO4J_server_memory_pagecache_size: "${NEO4J_PAGECACHE:-256m}"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          # Comfortably above heap + page cache, not equal to it. Measured
+          # idle on a NUC: 833 MiB resident for a 512m heap and 256m cache -
+          # the JVM's metaspace, thread stacks and direct buffers live above
+          # both. A limit set to the sum gets the container OOM-killed.
+          memory: ${NEO4J_MEMORY_LIMIT:-1500M}
+
+volumes:
+  redis-data:
+  neo4j-data:

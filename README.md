@@ -44,7 +44,12 @@ Create a production build with:
 pnpm build
 ```
 
-To run the optional cross-device sync stack, install Redis and Neo4j, export
+To deploy the sync tier, [`deploy/`](deploy) holds a working Docker Compose
+stack: `cp deploy/.env.example deploy/.env`, set `NEO4J_PASSWORD`, then
+`./deploy/up.sh`. It expects TLS to be terminated in front of it, by a tunnel
+or reverse proxy pointing at the port it binds on loopback.
+
+To run the sync stack for development instead, install Redis and Neo4j, export
 `NEO4J_PASSWORD` or put it in an ignored `.env.local` copied from
 `.env.example`, and use `./run.sh`. See
 [`docs/remote-sync.md`](docs/remote-sync.md) for the endpoints, conflict rules
