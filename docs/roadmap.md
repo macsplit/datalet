@@ -13,9 +13,22 @@ work lands.
 
 ## Open
 
-### Multi-hour endurance run
+### Multi-hour endurance run — resource behaviour only
 
-The only outstanding verification item. The existing artifact,
+Re-scoped. This item used to carry two unrelated questions: does anything break
+over a long run, and does anything *grow* over a long run. The first is a
+correctness question, and waiting hours to be told what step three already knew
+is a bad trade — that half is now `pnpm fuzz`, which walks datalet operations
+at random, checks the invariants after every step and stops at the first
+breach. Duration is a budget knob there, not a prerequisite: 30 steps in
+seconds, hundreds when you want depth, and a printed seed replays any failure
+exactly.
+
+What remains here is the part that genuinely needs hours: memory, handle counts
+and materialization lag under sustained multi-tenant load. It should abort
+early on an invariant breach rather than dutifully running to completion.
+
+The existing artifact,
 [`remote-sync-endurance-results.json`](remote-sync-endurance-results.json), is
 honestly labelled `status: curtailed` after roughly 19 minutes of a planned two
 hours. Because it stopped early it never ran the terminal

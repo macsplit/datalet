@@ -5,7 +5,7 @@ const systemChromium = "/usr/bin/chromium";
 
 export default defineConfig({
   testDir: "./tests",
-  testIgnore: ["offline.spec.ts", "screenshots.spec.ts"],
+  testIgnore: ["offline.spec.ts", "screenshots.spec.ts", "fuzz.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,

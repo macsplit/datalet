@@ -394,6 +394,32 @@ Settings also provides JSON export/import for the active graph. Backups include
 user records and the schemas, tabs, blocks, widgets, and settings needed to
 render them in a fresh browser profile.
 
+## Fuzzing the datalet flows
+
+```sh
+pnpm fuzz                      # a short random walk
+FUZZ_STEPS=200 pnpm fuzz       # a longer one; same harness, bigger budget
+FUZZ_SEED=12345 pnpm fuzz      # replay a specific walk exactly
+```
+
+`tests/fuzz.spec.ts` drives datalet operations — create a vault, add one,
+switch, leave, archive, restore — in a random order against a sync server that
+actually stores what it is sent, and checks the invariants in
+`tests/support/dataletInvariants.ts` after every step. It stops at the first
+breach and prints the seed and the operation log, because a failure you cannot
+replay is an anecdote.
+
+Every datalet bug this project has shipped lived in a *composition* of
+operations, each of which had a passing test of its own. The invariants are the
+valuable part, and each one is a bug that reached a user: no safety circuit
+opens, every snapshot the server serves satisfies the client's validator,
+exactly one graph holds records and it is the open datalet's, no registry entry
+loses its vault token, storage stays under the cap, the outbox drains.
+
+It does not run with `pnpm test` — it is random, so a failure is a lead to
+investigate rather than a regression to block a merge on. Findings get pinned
+as ordinary tests in `tests/datalet-flows.spec.ts`.
+
 ## Screenshots in the documentation
 
 The images under [`docs/images/`](docs/images) are generated, not captured by

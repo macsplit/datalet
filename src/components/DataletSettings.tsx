@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
-import { listDatalets, setDataletArchived, type Datalet } from "../utils/datalets";
+import { ensureLocalDatalet, listDatalets, setDataletArchived, type Datalet } from "../utils/datalets";
 import { removeDataletPermanently } from "../utils/dataletRemoval";
 import {
   adoptVaultAsDatalet,
@@ -59,6 +59,11 @@ export function DataletSettings() {
   // on and no way forward short of reloading.
   const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet());
   useEffect(() => {
+    // The local datalet has to be a registry entry before the guard is asked
+    // about it, or the answer is "nothing to protect" and the controls offer
+    // an action that will refuse itself on click.
+    ensureLocalDatalet();
+    setLeaving(canLeaveActiveDatalet());
     const timer = setInterval(() => setLeaving(canLeaveActiveDatalet()), 1_000);
     return () => clearInterval(timer);
   }, []);

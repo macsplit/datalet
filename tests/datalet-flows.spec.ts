@@ -170,3 +170,24 @@ test("three datalets, switching between each in turn", async ({ page }) => {
     await noSafetyCircuit(page);
   }
 });
+
+test("adding a datalet before ever pairing does not strand the local records", async ({ page }) => {
+  // Found by the fuzzer on its first step. The registry was only written when
+  // a vault was configured, so a browser that had never paired had no entry:
+  // canLeaveActiveDatalet found nothing to protect and allowed the add, and
+  // the local datalet's records were left in a graph nothing pointed at.
+  await seedLocalWork(page, "Never paired");
+  await fakeSyncServer(page);
+  await page.goto("/settings/datalets");
+
+  const add = page.getByRole("button", { name: "Start an empty one" });
+  await expect(add).toBeDisabled();
+  await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
+
+  const graphs = await page.evaluate(() => {
+    const index = JSON.parse(
+      localStorage.getItem("meta-ui-builder:ng-local-store:index") ?? "[]") as string[];
+    return [...new Set(index.map((key) => key.split("|")[0]))];
+  });
+  expect(graphs).toEqual(["did:ng:test-private-store"]);
+});

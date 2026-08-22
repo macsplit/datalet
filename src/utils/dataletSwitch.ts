@@ -29,6 +29,7 @@ import {
 import {
   activeDatalet,
   addDatalet,
+  ensureLocalDatalet,
   dataletGraph,
   rememberActiveDataletTitle,
   setActiveDatalet,
@@ -146,6 +147,7 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
  * live subscription - the same reason pairing and import reload.
  */
 export async function switchToDatalet(target: Datalet, localGraph: string | undefined) {
+  ensureLocalDatalet();
   const leaving = canLeaveActiveDatalet();
   if (!leaving.ok) throw new Error(leaving.message);
   await adopt(target, localGraph);
@@ -161,6 +163,12 @@ export async function adoptVaultAsDatalet(
   localGraph: string | undefined,
   options: { copiedAt?: number } = {},
 ) {
+  // Before the guard, not after. The registry was only ever written when a
+  // vault was configured, so a browser that had never paired had no entry at
+  // all - `canLeaveActiveDatalet` then found nothing to protect and said yes,
+  // and adding a datalet stranded the local one's records in a graph nothing
+  // pointed at. The rule was right; it just had nothing to apply to.
+  ensureLocalDatalet();
   const leaving = canLeaveActiveDatalet();
   if (!leaving.ok) throw new Error(leaving.message);
   const entry = addDatalet(vault, options);
