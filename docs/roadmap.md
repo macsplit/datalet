@@ -27,14 +27,6 @@ nothing else.
 
 ---
 
-### Server suite flakiness
-
-`pnpm test:server` intermittently stalls partway through when the runner
-executes files concurrently. `materializerSharding.test.ts` passes 4/4 when run
-alone against identical Redis state, so it is contention rather than a broken
-test. It cost real time twice on 2026-08-17 and will mislead whoever hits it
-next into suspecting their own change. Not reproduced deterministically yet.
-
 ---
 
 ### More than one datalet
@@ -181,6 +173,24 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### The server suite ran itself into the ground
+
+`pnpm test:server` intermittently stalled partway through, and a full run took
+minutes. `materializerSharding.test.ts` passed 4/4 alone against identical
+Redis state, which pointed at contention rather than a broken test.
+
+The cause was Node's test runner defaulting to one worker per CPU — sixteen
+here — for a suite of integration tests that all share **one Redis keyspace and
+one Neo4j database**. `vaults:index`, the shard leases and the per-IP rate-limit
+counters are global, so concurrent files were mutating each other's world.
+
+Running with `--test-concurrency=1` is both correct and faster: three
+consecutive runs took 18s, 15s and 15s, all 68 passing, against minutes and
+occasional stalls before. Parallelism was buying nothing, because the shared
+backend serialised the work anyway — through lease TTLs and blocking reads
+rather than through the scheduler.
+
 
 ### Durable local storage and a live window colour
 

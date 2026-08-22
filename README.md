@@ -92,6 +92,14 @@ driver if it looks up a vault that is absent from Redis, because `vaultExists()`
 falls through to the durable copy — so an "unknown vault returns 404" case is
 enough to leave the process alive.
 
+The server suite runs **one file at a time** (`--test-concurrency=1`). Every
+file in it talks to the same Redis keyspace and the same Neo4j database, so
+running them in parallel has them mutating each other's world — `vaults:index`,
+the shard leases and the rate-limit counters are all global. It is also faster
+that way: about fifteen seconds, against minutes and intermittent stalls when
+Node used one worker per CPU. If you add a file here, assume shared state and
+clean up after yourself.
+
 Integration tests skip themselves when Redis or Neo4j is unreachable, and a skip
 is reported as `ok … # SKIP`. A green run is therefore not proof of coverage:
 check the `# skipped` count, which should be `0` locally and in CI.
