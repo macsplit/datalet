@@ -61,7 +61,7 @@ export function StorageUsage() {
     : usage.fraction >= 0.6 ? "warn" : "ok";
 
   return (
-    <section className="panel">
+    <section className="panel" id="storage">
       <div className="panel-header">
         <div>
           <p className="label-accent">Storage</p>

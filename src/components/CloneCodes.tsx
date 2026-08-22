@@ -105,7 +105,7 @@ export function CloneCodes() {
   };
 
   return (
-    <section className="panel">
+    <section className="panel" id="copy-codes">
       <div className="panel-header">
         <div>
           <p className="label-accent">Datalets</p>

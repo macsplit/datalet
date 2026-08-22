@@ -11,6 +11,16 @@ the trade-offs weighed, see
 built when, and the defects found doing it, see
 [`build-history.md`](build-history.md).
 
+
+![The sync panel before pairing: not connected, with a button to create a sync
+vault and a field to join an existing one.](images/sync-unpaired.png)
+
+![The sync panel once paired: connected, with the pairing code hidden behind a
+Show button and a warning that anyone holding it can read and write the
+vault.](images/sync-paired.png)
+
+*Before and after pairing, at **Settings → Manage datalets**.*
+
 ## What it does
 
 - Each browser stores its data locally (`localStorage`) and works fully

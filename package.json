@@ -22,7 +22,8 @@
     "dev:materializer": "ROLE=materializer tsx watch server/src/index.ts",
     "build:server": "tsc -p server/tsconfig.json && mkdir -p server-dist/redis && cp server/src/redis/*.lua server-dist/redis/",
     "start:server": "node server-dist/index.js",
-    "start:materializer": "ROLE=materializer node server-dist/index.js"
+    "start:materializer": "ROLE=materializer node server-dist/index.js",
+    "screenshots": "playwright test --config playwright.screenshots.config.ts"
   },
   "dependencies": {
     "@ng-org/orm": "0.1.2-alpha.14",

@@ -128,7 +128,7 @@ export function DataletSettings() {
   };
 
   return (
-    <section className="panel">
+    <section className="panel" id="switch-datalet">
       <div className="panel-header">
         <div>
           <p className="label-accent">Datalets</p>

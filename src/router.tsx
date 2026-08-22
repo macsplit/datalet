@@ -56,6 +56,27 @@ function RootLayout() {
   // The nav brand reflects this reactively already (plain render), but the
   // browser tab title is outside React's tree - has to be pushed to it
   // imperatively whenever the configured title changes.
+  // Fragment anchors, which a client-side router does not give you for free:
+  // the browser resolves the hash before React has rendered the target, so
+  // nothing is there to scroll to. Retried across a few frames rather than
+  // once, because a panel may wait on its own subscription before it exists.
+  const hash = useLocation().hash;
+  useEffect(() => {
+    if (!hash) return;
+    let frames = 0;
+    let raf = 0;
+    const find = () => {
+      const target = document.getElementById(hash);
+      if (target) {
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      if (frames++ < 30) raf = requestAnimationFrame(find);
+    };
+    raf = requestAnimationFrame(find);
+    return () => cancelAnimationFrame(raf);
+  }, [hash, pathname]);
+
   useEffect(() => {
     document.title = appTitle;
     // Recorded here rather than on the datalets page, because that page is not

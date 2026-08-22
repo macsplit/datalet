@@ -20,7 +20,7 @@ export function SettingsPage() {
         <h1>Settings</h1>
         <p>How this app is built, how it looks, and where your data lives.</p>
       </header>
-      <section className="panel">
+      <section className="panel" id="datalets">
         <div className="panel-header">
           <div>
             <p className="label-accent">Datalets</p>
@@ -35,7 +35,7 @@ export function SettingsPage() {
           export backups.
         </p>
       </section>
-      <section className="panel">
+      <section className="panel" id="schemas">
         <div className="panel-header">
           <div>
             <p className="label-accent">Builder</p>
@@ -49,7 +49,7 @@ export function SettingsPage() {
           Define reusable record types and the fields stored on each one.
         </p>
       </section>
-      <section className="panel">
+      <section className="panel" id="tabs">
         <div className="panel-header">
           <div>
             <p className="label-accent">Builder</p>
@@ -63,7 +63,7 @@ export function SettingsPage() {
           Create, rename, and arrange the pages shown in the app navigation.
         </p>
       </section>
-      <section className="panel">
+      <section className="panel" id="theme">
         <div className="panel-header">
           <div>
             <p className="label-accent">Display</p>
@@ -78,7 +78,7 @@ export function SettingsPage() {
           devices and are kept in your backups.
         </p>
       </section>
-      <section className="panel">
+      <section className="panel" id="app-title">
         <div className="panel-header">
           <div>
             <p className="label-accent">Display</p>

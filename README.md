@@ -2,6 +2,13 @@
 
 Build your own record-keeping apps, kept in your browser.
 
+![A reading list built in Datalet Builder: a Books data block listing five
+records with title, author, rating and finished date, above a search
+field.](docs/images/app-reading-list.png)
+
+*A datalet built with the tools below — the schema, the screen and the records
+are all data in the same graph, and all of it came from the interface.*
+
 A **datalet** is one such app together with everything in it — its records, and
 the schemas, navigation tabs, layouts, blocks and field widgets that decide how
 they are shown. You define all of it through the Settings UI, keep as many
@@ -125,6 +132,10 @@ current and what is a historical record.
 
 ## Building an interface
 
+![The schema editor, defining a Books schema with Title, Author, Rating and
+Finished fields, each with a data type and
+cardinality.](docs/images/schema-editor.png)
+
 1. Open **Settings → Manage schemas**.
 2. Create a schema and add its fields.
 3. Choose a data type and cardinality for each field.
@@ -211,6 +222,9 @@ paths as any other change.
 
 ## Theme
 
+![The theme page, showing colour roles for light and dark mode, each with a
+swatch, a picker and a text field.](docs/images/theme.png)
+
 **Settings → Theme → Choose colours** opens the theme on its own page. Each role
 has a light and a dark value; the dark column applies when the operating system
 asks for dark mode, so choosing a theme does not stop the app following that
@@ -259,6 +273,9 @@ tabs for the same site. Records are stored under separate keys, so an ordinary
 edit persists only the touched records rather than serializing the whole
 store.
 
+![The storage panel: a bar showing 0% used, 0.0 MB of 4.5 MB, and a button to
+ask the browser to keep the data.](docs/images/storage.png)
+
 **Settings → Manage datalets** shows how full this browser is and whether it has
 agreed to keep your data. If it has,
 your records are exempt from routine cleanup; if it has not, the panel says so
@@ -271,6 +288,10 @@ A **datalet** is one self-contained instance of this app — its records, schema
 tabs, blocks, widgets and theme. You can keep several and use one at a time,
 switching between them from **Settings → Manage datalets**, which is also where
 pairing, copies, storage and backups live.
+
+![The datalet switcher listing three datalets — Reading list marked Open,
+Field notes, and Recipes marked as copied — each with its vault
+id.](docs/images/switch-datalet.png)
 
 Only the datalet you have open is held in this browser, which is why keeping
 more than one requires each to be paired: the ones you are not using live in
@@ -285,6 +306,9 @@ Two things that look alike and are opposites:
 - **Opening one from a `COPY` code** gives you a *new* datalet that started as a
   copy of someone else's. From that moment the two are unrelated, and nothing
   you do reaches theirs.
+
+![The copy-code panel, listing one published COPY code with Copy and Revoke
+buttons.](docs/images/copy-codes.png)
 
 **Settings → Manage datalets → Give someone a copy** creates a `COPY` code for the datalet you
 have open. It hands over everything in it, including every record; the sync
@@ -328,6 +352,39 @@ live Redis/Neo4j coverage uses Node's test runner. Both run in CI.
 Settings also provides JSON export/import for the active graph. Backups include
 user records and the schemas, tabs, blocks, widgets, and settings needed to
 render them in a fresh browser profile.
+
+## Screenshots in the documentation
+
+The images under [`docs/images/`](docs/images) are generated, not captured by
+hand:
+
+```sh
+pnpm screenshots
+```
+
+`tests/screenshots.spec.ts` seeds a fixed reading list, walks the screens and
+writes every file. It does not run with `pnpm test` — it produces artifacts
+rather than verdicts, and a screenshot that changes is news rather than a
+failure. Review the diff, and commit the images with the change that caused
+them.
+
+Everything that could differ between machines is pinned in
+`playwright.screenshots.config.ts`: locale and timezone, because dates render
+through `toLocaleDateString`; the colour scheme; and the device scale factor.
+Dates in the fixture are constants for the same reason. Regenerating on a
+different machine should therefore produce no diff unless the interface
+actually changed.
+
+Panels are captured through the fragment anchors described below, so a crop
+stays pointed at the right panel when the page around it is rearranged.
+
+## Fragment anchors
+
+Panels carry stable ids, so a link can land on one:
+`/settings/datalets#storage`, `#switch-datalet`, `#copy-codes`, `#backup`,
+`#sync`, and on Settings `#datalets`, `#schemas`, `#tabs`, `#theme`,
+`#app-title`. The router scrolls to the target once it has rendered, which a
+client-side router does not do on its own.
 
 ## Architecture
 

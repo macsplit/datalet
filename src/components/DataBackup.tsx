@@ -35,7 +35,7 @@ export function DataBackup() {
   };
 
   return (
-    <section className="panel">
+    <section className="panel" id="backup">
       <div className="panel-header">
         <div>
           <p className="label-accent">Recovery</p>

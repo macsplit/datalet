@@ -202,7 +202,7 @@ export function SyncSettings() {
         : "This vault's stored credential could not be read.";
     }
     return (
-      <section className="panel">
+      <section className="panel" id="sync">
         <div className="panel-header">
           <div>
             <p className="label-accent">Sync</p>
@@ -303,7 +303,7 @@ export function SyncSettings() {
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="sync">
       <div className="panel-header">
         <div>
           <p className="label-accent">Sync</p>
