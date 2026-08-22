@@ -284,10 +284,10 @@ export function DataletSettings() {
         </div>
       </div>
       <p className="helper-text">
-        Each datalet is a separate set of records, schemas and screens. One is open at a
-        time; the others live in their vaults until you open them. Because only the open
-        one is held in this browser, every datalet you keep has to be paired — a datalet
-        with no vault has no other copy to come back from.
+        Each datalet is a separate set of records, schemas and screens. Only the one you
+        have open is kept in this browser — the rest are stored on the sync server until
+        you open them. A datalet that has never synced has no copy anywhere else, so
+        syncing is what makes it safe to keep more than one.
       </p>
       {!leaving.ok && <p className="helper-text danger-text">{leaving.message}</p>}
       {error && <p className="danger-text" role="alert">{error}</p>}

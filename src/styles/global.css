@@ -51,8 +51,7 @@
     --color-surface-alt: #f7f7f8;
     --color-border: #e2e2e5;
     --color-text: #18181b;
-    --color-text-muted: #6b6b72;
-    --color-text-subtle: #96969e;
+    --color-text-muted: #58585f;
     --color-accent: #6d4de6;
     --color-accent-hover: #5b3ddb;
     --color-accent-text: #5b3ddb;
@@ -81,8 +80,7 @@
         --color-surface-alt: #3b3c44;
         --color-border: #4b4c55;
         --color-text: #f0f0f2;
-        --color-text-muted: #a3a3ab;
-        --color-text-subtle: #77777f;
+        --color-text-muted: #c6c6cd;
         --color-accent: #6f56d1;
         --color-accent-hover: #7d66db;
         --color-accent-text: #b9a6fb;
@@ -624,7 +622,7 @@ a {
 }
 
 .helper-text {
-    color: var(--color-text-subtle);
+    color: var(--color-text-muted);
 }
 
 .description {
@@ -718,7 +716,7 @@ a {
 .secondary-btn:hover:not(:disabled) {
     background: var(--color-border);
     color: var(--color-text);
-    border-color: var(--color-text-subtle);
+    border-color: var(--color-text-muted);
 }
 
 .secondary-btn:disabled {
@@ -833,7 +831,7 @@ a {
     width: 2.2rem;
     height: 2.2rem;
     background: transparent;
-    color: var(--color-text-subtle);
+    color: var(--color-text-muted);
 }
 
 .icon-btn-quiet:hover {
@@ -851,7 +849,7 @@ a {
    hovered, then tinted with the danger color rather than filled solid. */
 .icon-btn-danger {
     background: transparent;
-    color: var(--color-text-subtle);
+    color: var(--color-text-muted);
 }
 
 .icon-btn-danger:hover {
@@ -921,7 +919,7 @@ select:focus-visible {
     width: 1.3rem;
     height: 1.3rem;
     margin-top: 0.2rem;
-    border: 2px solid var(--color-text-subtle);
+    border: 2px solid var(--color-text-muted);
     border-radius: 0.3rem;
     background-color: var(--color-surface);
     background-repeat: no-repeat;

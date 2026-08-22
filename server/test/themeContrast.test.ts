@@ -59,9 +59,7 @@ test("every colour the interface paints with is offered to the user", () => {
 });
 
 test("every built-in pairing already clears the floor", () => {
-  // If it did not, the app would rewrite its own palette on first load. This
-  // is what fixes the floor below the built-in text-subtle rather than at some
-  // rounder number.
+  // If it did not, the app would rewrite its own palette on first load.
   for (const scheme of THEME_SCHEMES) {
     const { adjusted } = enforceContrast(scheme, {});
     assert.deepEqual([...adjusted], [], `${scheme} defaults should need no correction`);
@@ -147,8 +145,7 @@ test("a background moved on a foreground's behalf still reaches the stylesheet",
 function worstPairRatio(colors: Record<string, string>): number {
   const pairs: Array<[string, string]> = [
     ["text", "bg"], ["text", "surface"],
-    ["text-muted", "bg"], ["text-muted", "surface"],
-    ["text-subtle", "bg"], ["text-subtle", "surface"],
+    ["text-muted", "bg"], ["text-muted", "surface"], ["text-muted", "surface-alt"],
     ["accent-text", "bg"], ["accent-text", "surface"],
     ["danger", "bg"], ["danger", "surface"],
     ["success", "bg"], ["success", "surface"],

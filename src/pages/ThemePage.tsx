@@ -28,7 +28,6 @@ const ROLE_LABELS: Record<ThemeColorRole, string> = {
   "border": "Borders",
   "text": "Body text",
   "text-muted": "Muted text",
-  "text-subtle": "Subtle text",
   "accent": "Accent",
   "accent-hover": "Accent (hover)",
   "accent-text": "Accent text",

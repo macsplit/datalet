@@ -172,28 +172,6 @@ export const settingsShapesSchema: Schema = {
         ],
         maxCardinality: 1,
         minCardinality: 0,
-        iri: "did:ng:z:themeColorTextSubtleLight",
-        readablePredicate: "themeColorTextSubtleLight",
-      },
-      {
-        dataTypes: [
-          {
-            valType: "string",
-          },
-        ],
-        maxCardinality: 1,
-        minCardinality: 0,
-        iri: "did:ng:z:themeColorTextSubtleDark",
-        readablePredicate: "themeColorTextSubtleDark",
-      },
-      {
-        dataTypes: [
-          {
-            valType: "string",
-          },
-        ],
-        maxCardinality: 1,
-        minCardinality: 0,
         iri: "did:ng:z:themeColorAccentLight",
         readablePredicate: "themeColorAccentLight",
       },

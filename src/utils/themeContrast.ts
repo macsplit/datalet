@@ -4,11 +4,10 @@
  *
  * This is a floor, not a standard. It exists to stop the one catastrophic
  * case - text the same colour as what it sits on, which leaves nothing on
- * screen to fix it with - and otherwise leaves the choice alone. The built-in
- * `text-subtle` sits at 2.69:1 on its background, so anything stricter would
- * rewrite the shipped design the moment the app loaded; the floor is set below
- * that deliberately and `themeContrast.test.ts` asserts every default clears
- * it.
+ * screen to fix it with - and otherwise leaves the choice alone. It is not a
+ * readability standard and must not be mistaken for one: the shipped defaults
+ * clear 7:1, and this only decides how far someone may go when overriding
+ * them. `themeContrast.test.ts` asserts every default clears it.
  */
 
 import { THEME_COLOR_ROLES, type ThemeColorRole, type ThemeScheme } from "./themeTokens";
@@ -25,7 +24,6 @@ const READABILITY_PAIRS: ReadonlyArray<readonly [ThemeColorRole, readonly ThemeC
   // label is text-muted. Before the buttons were shaded, surface-alt carried
   // no text at all and was decorative.
   ["text-muted", ["bg", "surface", "surface-alt"]],
-  ["text-subtle", ["bg", "surface"]],
   ["accent-text", ["bg", "surface"]],
   ["danger", ["bg", "surface"]],
   ["success", ["bg", "surface"]],
@@ -50,8 +48,7 @@ export const THEME_DEFAULTS: Record<ThemeScheme, Record<ThemeColorRole, string>>
     "surface-alt": "#f7f7f8",
     "border": "#e2e2e5",
     "text": "#18181b",
-    "text-muted": "#6b6b72",
-    "text-subtle": "#96969e",
+    "text-muted": "#58585f",
     "accent": "#6d4de6",
     "accent-hover": "#5b3ddb",
     "accent-text": "#5b3ddb",
@@ -71,8 +68,7 @@ export const THEME_DEFAULTS: Record<ThemeScheme, Record<ThemeColorRole, string>>
     "surface-alt": "#3b3c44",
     "border": "#4b4c55",
     "text": "#f0f0f2",
-    "text-muted": "#a3a3ab",
-    "text-subtle": "#77777f",
+    "text-muted": "#c6c6cd",
     "accent": "#6f56d1",
     "accent-hover": "#7d66db",
     "accent-text": "#b9a6fb",

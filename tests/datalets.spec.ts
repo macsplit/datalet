@@ -115,7 +115,7 @@ test("an unpaired datalet cannot gain a second one, and says why", async ({ page
   // being left has to be recoverable from somewhere.
   await seedDatalets(page, { activeId: "local", entries: [{ id: "local" }] });
   await page.goto("/settings/datalets");
-  await expect(page.getByText(/not paired, so there is no copy anywhere else/)).toBeVisible();
+  await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Start an empty one" })).toBeDisabled();
 });
 
@@ -192,7 +192,7 @@ test("an unpaired datalet refuses to be left, because nothing else holds it", as
     activeId: "local", entries: [{ id: "local" }, { id: "b", vault: vaultB }],
   });
   await page.goto("/settings/datalets");
-  await expect(page.getByText(/not paired, so there is no copy anywhere else/)).toBeVisible();
+  await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Open" })).toBeDisabled();
 });
 

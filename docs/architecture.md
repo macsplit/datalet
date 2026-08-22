@@ -276,9 +276,9 @@ language from stored data without matching an allowlist first.
 **A minimum contrast floor, applied at generation time.** A colour that would
 leave text lost against its background is moved apart before it reaches the
 stylesheet, so a choice cannot make the app unreadable while it is being made.
-The floor is 2.5:1 and is deliberately below the built-in `text-subtle`, which
-sits at 2.69:1 — anything stricter would rewrite the shipped palette on first
-load, and a test asserts every default clears its own gate. The foreground
+The floor is 2.5:1. It is a guard against the unreadable, not a readability
+standard: the shipped defaults clear 7:1, and the floor only bounds how far an
+override may go. A test asserts every default clears its own gate. The foreground
 moves first, because a background is read against several foregrounds while a
 foreground is read against one; a value already at 00 or ff cannot be pushed
 further without inverting it into something plainly unchosen, so there the

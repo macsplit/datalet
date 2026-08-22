@@ -101,18 +101,6 @@ export interface Settings {
    */
   themeColorTextMutedDark?: string;
   /**
-   * --color-text-subtle in the light palette; omitted uses the stylesheet default
-   *
-   * Original IRI: did:ng:z:themeColorTextSubtleLight
-   */
-  themeColorTextSubtleLight?: string;
-  /**
-   * --color-text-subtle in the dark palette; omitted uses the stylesheet default
-   *
-   * Original IRI: did:ng:z:themeColorTextSubtleDark
-   */
-  themeColorTextSubtleDark?: string;
-  /**
    * --color-accent in the light palette; omitted uses the stylesheet default
    *
    * Original IRI: did:ng:z:themeColorAccentLight

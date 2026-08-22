@@ -30,10 +30,6 @@ ex:SettingsShape {
     // rdfs:comment "--color-text-muted in the light palette; omitted uses the stylesheet default" ;
   ex:themeColorTextMutedDark xsd:string ?
     // rdfs:comment "--color-text-muted in the dark palette; omitted uses the stylesheet default" ;
-  ex:themeColorTextSubtleLight xsd:string ?
-    // rdfs:comment "--color-text-subtle in the light palette; omitted uses the stylesheet default" ;
-  ex:themeColorTextSubtleDark xsd:string ?
-    // rdfs:comment "--color-text-subtle in the dark palette; omitted uses the stylesheet default" ;
   ex:themeColorAccentLight xsd:string ?
     // rdfs:comment "--color-accent in the light palette; omitted uses the stylesheet default" ;
   ex:themeColorAccentDark xsd:string ?

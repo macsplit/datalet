@@ -89,7 +89,7 @@ browser actually blocks a cross-origin font.
 A fixed list of token names a theme may set, and a validator for values.
 
 - **Colour roles only in v1** — roughly fourteen: `bg`, `surface`,
-  `surface-alt`, `border`, `text`, `text-muted`, `text-subtle`, `accent`,
+  `surface-alt`, `border`, `text`, `text-muted`, `accent`,
   `accent-hover`, `accent-text`, `danger`, `success`, `chip`, `badge`.
   Dimension tokens (spacing, radii, type scale) are deliberately out of v1;
   they change layout rather than appearance and are easy to add later.
@@ -206,7 +206,7 @@ existing whole-theme reset.
 **The contrast floor** stops a choice making the app unreadable while it is
 being made — the case where nothing legible is left on screen to fix it with.
 One threshold, 2.5:1, on text-on-background pairs only; borders and fills are
-decorative and untouched. It is set below the built-in `text-subtle` (2.69:1)
+decorative and untouched. It is set below every built-in text pairing
 on purpose, because a stricter floor would rewrite the shipped palette on first
 load, and a test asserts every default clears its own gate. The foreground
 moves first, since a background is read against several foregrounds; a value

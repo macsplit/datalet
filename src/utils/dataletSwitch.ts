@@ -66,8 +66,8 @@ export function canLeaveActiveDatalet(): SwitchCheck {
       ok: false,
       reason: "unpaired",
       message:
-        "This datalet is not paired, so there is no copy anywhere else. Pair it before "
-        + "adding or opening another, or its records would be lost.",
+        "This datalet is only in this browser, so there is no copy anywhere else. Set up "
+        + "sync for it before adding or opening another, or its records would be lost.",
     };
   }
   const pending = pendingOutboxCount(active.vault.vaultId);

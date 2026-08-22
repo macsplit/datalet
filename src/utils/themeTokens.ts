@@ -22,7 +22,6 @@ export const THEME_COLOR_ROLES = [
   "border",
   "text",
   "text-muted",
-  "text-subtle",
   "accent",
   "accent-hover",
   "accent-text",
