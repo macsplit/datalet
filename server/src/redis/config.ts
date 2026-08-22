@@ -23,9 +23,18 @@ export const STREAM_MAXLEN = 5_000;
 export const BATCH_DEDUP_TTL_SECONDS = 24 * 60 * 60;
 
 // Counts the exact UTF-8 bytes of serialized record values in the vault's
-// Redis store hash. This is intentionally twice the browser's 4 MiB safety
-// ceiling, leaving room for builder metadata while placing a server-enforced
-// bound on modified clients and direct API callers.
+// Redis store hash: a server-enforced bound on modified clients and direct API
+// callers.
+//
+// Deliberately NOT a restatement of the browser's cap, and not to be "tidied"
+// into parity with it. The two do different jobs - this one bounds an abusive
+// tenant, `RUNTIME_LIMITS.storedBytes` keeps a store loadable - and they do not
+// share a unit: this counts UTF-8 bytes (`#raw` over `cjson.encode` output in
+// applyBatch.lua), the browser counts UTF-16 code units (`String.length`). They
+// agree on ASCII and diverge sharply otherwise - `日本語` is 3 units and 9
+// bytes, `🙂` is 2 and 4 - so a single shared number would cut a CJK user off at
+// roughly a third of what an English user gets. See
+// docs/datalet-add-and-clone-plan.md A2.
 const configuredVaultQuotaBytes = Number(process.env.VAULT_QUOTA_BYTES ?? 8 * 1024 * 1024);
 if (!Number.isInteger(configuredVaultQuotaBytes) || configuredVaultQuotaBytes < 1) {
   throw new Error("VAULT_QUOTA_BYTES must be a positive integer.");

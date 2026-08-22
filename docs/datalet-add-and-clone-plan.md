@@ -141,7 +141,8 @@ copy of its graph.
   rather than a credential. Which makes the next item load-bearing rather than
   polish.
 - **Redemption returns records, not credentials**: `POST /sync/clone-fetch`
-  answers with the source's snapshot and never issues a vault token for it. The
+  *(planned, never built — see the reversal below; the endpoint that exists is
+  `POST /sync/clone`)* answers with the source's snapshot and never issues a vault token for it. The
   recipient then runs A1's ordinary create-and-populate path. The source's
   all-or-nothing token is untouched, so that documented property survives: the
   code is a capability to *copy*, which is neither read nor write access in the
@@ -228,7 +229,7 @@ never.
 ## Effect on existing documents
 
 - `architecture.md` — the ways a datalet is gained, and the adoption check.
-- `remote-sync.md` — `POST /sync/clone-fetch`, the clone-code key, revocation.
+- `remote-sync.md` — `POST /sync/clone`, the clone-code key, revocation.
 - `remote-sync-architecture.md` §9 — a third credential kind, narrower than a
   vault token: the capability to copy.
 - `redis/config.ts` — the quota comment, per A2.

@@ -259,7 +259,8 @@ tabs for the same site. Records are stored under separate keys, so an ordinary
 edit persists only the touched records rather than serializing the whole
 store.
 
-Settings shows whether this browser has agreed to keep your data. If it has,
+**Settings → Manage datalets** shows how full this browser is and whether it has
+agreed to keep your data. If it has,
 your records are exempt from routine cleanup; if it has not, the panel says so
 and offers to ask. Either way, exporting a backup is still the only thing that
 survives losing the device.
@@ -268,7 +269,8 @@ survives losing the device.
 
 A **datalet** is one self-contained instance of this app — its records, schemas,
 tabs, blocks, widgets and theme. You can keep several and use one at a time,
-switching between them from **Settings → Switch datalet**.
+switching between them from **Settings → Manage datalets**, which is also where
+pairing, copies, storage and backups live.
 
 Only the datalet you have open is held in this browser, which is why keeping
 more than one requires each to be paired: the ones you are not using live in
@@ -284,7 +286,7 @@ Two things that look alike and are opposites:
   copy of someone else's. From that moment the two are unrelated, and nothing
   you do reaches theirs.
 
-**Settings → Give someone a copy** creates a `COPY` code for the datalet you
+**Settings → Manage datalets → Give someone a copy** creates a `COPY` code for the datalet you
 have open. It hands over everything in it, including every record; the sync
 server can read all of it, as nothing here is end-to-end encrypted; and anyone
 holding the code can take a copy until you revoke it. Revoking stops further

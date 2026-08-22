@@ -20,198 +20,27 @@ operators who'd rather not run Docker. Pick one; don't mix them.
 > That stack assumes TLS is terminated in front of it — an existing Cloudflare
 > tunnel or reverse proxy pointing at `127.0.0.1:${SYNC_PORT}` — and caps
 > Neo4j and Redis for a small always-on machine. The sections below remain the
-> reference for everything it does not cover: the Caddy front (§1.4), the
+> reference for everything it does not cover: the Caddy front (§1.2), the
 > native/systemd path (§2), backups, and the configuration table (§3). Where
 > the two disagree, the files in `deploy/` are what actually runs.
 
-### 1.1 Layout
+### 1.1 The stack itself
 
-```
-deploy/
-├── docker-compose.yml
-├── .env.example
-├── Dockerfile.sync-server
-├── Caddyfile
-└── neo4j/
-    └── backup.sh
-```
+The layout, `docker-compose.yml`, `Dockerfile` and `.env.example` are checked
+in under [`deploy/`](../deploy) and are what actually runs — see
+[`deploy/README.md`](../deploy/README.md). They were transcribed snippets here
+until they became real files; keeping a second, drifting copy in this document
+would only invite someone to deploy the wrong one.
 
-### 1.2 `docker-compose.yml`
+What the stack starts: `sync-server` (the built app *and* `/sync/*`, one
+origin), `materializer` (same image, `ROLE=materializer`), `redis` (AOF on,
+`noeviction`) and `neo4j`. Its memory limits are measured rather than
+conventional, and the reasoning is in `deploy/README.md`.
 
-```yaml
-name: localgraph-sync
+The sections below cover what `deploy/` deliberately leaves out.
 
-services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: >
-      redis-server
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory-policy noeviction
-    volumes:
-      - redis-data:/data
-    networks: [backend]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
 
-  neo4j:
-    image: neo4j:5-community
-    restart: unless-stopped
-    environment:
-      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD}"
-      NEO4J_server_memory_heap_initial__size: "512m"
-      NEO4J_server_memory_heap_max__size: "1G"
-      NEO4J_server_memory_pagecache_size: "512m"
-      # Bolt only needs to be reachable from the sync-server containers.
-    volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
-      - ./neo4j/backups:/backups
-    networks: [backend]
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  sync-server:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.sync-server
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-    environment:
-      REDIS_URL: "redis://redis:6379"
-      NEO4J_URL: "bolt://neo4j:7687"
-      NEO4J_USER: "neo4j"
-      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
-      VAULT_QUOTA_BYTES: "${VAULT_QUOTA_BYTES:-8388608}"
-      VAULT_WRITE_RATE_LIMIT: "${VAULT_WRITE_RATE_LIMIT:-600}"
-      VAULT_WRITE_RATE_WINDOW_SECONDS: "${VAULT_WRITE_RATE_WINDOW_SECONDS:-60}"
-      VAULT_IDLE_REPORT_AFTER_MS: "${VAULT_IDLE_REPORT_AFTER_MS:-2592000000}"
-      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
-      PORT: "3000"
-      NODE_ENV: "production"
-    networks: [backend]
-    deploy:
-      replicas: 2   # stateless — scale this number freely
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/sync/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  materializer:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.sync-server
-    restart: unless-stopped
-    depends_on:
-      redis:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-    environment:
-      ROLE: "materializer"
-      REDIS_URL: "redis://redis:6379"
-      NEO4J_URL: "bolt://neo4j:7687"
-      NEO4J_USER: "neo4j"
-      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
-      MATERIALIZER_SHARD_COUNT: "1"
-      MATERIALIZER_SHARD_INDEX: "0"
-      NODE_ENV: "production"
-    networks: [backend]
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on: [sync-server]
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks: [backend]
-
-networks:
-  backend:
-
-volumes:
-  redis-data:
-  neo4j-data:
-  neo4j-logs:
-  caddy-data:
-  caddy-config:
-```
-
-Notes:
-
-- Only `caddy` publishes host ports. Redis and Neo4j are reachable only on
-  the internal `backend` network — never expose 6379/7474/7687 to the host
-  or internet directly.
-- `sync-server` has no published port either; Caddy proxies to it by
-  service name, and with `replicas: 2` Compose's built-in DNS round-robins
-  across instances — this is the "any instance can serve any vault" design
-  from the architecture doc paying off operationally (no sticky sessions to
-  configure).
-- `materializer` runs the same image with `ROLE=materializer`. Keep at least
-  one instance running: it consumes accepted Redis Stream entries into Neo4j,
-  which is what makes snapshots and durable recovery advance. Do not use
-  `docker compose --scale materializer=N`: every replica would receive index
-  zero and all but one would fail its Redis shard claim. Scale it with explicit
-  services or an orchestrator that assigns one unique index from `0` through
-  `MATERIALIZER_SHARD_COUNT - 1`.
-- Neo4j Community, single instance: no built-in HA/clustering. That's an
-  accepted trade for a reproducible single-server OSS setup (see
-  architecture doc §6.4/§7); back it up on a schedule (§1.6 below) and if
-  you outgrow single-instance Neo4j, that's the point to evaluate Neo4j
-  Enterprise causal clustering or a managed Neo4j offering — not something
-  to build into the reproducible-server story here.
-
-### 1.3 `Dockerfile.sync-server`
-
-```dockerfile
-# --- build the static app ---
-FROM node:22-slim AS build
-WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-# (server/ is the new sync-server source, added alongside src/ — see
-#  architecture doc §8 for what it contains)
-RUN pnpm --filter sync-server build 2>/dev/null || pnpm build:server
-
-# --- runtime ---
-FROM node:22-slim
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/server-dist ./server-dist
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./
-EXPOSE 3000
-CMD ["node", "server-dist/index.js"]
-```
-
-The implemented sync server lives in this repository's `server/` directory
-and builds to `server-dist/`. The same process serves both `dist/` and the
-sync endpoints, keeping the deployable to one application image plus Redis,
-Neo4j, and the reverse proxy.
-
-### 1.4 `Caddyfile`
+### 1.2 `Caddyfile`
 
 ```
 {$SYNC_DOMAIN} {
@@ -240,18 +69,12 @@ on a trusted network only — do not run the sync endpoint over plain HTTP on
 an untrusted network, since patch payloads carry full record contents and
 the `vaultToken` bearer secret (architecture doc §9).
 
-### 1.5 `.env.example`
+### 1.3 `.env.example`
 
-```
-NEO4J_PASSWORD=change-me-to-a-long-random-value
-SYNC_DOMAIN=sync.example.org
-MATERIALIZER_SHARD_COUNT=1
-VAULT_QUOTA_BYTES=8388608
-VAULT_WRITE_RATE_LIMIT=600
-VAULT_WRITE_RATE_WINDOW_SECONDS=60
-VAULT_IDLE_REPORT_AFTER_MS=2592000000
-ADMIN_TOKEN=
-```
+[`deploy/.env.example`](../deploy/.env.example) is the template to copy; §3
+below is the full reference for every variable, including the ones it omits.
+Add `SYNC_DOMAIN` when you are using the Caddy front above, which is the only
+part of this that needs it.
 
 Leave `ADMIN_TOKEN` empty on a single-tenant deployment: `/sync/admin/vaults`
 answers `404` when it is unset, so an unused operator API is absent rather
@@ -259,11 +82,11 @@ than merely locked. On a multi-tenant one, set it to a long random value —
 it reads every tenant's numbers, so treat it like a root credential and never
 reuse a vault token for it.
 
-Copy to `.env`, fill in real values, never commit `.env` (already covered
-by this repo's existing `.gitignore` pattern for secrets — extend it with
-`deploy/.env` if the file lives there).
+Copy to `deploy/.env` and fill in real values. It is already ignored: the
+repo's `.gitignore` carries a bare `.env` pattern, which git applies at any
+depth, so no extra rule is needed.
 
-### 1.6 Bring-up and backups
+### 1.4 Bring-up and backups
 
 ```bash
 # first run
@@ -527,6 +350,10 @@ them; the cleanup command filters those inert tokens out.
 | `NEO4J_URL` | sync-server, materializer | Bolt URL, e.g. `bolt://127.0.0.1:7687` |
 | `NEO4J_USER` / `NEO4J_PASSWORD` | sync-server, materializer | Neo4j credentials |
 | `PORT` | sync-server | HTTP port to listen on |
+| `ROLE` | both | `materializer` runs the Redis-to-Neo4j consumer; anything else (or unset) runs the HTTP ingest tier and serves the app. One build, two deployables |
+| `STATIC_DIR` | sync-server | directory of built client assets to serve (defaults to `../dist` relative to the compiled server) |
+| `NEO4J_DATABASE` | sync-server, materializer | database name within the Neo4j instance (default `neo4j`) |
+| `INSTANCE_ID` | sync-server | value reported in the `X-Instance-Id` response header; defaults to `pid-<pid>`. Set it per instance when running several behind one proxy, so a response can be traced to the process that served it |
 | `VAULT_CREATE_RATE_LIMIT` / `VAULT_CREATE_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/vaults` abuse limit (default 10 per hour per client IP — see architecture doc §9); trusts `X-Forwarded-For`, so only meaningful behind a reverse proxy that sets it truthfully |
 | `PAIR_CODE_TTL_SECONDS` | sync-server | temporary pair-code lifetime (default 600 seconds) |
 | `PAIR_REDEEM_RATE_LIMIT` / `PAIR_REDEEM_RATE_WINDOW_SECONDS` | sync-server | `POST /sync/pair-redeem` guessing limit (default 10 per minute per client IP; the same trusted-proxy requirement applies) |
@@ -571,7 +398,7 @@ curl -N \
 ```
 
 If the `curl -N` stream doesn't show ping comments arriving continuously,
-suspect proxy buffering first (§1.4 / §2.4) before suspecting the server.
+suspect proxy buffering first (§1.2 / §2.4) before suspecting the server.
 
 The ticket can still appear in access logs, but it is stream-only and expires
 after one hour. Configure the public proxy to redact query strings on

@@ -27,36 +27,6 @@ nothing else.
 
 ---
 
----
-
-### More than one datalet
-
-[`multiple-datalets-plan.md`](multiple-datalets-plan.md) plans holding several
-datalets and using one at a time, in the shape of Joplin's profiles. It adds no
-capability to a datalet — nothing new can be modelled, stored or rendered — and
-the engine is already multi-graph, so it is largely exposing what exists.
-
-It turns on a measured constraint: Chromium refuses localStorage past ~5.2
-million characters for an origin, while one datalet may use 4 million. Several
-resident at once would make the same action succeed or fail depending on sizes,
-so only the active datalet is resident, and the rest must be recoverable from
-their vaults. **Holding more than one therefore requires pairing** — local-only
-use stays exactly as it is, with one datalet and no network.
-
-Datalets are built: the registry, the switcher with its restore-before-evict
-rules, adding one, and copy codes with revocation. The flow and cloning were
-planned together in
-[`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) — they share a
-destination, since every way of gaining a datalet ends in a vault that is
-paired, added and switched to.
-
-A clone is the **whole** graph, given by a code that redeems into a copy rather
-than into access. Joining and cloning are opposites and are named as such: join
-is the same datalet in a second place, clone is a new datalet that began as a
-copy. Publishing a code hands over every record in that datalet to anyone
-holding it, the server can read all of it, and revoking stops future copies but
-not copies already taken — three facts to be stated rather than softened.
-
 ## Under consideration, not decided
 
 ### A desktop shell, and what the app already is
@@ -222,6 +192,52 @@ whichever was written last.
 It also landed the project's first Content Security Policy, which was worth
 having on its own merits.
 
+
+### More than one datalet
+
+
+[`multiple-datalets-plan.md`](multiple-datalets-plan.md) plans holding several
+datalets and using one at a time, in the shape of Joplin's profiles. It adds no
+capability to a datalet — nothing new can be modelled, stored or rendered — and
+the engine is already multi-graph, so it is largely exposing what exists.
+
+It turns on a measured constraint: Chromium refuses localStorage past ~5.2
+million characters for an origin, against a 4.5 million budget for one datalet. Several
+resident at once would make the same action succeed or fail depending on sizes,
+so only the active datalet is resident, and the rest must be recoverable from
+their vaults. **Holding more than one therefore requires pairing** — local-only
+use stays exactly as it is, with one datalet and no network.
+
+Datalets are built: the registry, the switcher with its restore-before-evict
+rules, adding one, and copy codes with revocation. The flow and cloning were
+planned together in
+[`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) — they share a
+destination, since every way of gaining a datalet ends in a vault that is
+paired, added and switched to.
+
+A clone is the **whole** graph, given by a code that redeems into a copy rather
+than into access. Joining and cloning are opposites and are named as such: join
+is the same datalet in a second place, clone is a new datalet that began as a
+copy. Publishing a code hands over every record in that datalet to anyone
+holding it, the server can read all of it, and revoking stops future copies but
+not copies already taken — three facts to be stated rather than softened.
+
+### A deployable stack
+
+The deployment guide described a Compose stack that existed only as fenced
+snippets, so deploying meant transcribing it. [`deploy/`](../deploy) now holds
+the real thing — Dockerfile, Compose stack, env template and `up.sh`, which
+waits for `/sync/health` rather than reporting success the moment containers
+exist. Built and exercised end to end on the target machine: vault creation,
+write, materialization and snapshot round trip.
+
+Its limits are measured rather than guessed. Neo4j is 833 MiB resident while
+idle for a 512m heap and 256m page cache, because JVM metaspace and thread
+stacks live above both; the whole stack is about 910 MB, of which the two Node
+processes are 62 MB.
+
+TLS is terminated in front, by a tunnel or reverse proxy, which also keeps the
+app same-origin with `/sync/*` as the CSP requires.
 
 ### Multi-tenancy and identity tracks
 

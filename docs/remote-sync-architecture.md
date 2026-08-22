@@ -86,7 +86,8 @@ enters into every device/browser they want kept in sync.
   configured. The implemented client switches the active graph and reloads;
   it does **not** automatically rename records already stored under the old
   local graph. Those records remain in browser storage but are not part of the
-  vault. Use Settings export before pairing and import after pairing when the
+  vault. Use the export under Settings → Manage datalets before pairing, and
+  import after pairing, when the
   existing local dataset should seed the vault. Until a vault is configured,
   nothing changes — the app is exactly as local-only as it is today.
 
@@ -446,7 +447,8 @@ e.g. `src/utils/remoteSyncEngine.ts`, that:
    already exported from `localNgEngine.ts` — i.e. a remote patch re-uses
    exactly the same apply/notify path a cross-tab `BroadcastChannel`
    message does today, just from a different origin.
-4. Pairing UI: the Settings page calls `POST /sync/vaults`, then encodes the
+4. Pairing UI: the datalets page (Settings → Manage datalets) calls
+   `POST /sync/vaults`, then encodes the
    returned UUID and token as one versioned, checksummed `LG1` Crockford-base32
    string. Joining decodes that string locally before using the unchanged API.
    The `LG1` string is the interface's only credential form: the vault id and

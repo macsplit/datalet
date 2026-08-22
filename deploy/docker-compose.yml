@@ -7,7 +7,7 @@
 # TLS is not terminated here. The expected front is an existing Cloudflare
 # tunnel (or any reverse proxy) pointing at sync-server's published port, which
 # also keeps the app and /sync/* on one origin as the CSP requires. If you have
-# no such front, see docs/remote-sync-deployment.md §1.4 for the Caddy variant.
+# no such front, see docs/remote-sync-deployment.md §1.2 for the Caddy variant.
 name: datalet-sync
 
 services:
@@ -57,7 +57,7 @@ services:
       NEO4J_USER: "neo4j"
       NEO4J_PASSWORD: "${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}"
       # One shard is right until materialization lag says otherwise. Changing
-      # the count is not a rolling operation - see the deployment doc §2.3.
+      # the count is not a rolling operation - see the deployment doc §3.
       MATERIALIZER_SHARD_COUNT: "${MATERIALIZER_SHARD_COUNT:-1}"
       MATERIALIZER_SHARD_INDEX: "${MATERIALIZER_SHARD_INDEX:-0}"
     deploy:

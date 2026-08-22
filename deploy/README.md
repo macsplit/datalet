@@ -29,7 +29,7 @@ moment containers exist.
 Not terminated here. Point an existing Cloudflare tunnel or reverse proxy at
 `127.0.0.1:${SYNC_PORT}`; the port is bound to loopback precisely so nothing
 reaches an origin that terminates no TLS of its own. For a self-contained
-Caddy front instead, see the deployment doc §1.4.
+Caddy front instead, see the deployment doc §1.2.
 
 ## The limits are deliberate
 

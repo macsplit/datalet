@@ -195,8 +195,11 @@ atomic, which is `server/src/redis/applyBatch.lua`:
 - Maintain `vault:<id>:bytes` inside the script, adjusted by the byte delta of
   each write (and credited back on removal), so it stays consistent with the
   accept decision under concurrency.
-- Reject a batch that would cross `VAULT_QUOTA_BYTES` (default 8 MB — twice the
-  client ceiling, leaving headroom for builder metadata) and return a reason.
+- Reject a batch that would cross `VAULT_QUOTA_BYTES` (default 8 MB) and return
+  a reason. *(Later corrected: this said "twice the client ceiling", a framing
+  [`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) A2 abandoned
+  because the two limits do not share a unit — UTF-8 bytes here, UTF-16 code
+  units in the browser — so no ratio between them is meaningful.)*
 - Reject **all-or-nothing**, matching `persistNow()`'s two-pass discipline in
   the browser. A half-applied batch at the quota edge would be worse than a
   refusal.

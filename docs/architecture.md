@@ -616,6 +616,9 @@ src/
 │   ├── RecordCard.tsx          Generic record editor
 │   ├── UndoControl.tsx         Nav undo button and Ctrl/Cmd+Z
 │   ├── DataBackup.tsx          Whole-graph JSON export and import
+│   ├── DataletSettings.tsx     The datalet list, switching, and adding one
+│   ├── CloneCodes.tsx          Publish, list and revoke COPY- codes
+│   ├── StorageUsage.tsx        How full this browser is; the persistence request
 │   ├── SyncSettings.tsx        Vault create / join / rotate / delete / pair codes
 │   ├── PairingQr.tsx           Renders the LG1 code as a QR; scan where supported
 │   ├── RuntimeSafety.tsx       Error boundary, issue banner, inline circuit notice
@@ -625,8 +628,14 @@ src/
 │   ├── MetaStoreContext.tsx    The five metadata subscriptions, shared once
 │   ├── useTabs / useBlocks / useWidgets / useSchemas / usePropertyDefs
 │   └── useSettings.ts          The Settings singleton
-├── pages/                      Tab view plus the Settings/theme/schema/tab/block
-│                               builders
+├── pages/
+│   ├── TabPage.tsx             A graph-defined tab, rendered
+│   ├── SettingsPage.tsx        Hub: four link-outs and the app title
+│   ├── DataletsPage.tsx        Datalets and devices — switch, copy, storage,
+│   │                           backup, pairing
+│   ├── ThemePage.tsx           The colour roles, per scheme
+│   ├── SchemaListPage.tsx / SchemaEditorPage.tsx
+│   └── TabsManagerPage.tsx / BlocksBuilderPage.tsx
 ├── shapes/
 │   ├── shex/metaShapes.shex    Metadata shape definitions (source of truth)
 │   └── orm/                    Generated ORM artifacts — regenerate, don't edit
@@ -639,11 +648,14 @@ src/
     ├── pairingCode.ts          LG1 Crockford-base32 credential encode / decode
     ├── qrCode.ts               Dependency-free QR matrix generation
     ├── tabRoutes.ts            Derives readable tab slugs; raw ids still resolve
+    ├── randomId.ts             UUIDs, with a fallback where randomUUID is absent
+    ├── clipboard.ts            Copy with a legacy fallback; reports whether it worked
     ├── datalets.ts             The registry of datalets and which one is active
     ├── dataletSwitch.ts        Switching between them, and the rules that refuse it
     ├── storagePersistence.ts   Asks the browser to keep this origin's storage
     ├── themeTokens.ts          The allowlisted colour roles and value grammar
     ├── themeStylesheet.ts      Stored theme → one <style> with a dark media query
+    ├── themeContrast.ts        The contrast floor, and the correction that meets it
     └── runtimeHealth.ts        Limits and the issue reporter
 
 server/src/
