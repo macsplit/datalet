@@ -38,6 +38,18 @@ export type Datalet = {
    * tell which is which.
    */
   copiedAt?: number;
+  /**
+   * The last known `Settings.appTitle` of this datalet.
+   *
+   * Cached here because a datalet that is not open has been evicted from
+   * localStorage, so its own title is unreadable without fetching its vault -
+   * which is why the list used to fall back to a vault id. Written while the
+   * datalet is active and from the snapshot when one is adopted, so it can be
+   * stale if the title was changed on another device since. That is worth it:
+   * a name that is one edit out of date still identifies the thing, and a
+   * `Vault 1586f18f` never did.
+   */
+  title?: string;
 };
 
 /**
@@ -143,13 +155,32 @@ export function unpairActiveDatalet(): void {
 }
 
 /** Add a datalet for a vault this browser has just created or joined. */
-export function addDatalet(vault: DataletVault, options: { copiedAt?: number } = {}): Datalet {
+export function addDatalet(
+  vault: DataletVault,
+  options: { copiedAt?: number; title?: string } = {},
+): Datalet {
   const registry = readDatalets() ?? { activeId: "", entries: [] };
   const existing = registry.entries.find((entry) => entry.vault?.vaultId === vault.vaultId);
   if (existing) return existing;
   const entry: Datalet = { id: vault.vaultId, vault, ...options };
   writeDatalets({ activeId: registry.activeId || entry.id, entries: [...registry.entries, entry] });
   return entry;
+}
+
+/**
+ * Remember what the active datalet is called, so it stays nameable once it is
+ * closed. A no-op when unchanged: this runs on every title keystroke.
+ */
+export function rememberActiveDataletTitle(title: string): void {
+  const registry = readDatalets();
+  if (!registry) return;
+  const active = registry.entries.find((entry) => entry.id === registry.activeId);
+  if (!active || active.title === title) return;
+  writeDatalets({
+    ...registry,
+    entries: registry.entries.map((entry) =>
+      entry.id === registry.activeId ? { ...entry, title } : entry),
+  });
 }
 
 /** Make `id` the datalet in use. The caller reloads; nothing here does. */

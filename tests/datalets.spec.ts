@@ -9,7 +9,11 @@ const OUTBOX_PREFIX = "meta-ui-builder:sync-outbox:";
 const LOCAL_GRAPH = "did:ng:test-private-store";
 
 type Seed = {
-  entries: Array<{ id: string; vault?: { vaultId: string; vaultToken: string; nodeId: string } }>;
+  entries: Array<{
+    id: string;
+    title?: string;
+    vault?: { vaultId: string; vaultToken: string; nodeId: string };
+  }>;
   activeId: string;
   outbox?: Record<string, number>;
 };
@@ -268,4 +272,43 @@ test("a switch restores the target and evicts the one left behind", async ({ pag
     { indexKey: INDEX_KEY });
   expect(index).toContain(vaultB.vaultId);
   expect(index).not.toContain(vaultA.vaultId);
+});
+
+test("a datalet that is not open is named, not reduced to a vault id", async ({ page }) => {
+  // The title is recorded while a datalet is active; b's was recorded when it
+  // was last open, which is the only way it can be named while evicted.
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Reading list", vault: vaultB },
+    ],
+  });
+  await page.goto("/settings/datalets");
+
+  await expect(page.getByText("Reading list")).toBeVisible();
+  // Both rows carry their vault id, which is what separates two same-named ones.
+  await expect(page.getByText(`vault ${vaultB.vaultId.slice(0, 8)}`)).toBeVisible();
+  await expect(page.getByText(`vault ${vaultA.vaultId.slice(0, 8)}`)).toBeVisible();
+});
+
+test("a datalet with no recorded title says so rather than showing a hash as a name", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
+  });
+  await page.goto("/settings/datalets");
+  await expect(page.getByText("Untitled datalet")).toBeVisible();
+});
+
+test("renaming the app records the name against the datalet", async ({ page }) => {
+  await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
+  await page.goto("/settings");
+  await page.getByLabel("Shown in the nav bar and browser tab").fill("Field notes");
+  // Recorded from the root layout, so a rename then a switch - without ever
+  // opening the datalets list - still leaves it nameable.
+  await expect.poll(() => page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
+    return registry.entries?.[0]?.title;
+  })).toBe("Field notes");
 });

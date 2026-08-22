@@ -726,6 +726,24 @@ a {
     opacity: 0.45;
 }
 
+/* A datalet's row is named with the title its owner chose, so it must not take
+   `.field-label`, which uppercases and letterspaces its content: that styles a
+   person's name for their app as though it were a form label, and "Reading
+   list" arriving as "READING LIST" is harder to recognise, not easier. */
+.datalet-name {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0;
+}
+
+/* The vault id sits beside a datalet's name as the thing that disambiguates
+   two identical titles. Monospace so it reads as an identifier rather than as
+   more of the name. */
+.datalet-vault-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .danger-text {
     color: var(--color-danger);
 }

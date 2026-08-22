@@ -30,9 +30,24 @@ import {
   activeDatalet,
   addDatalet,
   dataletGraph,
+  rememberActiveDataletTitle,
   setActiveDatalet,
   type Datalet,
 } from "./datalets";
+import { SETTINGS_ID } from "../hooks/useSettings";
+
+/**
+ * The datalet's own name, read out of the snapshot being adopted.
+ *
+ * Without this a datalet just added would sit unnamed in the list until the
+ * next time it happened to be open, which is the moment its name is least
+ * needed.
+ */
+function titleFromSnapshot(graph: string, records: Store): string | undefined {
+  const settings = records[`${graph}|${SETTINGS_ID}`] ?? records[SETTINGS_ID];
+  const title = (settings as { appTitle?: unknown } | undefined)?.appTitle;
+  return typeof title === "string" && title.trim() !== "" ? title : undefined;
+}
 
 export type SwitchCheck =
   | { ok: true }
@@ -107,6 +122,8 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
   const fits = adoptionFits(targetGraph, snapshot.records, leaving);
   if (!fits.ok) throw new Error(fits.message);
 
+  // Recorded before the eviction that makes it unreadable.
+  const incomingTitle = titleFromSnapshot(targetGraph, snapshot.records);
   if (leaving) evictGraph(leaving);
   if (!reconcileGraphSnapshot(targetGraph, snapshot.records)) {
     throw new Error("That datalet's records failed local validation.");
@@ -114,6 +131,7 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
   flushLocalPersistence();
   setDataletCursor(target.vault.vaultId, snapshot.seq);
   setActiveDatalet(target.id);
+  if (incomingTitle) rememberActiveDataletTitle(incomingTitle);
   window.location.reload();
 }
 

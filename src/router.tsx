@@ -33,6 +33,7 @@ import { MetaStoreProvider } from "./hooks/MetaStoreContext";
 import { UndoControl } from "./components/UndoControl";
 import { GearIcon, HouseIcon } from "./components/icons";
 import { resolveTabRouteSegment, tabRouteSegment } from "./utils/tabRoutes";
+import { rememberActiveDataletTitle } from "./utils/datalets";
 
 /** Site-wide chrome (nav + content outlet), shared by every page. */
 function RootLayout() {
@@ -57,6 +58,10 @@ function RootLayout() {
   // imperatively whenever the configured title changes.
   useEffect(() => {
     document.title = appTitle;
+    // Recorded here rather than on the datalets page, because that page is not
+    // where the title is edited. A rename followed by a switch, without ever
+    // opening the list in between, must still leave the datalet nameable.
+    rememberActiveDataletTitle(appTitle);
   }, [appTitle]);
 
   return (

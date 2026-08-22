@@ -21,14 +21,23 @@ import { decodePairingCode } from "../utils/pairingCode";
 import { randomUuid } from "../utils/randomId";
 
 /**
- * Only the active datalet is resident, so this lists the others by what is
- * known about them without loading them: their vault. The active one can be
- * named from its own `Settings.appTitle`, because that is the datalet whose
- * records are actually in memory.
+ * What to call a datalet in the list.
+ *
+ * Every row is named the same way, by its title, rather than the active one
+ * being named and the rest reduced to `Vault 1586f18f` - which asked someone
+ * to recognise their own work by a hash. The active title comes from the live
+ * `Settings`; the others come from what was recorded while they were last
+ * open. A datalet added before that was recorded, or one whose title is
+ * genuinely blank, still has no name to show, so it says so rather than
+ * pretending the vault id is one.
+ *
+ * The vault id is kept alongside rather than dropped: two datalets may share a
+ * title, and it is the only thing that never does.
  */
-function dataletLabel(entry: Datalet, isActive: boolean, activeTitle: string): string {
+function dataletName(entry: Datalet, isActive: boolean, activeTitle: string): string {
   if (isActive) return activeTitle;
-  if (entry.vault) return `Vault ${entry.vault.vaultId.slice(0, 8)}`;
+  if (entry.title) return entry.title;
+  if (entry.vault) return "Untitled datalet";
   return "This device";
 }
 
@@ -139,9 +148,14 @@ export function DataletSettings() {
           const isActive = entry.id === activeId;
           return (
             <div className="layout-row" key={entry.id}>
-              <span className="field-label">
-                {dataletLabel(entry, isActive, appTitle)}
+              <span className="datalet-name">
+                {dataletName(entry, isActive, appTitle)}
                 {isActive && <span className="badge">Open</span>}
+                {entry.vault && (
+                  <span className="helper-text datalet-vault-id">
+                    {` vault ${entry.vault.vaultId.slice(0, 8)}`}
+                  </span>
+                )}
                 {entry.copiedAt !== undefined && (
                   <span className="helper-text">
                     {` copied ${new Date(entry.copiedAt).toLocaleDateString()}`}
