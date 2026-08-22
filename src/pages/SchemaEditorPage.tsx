@@ -382,7 +382,7 @@ export function SchemaEditorPage() {
     <div className="page-content">
       <header className="page-hero">
         <h1>{schema.name || "Unnamed schema"}</h1>
-        <p>Schema editor · Changes are stored immediately in the local graph.</p>
+        <p>Schema editor · Changes are saved as you make them.</p>
       </header>
       <section className="panel">
         <div className="field-group">

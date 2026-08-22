@@ -120,6 +120,15 @@ above it, insistent near the limit. The failure it exists to prevent is the app
 silently refusing to persist, which today produces a runtime issue banner with
 no warning that it was coming.
 
+**Revised after looking at it.** The first version was a sentence inside the
+backup panel, in the same muted style as the sentences around it, and was in
+practice invisible - which defeats the point of a warning meant to arrive
+before saving stops. It is now a panel of its own with a filled bar whose
+colour escalates, so the state is seen rather than read. The persistence
+request moved with it: whether the browser will keep the data belongs beside
+how much of it there is, leaving the backup panel about getting data in and
+out.
+
 ## D2. Datalets: a list, a name, and a switcher — **completed 2026-08-21**
 
 A datalet needs identity the user recognises. **The name already exists**: each

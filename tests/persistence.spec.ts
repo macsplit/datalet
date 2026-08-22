@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { RUNTIME_LIMITS } from "../src/utils/runtimeHealth";
+import { DEFAULT_APP_TITLE } from "../src/hooks/useSettings";
 
 const STORE_KEY = "meta-ui-builder:ng-local-store";
 const INDEX_KEY = `${STORE_KEY}:index`;
@@ -248,7 +249,9 @@ test("writes only the edited record and reconstructs mixed mutations after reloa
 test("keeps one deterministic Settings record across reloads and tabs", async ({ context, page }) => {
   await seedSession(page);
   await page.goto("/settings");
-  await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue("Local Knowledge Graph");
+  // Derived, not spelled out: this test is about one Settings record surviving
+  // reloads, not about what the app happens to be called.
+  await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue(DEFAULT_APP_TITLE);
   await expect(page.getByRole("heading", { name: "Currency" })).toHaveCount(0);
   const second = await context.newPage();
   await second.goto("/settings");

@@ -14,6 +14,7 @@ import { SyncSettings } from "../components/SyncSettings";
 import { DataBackup } from "../components/DataBackup";
 import { DataletSettings } from "../components/DataletSettings";
 import { CloneCodes } from "../components/CloneCodes";
+import { StorageUsage } from "../components/StorageUsage";
 
 export function SettingsPage() {
   const { appTitle, setAppTitle } = useSettings();
@@ -88,6 +89,7 @@ export function SettingsPage() {
       </section>
       <DataletSettings />
       <CloneCodes />
+      <StorageUsage />
       <DataBackup />
       <SyncSettings />
     </div>

@@ -36,7 +36,9 @@ type SettingsValue = {
 
 const SettingsContext = createContext<SettingsValue | undefined>(undefined);
 
-const DEFAULT_APP_TITLE = "Local Knowledge Graph";
+// Named for what a user has rather than how it is stored. Only new datalets
+// take this; one that already recorded a title keeps it.
+export const DEFAULT_APP_TITLE = "Datalet";
 export const SETTINGS_ID = "did:ng:z:SettingsSingleton";
 
 /** Currency widgets retain their established EUR display without a global preference. */

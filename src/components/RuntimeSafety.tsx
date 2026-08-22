@@ -107,7 +107,7 @@ export function RuntimeIssueBanner() {
 /** Inline boundary used when one malformed graph branch is cut off. */
 export function RuntimeCircuitNotice({ message }: { message: string }) {
   useEffect(() => {
-    reportRuntimeIssue(message, "Malformed block graph was stopped", "warning");
+    reportRuntimeIssue(message, "Blocks were arranged in a loop and were stopped", "warning");
   }, [message]);
   return <p className="runtime-circuit">{message}</p>;
 }

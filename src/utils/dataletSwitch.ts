@@ -99,7 +99,7 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
   const active = activeDatalet();
   const leaving = active && active.id !== target.id ? dataletGraph(active, localGraph) : undefined;
   const targetGraph = dataletGraph(target, localGraph);
-  if (!targetGraph) throw new Error("This device's local graph is not ready yet.");
+  if (!targetGraph) throw new Error("This device is still starting up; try again in a moment.");
 
   // Fetch first: a failure here must leave the current datalet exactly as it was.
   const snapshot = await fetchVaultSnapshot(target.vault);

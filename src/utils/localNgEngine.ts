@@ -1298,14 +1298,14 @@ export function importGraphBackup(targetGraph: string, value: unknown): void {
       typeof (record as OrmRecord)["@id"] !== "string" ||
       typeof (record as OrmRecord)["@graph"] !== "string"
     ) {
-      throw new Error("The backup contains a malformed graph record.");
+      throw new Error("The backup contains a record that is not readable.");
     }
     if (
       !key.startsWith(sourcePrefix) ||
       (record as OrmRecord)["@graph"] !== candidate.graph ||
       key !== `${sourcePrefix}${(record as OrmRecord)["@id"]}`
     ) {
-      throw new Error("The backup contains a record outside its declared graph.");
+      throw new Error("The backup contains a record that belongs to a different datalet.");
     }
     const nextKey = targetPrefix + key.slice(sourcePrefix.length);
     if (nextKey === "__proto__" || nextKey === "prototype" || nextKey === "constructor") {
