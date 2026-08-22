@@ -28,6 +28,7 @@ import {
 } from "./localNgEngine";
 import { dismissRuntimeIssue, reportRuntimeIssue } from "./runtimeHealth";
 import { randomUuid } from "./randomId";
+import { session } from "./ngSession";
 import {
   activeDatalet,
   ensureLocalDatalet,
@@ -132,6 +133,38 @@ function encodePathSegment(segment: string): string {
 }
 
 /**
+ * Copy a graph's records into another graph, evicting the source first so the
+ * two never occupy storage at once. Shared by both directions of pairing.
+ *
+ * The records are held in memory across that gap and put back if the write
+ * fails, rather than leaving someone with neither copy.
+ */
+function moveRecordsBetweenGraphs(fromGraph: string, toGraph: string): Store | undefined {
+  const backup = exportGraphBackup(fromGraph);
+  if (backup.records.length === 0) return undefined;
+
+  const moved: Store = {};
+  for (const { record } of backup.records) {
+    moved[`${toGraph}|${record["@id"]}`] = { ...record, "@graph": toGraph };
+  }
+
+  evictGraph(fromGraph);
+  try {
+    if (!reconcileGraphSnapshot(toGraph, moved)) {
+      throw new Error("Those records failed validation on the way across.");
+    }
+  } catch (error) {
+    reconcileGraphSnapshot(fromGraph, Object.fromEntries(
+      backup.records.map(({ key, record }) => [key, record]),
+    ));
+    flushLocalPersistence();
+    throw error;
+  }
+  flushLocalPersistence();
+  return moved;
+}
+
+/**
  * Move an unpaired datalet's records into the vault it has just been given.
  *
  * Without this, creating a vault silently emptied the app: pairing repoints the
@@ -145,30 +178,8 @@ function encodePathSegment(segment: string): string {
  * records are held in memory across that gap, and put back if the write fails.
  */
 function carryRecordsIntoVault(config: VaultConfig, fromGraph: string): void {
-  const backup = exportGraphBackup(fromGraph);
-  if (backup.records.length === 0) return;
-
-  const targetGraph = `did:ng:${config.vaultId}`;
-  const carried: Store = {};
-  for (const { record } of backup.records) {
-    carried[`${targetGraph}|${record["@id"]}`] = { ...record, "@graph": targetGraph };
-  }
-
-  evictGraph(fromGraph);
-  try {
-    if (!reconcileGraphSnapshot(targetGraph, carried)) {
-      throw new Error("The existing records failed validation on the way into the vault.");
-    }
-  } catch (error) {
-    // Put it back rather than leaving someone with neither copy.
-    reconcileGraphSnapshot(fromGraph, Object.fromEntries(
-      backup.records.map(({ key, record }) => [key, record]),
-    ));
-    flushLocalPersistence();
-    throw error;
-  }
-  flushLocalPersistence();
-
+  const carried = moveRecordsBetweenGraphs(fromGraph, `did:ng:${config.vaultId}`);
+  if (!carried) return;
   // Queued rather than sent: the outbox is durable, so this survives a failed
   // request, a closed tab, and being offline at the moment of pairing.
   enqueueOutbound(config, patchesForRecords(carried), "did:ng:z:Migration");
@@ -222,9 +233,25 @@ export async function rotateVaultToken(): Promise<string> {
   return vaultToken;
 }
 
+/**
+ * Stop syncing this datalet, keeping its records here.
+ *
+ * The records move back to this device's own graph. That destination is
+ * derived here rather than taken from the caller, because the obvious thing to
+ * pass - the app's current graph, from `usePrivateNuri` - is the *vault's*
+ * graph while paired, and moving records onto themselves silently does
+ * nothing. Without the move, leaving repointed the datalet at a local graph
+ * that pairing had emptied, so the app came back blank while the records sat
+ * unreachable in the vault's graph: the same failure as creating a vault used
+ * to be, running the other way.
+ */
 export function clearVaultConfig() {
   const config = getVaultConfig();
   stopSync();
+  const localGraph = session && `did:ng:${session.private_store_id}`;
+  if (config && localGraph) {
+    moveRecordsBetweenGraphs(`did:ng:${config.vaultId}`, localGraph);
+  }
   unpairActiveDatalet();
   if (config) {
     localStorage.removeItem(CURSOR_PREFIX + config.vaultId);

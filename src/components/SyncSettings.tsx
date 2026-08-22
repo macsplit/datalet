@@ -180,7 +180,12 @@ export function SyncSettings() {
   }
 
   function handleLeave() {
-    if (!window.confirm("Stop syncing this device? Records stay in this browser but won't sync anymore.")) {
+    if (!window.confirm(
+      "Stop syncing this datalet?\n\n"
+      + "• Its records stay here and remain editable; they just stop syncing.\n"
+      + "• The vault is kept under Archived, so you can rejoin it later or erase it.\n"
+      + "• Other devices still holding this datalet are unaffected.",
+    )) {
       return;
     }
     clearVaultConfig();

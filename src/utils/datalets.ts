@@ -155,12 +155,33 @@ export function pairActiveDatalet(vault: DataletVault): void {
   writeDatalets({ ...registry, entries });
 }
 
-/** Detach the active datalet from its vault, returning it to the local graph. */
+/**
+ * Detach the active datalet from its vault, returning it to the local graph
+ * and keeping the vault as an archived datalet of its own.
+ *
+ * The vault token exists in exactly one place: this entry. Dropping it, which
+ * is what this used to do, left a vault on the server that nobody could ever
+ * reach again - not to rejoin it, and not to erase it either, since erasure
+ * has to authenticate. Keeping it archived means leaving is reversible and the
+ * server copy stays erasable, which is the difference between stopping syncing
+ * and abandoning data.
+ */
 export function unpairActiveDatalet(): void {
   const registry = readDatalets();
   if (!registry) return;
+  const active = registry.entries.find((entry) => entry.id === registry.activeId);
   const entries = registry.entries.map((entry) =>
-    entry.id === registry.activeId ? { id: entry.id } : entry);
+    entry.id === registry.activeId ? { id: entry.id, ...(entry.title ? { title: entry.title } : {}) } : entry);
+  if (active?.vault) {
+    // A fresh id: the active entry may already be keyed by this vault's id,
+    // and two entries sharing one id would make the registry ambiguous.
+    entries.push({
+      id: randomUuid(),
+      vault: active.vault,
+      archivedAt: Date.now(),
+      ...(active.title ? { title: active.title } : {}),
+    });
+  }
   writeDatalets({ ...registry, entries });
 }
 

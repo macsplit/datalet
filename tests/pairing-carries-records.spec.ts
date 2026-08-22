@@ -137,3 +137,74 @@ test("joining an existing vault does not upload local records over it", async ({
   expect(paths.filter((p) => p.startsWith("/book-1"))).toEqual([]);
   expect(paths.filter((p) => p.startsWith("/schema-books"))).toEqual([]);
 });
+
+test("leaving a vault keeps the records here and keeps the vault reachable", async ({ page }) => {
+  const VAULT_GRAPH = `did:ng:${VAULT_ID}`;
+  await page.addInitScript((input) => {
+    if (localStorage.getItem("pairing-seeded")) return;
+    localStorage.clear();
+    localStorage.setItem("pairing-seeded", "1");
+    localStorage.setItem("meta-ui-builder:local-session", JSON.stringify({
+      session_id: "pairing", private_store_id: "test-private-store",
+    }));
+    localStorage.setItem("meta-ui-builder:datalets", JSON.stringify({
+      activeId: "a",
+      entries: [{ id: "a", title: "My work", vault: { vaultId: input.vaultId, vaultToken: "T".repeat(32), nodeId: "n" } }],
+    }));
+    const records = [
+      { "@graph": input.graph, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Reading", order: 0 },
+      { "@graph": input.graph, "@id": "did:ng:z:SettingsSingleton", "@type": "did:ng:z:Settings", appTitle: "My work" },
+      { "@graph": input.graph, "@id": "book-1", "@type": "did:ng:z:user:s", Title: "Piranesi" },
+    ];
+    const ids = records.map((r) => `${r["@graph"]}|${r["@id"]}`);
+    localStorage.setItem(`${input.store}:index`, JSON.stringify(ids));
+    records.forEach((r, i) => localStorage.setItem(`${input.store}:record:${ids[i]}`, JSON.stringify(r)));
+  }, { store: STORE, vaultId: VAULT_ID, graph: VAULT_GRAPH });
+  // Routes registered directly rather than through stubVaultCreation, whose
+  // empty-snapshot handler is matched first and would wipe the fixture: a
+  // paired datalet resyncs on start, so the server has to hold what the
+  // browser holds.
+  await page.route("**/sync/stream?*", (route) => route.abort());
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ ticket: "t" }) }));
+  await page.route("**/sync/patches?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ accepted: true, seq: 6, acceptedCount: 1, submittedCount: 1 }) }));
+  const vaultRecords: Record<string, unknown> = {
+    [`${VAULT_GRAPH}|did:ng:z:HomeTab`]: { "@graph": VAULT_GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Reading", order: 0 },
+    [`${VAULT_GRAPH}|did:ng:z:SettingsSingleton`]: { "@graph": VAULT_GRAPH, "@id": "did:ng:z:SettingsSingleton", "@type": "did:ng:z:Settings", appTitle: "My work" },
+    [`${VAULT_GRAPH}|book-1`]: { "@graph": VAULT_GRAPH, "@id": "book-1", "@type": "did:ng:z:user:s", Title: "Piranesi" },
+  };
+  await page.route("**/sync/snapshot?*", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ seq: 5, records: vaultRecords }),
+  }));
+
+  await page.goto("/settings/datalets");
+  await expect(page.locator(".app-nav-brand")).toHaveText("My work");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Leave vault" }).click();
+
+  // The records came with it. This used to come back as a blank datalet, with
+  // everything stranded in the vault's graph.
+  await expect(page.locator(".app-nav-brand")).toHaveText("My work");
+
+  const after = await page.evaluate(({ graph }) => {
+    const index = JSON.parse(localStorage.getItem("meta-ui-builder:ng-local-store:index") ?? "[]") as string[];
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
+    return {
+      local: index.filter((k) => k.startsWith("did:ng:test-private-store|")).length,
+      stranded: index.filter((k) => k.startsWith(`${graph}|`)).length,
+      keptVaults: registry.entries.filter((e: { vault?: unknown }) => e.vault).length,
+      archived: registry.entries.filter((e: { archivedAt?: number }) => e.archivedAt !== undefined).length,
+    };
+  }, { graph: VAULT_GRAPH });
+
+  expect(after.local).toBe(3);
+  expect(after.stranded).toBe(0);
+  // The token lives only here, so dropping it would strand a vault that could
+  // never be rejoined and never be erased.
+  expect(after.keptVaults).toBe(1);
+  expect(after.archived).toBe(1);
+});

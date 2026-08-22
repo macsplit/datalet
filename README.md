@@ -367,6 +367,12 @@ Creating a vault for the datalet you are using brings its records with it: they
 are moved into the vault's graph, queued for the server, and the old graph is
 released so it stops occupying storage. Nothing needs exporting first.
 
+Leaving a vault is the reverse of creating one: the records move back into this
+browser's own graph and stay editable, and the vault is kept as an archived
+datalet rather than discarded — so you can rejoin it later, or erase it. The
+vault token exists only in this browser, so dropping it would leave a vault
+nobody could ever reach or delete.
+
 Joining an *existing* vault is the opposite and deliberately so — you get that
 vault's contents, and the records already in this browser are not uploaded over
 them. To combine two sets of records, export a backup before joining and import
