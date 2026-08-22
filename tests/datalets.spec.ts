@@ -85,15 +85,31 @@ const vaultB = {
 
 test("the panel offers to add one even when there is only one", async ({ page }) => {
   await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByRole("button", { name: "Start an empty one" })).toBeVisible();
+});
+
+test("datalets live on their own page, reached from Settings", async ({ page }) => {
+  await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
+  await page.goto("/settings");
+  // Settings should describe them, not carry the five panels itself: the page
+  // had grown to nine, which is what prompted the split.
+  await expect(page.getByRole("button", { name: "Start an empty one" })).toHaveCount(0);
+  await expect(page.getByRole("progressbar", { name: "Browser storage used" })).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Manage datalets" }).click();
+  await expect(page.getByRole("heading", { name: "Datalets and devices" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start an empty one" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Back to Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 });
 
 test("an unpaired datalet cannot gain a second one, and says why", async ({ page }) => {
   // Forced rather than chosen: only the open datalet is resident, so the one
   // being left has to be recoverable from somewhere.
   await seedDatalets(page, { activeId: "local", entries: [{ id: "local" }] });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/not paired, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Start an empty one" })).toBeDisabled();
 });
@@ -106,7 +122,7 @@ test("starting an empty datalet adds it and leaves the first one listed", async 
     }),
   }));
   await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await drainOutbox(page, vaultA.vaultId);
   await page.getByRole("button", { name: "Start an empty one" }).click();
 
@@ -120,7 +136,7 @@ test("starting an empty datalet adds it and leaves the first one listed", async 
 test("a code adds a second datalet rather than replacing the first", async ({ page }) => {
   await stubSync(page, { snapshotRecords: {} });
   await seedDatalets(page, { activeId: "a", entries: [{ id: "a", vault: vaultA }] });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await drainOutbox(page, vaultA.vaultId);
 
   const code = await page.evaluate(async ({ vaultId, token }) => {
@@ -148,7 +164,7 @@ test("a datalet too large for this browser is refused before anything is created
   await seedDatalets(page, {
     activeId: "a", entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await drainOutbox(page, vaultA.vaultId);
   await page.getByRole("button", { name: "Open" }).click();
 
@@ -160,7 +176,7 @@ test("two datalets are listed, with the open one marked", async ({ page }) => {
   await seedDatalets(page, {
     activeId: "a", entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText("Switch datalet")).toBeVisible();
   await expect(page.getByText("Open", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open" })).toHaveCount(1);
@@ -170,7 +186,7 @@ test("an unpaired datalet refuses to be left, because nothing else holds it", as
   await seedDatalets(page, {
     activeId: "local", entries: [{ id: "local" }, { id: "b", vault: vaultB }],
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/not paired, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Open" })).toBeDisabled();
 });
@@ -181,7 +197,7 @@ test("queued edits block a switch rather than being discarded", async ({ page })
     entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
     outbox: { [vaultA.vaultId]: 3 },
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/3 changes have not reached the sync server yet/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Open" })).toBeDisabled();
 });
@@ -195,7 +211,7 @@ test("a failed restore leaves the current datalet intact", async ({ page }) => {
   await seedDatalets(page, {
     activeId: "a", entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Open" }).click();
 
   await expect(page.getByRole("alert")).toBeVisible();
@@ -237,7 +253,7 @@ test("a switch restores the target and evicts the one left behind", async ({ pag
   await seedDatalets(page, {
     activeId: "a", entries: [{ id: "a", vault: vaultA }, { id: "b", vault: vaultB }],
   });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   // Wait for bootstrap writes to drain before switching.
   await expect.poll(() => page.evaluate(({ prefix, vaultId }) =>
     JSON.parse(localStorage.getItem(prefix + vaultId) ?? "[]").length,

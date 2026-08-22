@@ -7,7 +7,14 @@ import { expect, test } from "@playwright/test";
  * reappears, because it is the kind of term that creeps back one string at a
  * time.
  */
-const PAGES = ["/", "/settings", "/settings/theme", "/settings/schemas", "/settings/tabs"];
+const PAGES = [
+  "/",
+  "/settings",
+  "/settings/datalets",
+  "/settings/theme",
+  "/settings/schemas",
+  "/settings/tabs",
+];
 
 test("no page says \"graph\" to the user", async ({ page }) => {
   await page.addInitScript(() => {

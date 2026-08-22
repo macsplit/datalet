@@ -47,7 +47,7 @@ test("publishing states what a copy code hands over, and can be declined", async
   }));
   page.on("dialog", async (dialog) => { seen = dialog.message(); await dialog.dismiss(); });
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create a copy code" }).click();
   await expect.poll(() => seen).toContain("every record");
   expect(seen).toContain("end-to-end encrypted");
@@ -73,7 +73,7 @@ test("a published code is listed and can be revoked", async ({ page }) => {
   });
   page.on("dialog", (dialog) => void dialog.accept());
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create a copy code" }).click();
   await expect(page.getByLabel("Copy code COPY-K3RM-9T7A-X")).toHaveValue("COPY-K3RM-9T7A-X");
 
@@ -95,7 +95,7 @@ test("a COPY code makes a new datalet rather than opening the original", async (
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect.poll(() => page.evaluate(() =>
     JSON.parse(localStorage.getItem("meta-ui-builder:sync-outbox:" + "aaaaaaaa-0000-0000-0000-000000000000") ?? "[]").length,
   )).toBe(0);
@@ -128,7 +128,7 @@ test("a datalet opened from an LG1 code is not marked as a copy", async ({ page 
   await page.route("**/sync/clone-codes*", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ codes: [] }),
   }));
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect.poll(() => page.evaluate(() =>
     JSON.parse(localStorage.getItem(
       "meta-ui-builder:sync-outbox:aaaaaaaa-0000-0000-0000-000000000000") ?? "[]").length)).toBe(0);

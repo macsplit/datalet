@@ -199,7 +199,7 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create sync vault" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: "Pairing QR code" })).toHaveCount(0);
@@ -222,7 +222,7 @@ test("manual pairing remains available when QR scanning is unsupported", async (
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
 
   await expect(page.getByLabel("Pairing code")).toBeVisible();
   await expect(page.getByText(/QR scanning needs HTTPS or localhost/i)).toBeVisible();
@@ -248,7 +248,7 @@ test("a connected device can issue a one-use temporary pair code", async ({ page
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create temporary code" }).click();
 
   await expect(page.getByLabel("Temporary pair code")).toHaveValue("PAIR-K3RM-9T7A-X");
@@ -276,7 +276,7 @@ test("a joining device redeems a temporary pair code", async ({ page }) => {
   }));
   await page.route("**/sync/stream?*", (route) => route.abort());
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByLabel("Pairing code").fill("PAIR-K3RM-9T7A-X");
   await page.getByRole("button", { name: "Join vault" }).click();
 
@@ -309,7 +309,7 @@ test("a pair code without separators still routes to redemption", async ({ page 
   }));
   await page.route("**/sync/stream?*", (route) => route.abort());
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByLabel("Pairing code").fill("PAIRK3RM9T7AX");
   await page.getByRole("button", { name: "Join vault" }).click();
 
@@ -329,7 +329,7 @@ test("a redeemed code survives an initial snapshot failure as a durable retry", 
     body: JSON.stringify({ reason: "temporarily unavailable" }),
   }));
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByLabel("Pairing code").fill("PAIR-K3RM-9T7A-X");
   await page.getByRole("button", { name: "Join vault" }).click();
 
@@ -362,12 +362,15 @@ test("joining primes remote settings before reloading into the vault", async ({ 
   }));
   await page.route("**/sync/stream?*", (route) => route.abort());
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByLabel("Pairing code").fill(encodePairingCode(VAULT_ID, VAULT_TOKEN));
   await page.getByRole("button", { name: "Join vault" }).click();
 
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Shown in the nav bar and browser tab")).toHaveValue("Existing vault title");
+  // The nav brand rather than the App title field: the field lives on Settings
+  // and joining happens here, but both read the same primed Settings record,
+  // and the brand is the one that proves it took effect app-wide.
+  await expect(page.locator(".app-nav-brand")).toHaveText("Existing vault title");
 });
 
 test("a mistyped pairing code is rejected before a network request", async ({ page }) => {
@@ -380,7 +383,7 @@ test("a mistyped pairing code is rejected before a network request", async ({ pa
   const last = code.at(-1)!;
   const typo = code.slice(0, -1) + (last === "0" ? "1" : "0");
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByLabel("Pairing code").fill(typo);
   await page.getByRole("button", { name: "Join vault" }).click();
 

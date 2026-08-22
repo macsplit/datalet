@@ -10,11 +10,6 @@
 
 import { useSettings } from "../hooks/useSettings";
 import { Link } from "@tanstack/react-router";
-import { SyncSettings } from "../components/SyncSettings";
-import { DataBackup } from "../components/DataBackup";
-import { DataletSettings } from "../components/DataletSettings";
-import { CloneCodes } from "../components/CloneCodes";
-import { StorageUsage } from "../components/StorageUsage";
 
 export function SettingsPage() {
   const { appTitle, setAppTitle } = useSettings();
@@ -23,8 +18,23 @@ export function SettingsPage() {
     <div className="page-content">
       <header className="page-hero">
         <h1>Settings</h1>
-        <p>Preferences for how this app displays your data.</p>
+        <p>How this app is built, how it looks, and where your data lives.</p>
       </header>
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="label-accent">Datalets</p>
+            <h2 className="title">Your datalets</h2>
+          </div>
+          <Link className="primary-btn button-link" to="/settings/datalets">
+            Manage datalets
+          </Link>
+        </div>
+        <p className="helper-text">
+          Switch between datalets, give someone a copy, sync to your other devices, and
+          export backups.
+        </p>
+      </section>
       <section className="panel">
         <div className="panel-header">
           <div>
@@ -87,11 +97,6 @@ export function SettingsPage() {
           />
         </div>
       </section>
-      <DataletSettings />
-      <CloneCodes />
-      <StorageUsage />
-      <DataBackup />
-      <SyncSettings />
     </div>
   );
 }

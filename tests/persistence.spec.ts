@@ -351,7 +351,7 @@ test("exports the active graph and restores it after deletion", async ({ page })
   await input.blur();
   await page.waitForTimeout(200);
 
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export backup" }).click();
   const download = await downloadPromise;
@@ -365,7 +365,7 @@ test("exports the active graph and restores it after deletion", async ({ page })
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete Backup survivor" }).click();
   await page.waitForTimeout(200);
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByLabel("Choose backup file").setInputFiles(path!);
   await expect(page.getByRole("link", { name: "Backup survivor" })).toBeVisible();

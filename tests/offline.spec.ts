@@ -94,7 +94,7 @@ test("the built app runs without violating its own Content Security Policy", asy
 
   // Settings renders the QR pairing view, whose image is a data: URI - the
   // reason img-src carries `data:` rather than bare 'self'.
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText("Remote sync")).toBeVisible();
   expect(await readViolations()).toEqual([]);
 });

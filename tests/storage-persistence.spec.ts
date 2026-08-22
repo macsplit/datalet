@@ -31,14 +31,14 @@ async function stubStorage(
 
 test("an origin the browser already keeps is reported as safe", async ({ page }) => {
   await stubStorage(page, { persisted: true });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText("This browser has agreed to keep your data")).toBeVisible();
   await expect(page.getByRole("button", { name: "Ask to keep data" })).toHaveCount(0);
 });
 
 test("an origin the browser may clear says so, and can ask", async ({ page }) => {
   await stubStorage(page, { persisted: false, grantOnRequest: true });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText("This browser has not agreed to keep your data")).toBeVisible();
 
   await page.getByRole("button", { name: "Ask to keep data" }).click();
@@ -49,7 +49,7 @@ test("a refused request is reported as refused, not as success", async ({ page }
   // The failure that would matter: telling someone their data is safe when the
   // browser has just declined to keep it.
   await stubStorage(page, { persisted: false, grantOnRequest: false });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Ask to keep data" }).click();
 
   await expect(page.getByText("This browser has not agreed to keep your data")).toBeVisible();
@@ -60,7 +60,7 @@ test("a browser without the API is not nagged about it", async ({ page }) => {
   // Plain-HTTP LAN origins do not expose navigator.storage. Showing a warning
   // nobody can act on would be worse than saying nothing.
   await stubStorage(page, { persisted: false, absent: true });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText("Export or import data")).toBeVisible();
   await expect(page.getByText("agreed to keep your data")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ask to keep data" })).toHaveCount(0);

@@ -30,7 +30,7 @@ async function seedUsage(page: Page, filler: number, foreign: Record<string, num
 
 test("usage is reported before anything is near the limit", async ({ page }) => {
   await seedUsage(page, 200_000);
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/0\.2 MB of 4\.5 MB used/)).toBeVisible();
   // A bar, not only a sentence: the figure has to be seen rather than read.
   const bar = page.getByRole("progressbar", { name: "Browser storage used" });
@@ -43,13 +43,13 @@ test("the outbox counts against the same budget as records", async ({ page }) =>
   // records would authorise a write the browser then refuses. The outbox is
   // the plausible offender, because it grows while offline editing continues.
   await seedUsage(page, 200_000, { "meta-ui-builder:sync-outbox:v1": 1_000_000 });
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/1\.2 MB of 4\.5 MB used/)).toBeVisible();
 });
 
 test("a nearly full store warns before it stops saving", async ({ page }) => {
   await seedUsage(page, Math.round(RUNTIME_LIMITS.storedBytes * 0.93));
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/Storage is nearly full/)).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Browser storage used" }))
     .toHaveClass(/storage-bar-danger/);
@@ -58,7 +58,7 @@ test("a nearly full store warns before it stops saving", async ({ page }) => {
 test("a full store says saving has stopped and what to do", async ({ page }) => {
   // Over the cap on load: the engine rejects the stored data and pauses.
   await seedUsage(page, RUNTIME_LIMITS.storedBytes + 10_000);
-  await page.goto("/settings");
+  await page.goto("/settings/datalets");
   await expect(page.getByText(/Storage is full/)).toBeVisible();
   await expect(page.getByText(/Export a backup/)).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Browser storage used" }))

@@ -19,6 +19,7 @@ import {
   useParams,
 } from "@tanstack/react-router";
 import { SettingsPage } from "./pages/SettingsPage";
+import { DataletsPage } from "./pages/DataletsPage";
 import { ThemePage } from "./pages/ThemePage";
 import { TabPage } from "./pages/TabPage";
 import { SchemaListPage } from "./pages/SchemaListPage";
@@ -163,6 +164,12 @@ const schemaEditorRoute = createRoute({
   component: SchemaEditorPage,
 });
 
+const dataletsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/datalets",
+  component: DataletsPage,
+});
+
 const tabsManagerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings/tabs",
@@ -180,6 +187,7 @@ const routeTree = rootRoute.addChildren([
   tabRoute,
   settingsRoute,
   themeRoute,
+  dataletsRoute,
   schemaListRoute,
   schemaEditorRoute,
   tabsManagerRoute,
