@@ -417,8 +417,8 @@ done
 switch, leave, archive, restore — in a random order against a sync server that
 actually stores what it is sent, and checks the invariants in
 `tests/support/dataletInvariants.ts` after every step. It stops at the first
-breach and prints the seed and the operation log, because a failure you cannot
-replay is an anecdote.
+breach and prints the seed and each operation as it runs, because a failure you
+cannot replay is an anecdote.
 
 Every datalet bug this project has shipped lived in a *composition* of
 operations, each of which had a passing test of its own. The invariants are the
@@ -430,6 +430,19 @@ loses its vault token, storage stays under the cap, the outbox drains.
 It does not run with `pnpm test` — it is random, so a failure is a lead to
 investigate rather than a regression to block a merge on. Findings get pinned
 as ordinary tests in `tests/datalet-flows.spec.ts`.
+
+## Stress and adversarial coverage
+
+With Redis and Neo4j running, `pnpm stress` races four writers across four
+vaults for fifteen rounds. It checks idempotent replay, quota accounting, key
+shape, and that each expected winner reaches the durable Neo4j snapshot. The
+harness prints every round and vault as it progresses and cleans up afterward.
+
+The deterministic server suite includes hostile tenant ids, record types,
+Unicode and multi-byte quota cases in `server/test/securityHttp.test.ts`; run
+it with the rest via `pnpm test:server`. The full browser/server regression
+remains `pnpm test`, while the random fuzzer and stress harness stay explicit
+commands so their seeds and load budgets are deliberate.
 
 ## Screenshots in the documentation
 

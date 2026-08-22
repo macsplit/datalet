@@ -81,8 +81,9 @@ while they talk, put working screens in front of them in the same meeting,
 export the JSON as the artifact. Rough edges do not matter here, because the
 output is agreement rather than software.
 
-**4. A specimen of local-first architecture at readable size.** Roughly 9.5k
-lines total, and the pedagogy is the point: the entire engine is two functions,
+**4. A specimen of local-first architecture at readable size.** Roughly 15k
+lines across the application and server (excluding tests), and the pedagogy is
+the point: the entire engine is two functions,
 so the substitution for the real NextGraph wasm/broker engine is legible; the
 same patch algebra exists three times (`src/utils/localNgEngine.ts`,
 `server/src/patchApply.ts`, `server/src/redis/applyBatch.lua`) with the docs
@@ -134,8 +135,8 @@ displayed in the browser locale.
 sorting, and readers get an optional search box and pagination over the
 displayed fields. Grouping and aggregation are absent, and search is a linear
 scan of the in-memory store rather than an index. Underneath, the entire store
-is held in memory with a hard 4 MB cap (`RUNTIME_LIMITS.storedBytes`).
-Persistence is incremental per touched record, but startup still loads every
+is held in memory with a hard 4.5-million-character cap
+(`RUNTIME_LIMITS.storedBytes`). Persistence is incremental per touched record, but startup still loads every
 record and subscriptions still scan the full store. Realistic ceiling: hundreds
 to low thousands of small records. It degrades on the UX and performance axes
 at the same time.
@@ -158,17 +159,19 @@ enter Redis with AOF `everysec`, leaving roughly a one-second crash window.
 Materialization runs at about 130 records/s, so the Neo4j copy trails the live
 Redis copy by seconds under load.
 
-**Long-term maintenance is still early.** Coverage is real but uneven: 52
-browser regressions plus an offline cold-start, and 32 server tests, all in CI.
+**Long-term maintenance is still early.** Coverage is real but uneven: the
+current full run exercises 134 browser tests, 4 built-app offline/PWA tests,
+and 75 server tests, all in CI.
 The browser suites cover persistence and bootstrap, reader data blocks, schema
 and property editing, tab management, nested blocks, widget management, cleanup
 cascades, sync recovery, discarded-write and quota warnings, rate-limit retry,
 pairing in all its forms, and offline startup. The server suites cover patch
 algebra, the Redis conflict path, snapshot recovery, tombstone purging, stream
 multiplexing and sharding, label bounding, quota atomicity, pairing codes and
-operator statistics, against live Redis and Neo4j. Two standalone harnesses sit
-outside the suites: a full-stack browser-to-Neo4j-to-browser smoke test and a
-200-vault multi-tenant measurement.
+operator statistics, against live Redis and Neo4j. Standalone harnesses outside
+the deterministic suites cover the full browser-to-Neo4j-to-browser path, a
+200-vault multi-tenant measurement, randomized composed datalet flows, and
+concurrent stress against durable state.
 
 That is meaningful workflow coverage, not a comprehensive unit or visual test
 matrix — there is no component-level or visual-regression testing at all, and
@@ -183,8 +186,8 @@ how reasonable the ask sounds against how much damage it does.
   index, grouping and aggregation. Each is individually defensible; together
   they turn a tool that is excellent at 300 records into a mediocre one at
   50,000, and the block builder becomes the bottleneck long before the storage
-  does. The 4 MB cap is not a limitation awaiting removal — it is what keeps
-  startup, subscriptions and the sync payload simple at the same time.
+  does. The 4.5-million-character cap is not a limitation awaiting removal —
+  it is what keeps startup, subscriptions and the sync payload simple at the same time.
 - **"Make it work for my team."** The most likely ask and the most expensive
   one. The all-or-nothing vault token is why the server fits in ~1,300 lines
   and why the trust model fits in one sentence. Authorization would have to
@@ -289,5 +292,5 @@ data-block filter and sort, reference fields, end-user search and pagination,
 date/time fields, URL/email/long-text controls, undo, visible discarded writes,
 non-destructive cursor recovery, an offline shell, and builder regression
 coverage — are all implemented. File and image fields remain intentionally
-absent pending a storage design that keeps binary data out of the 4 MB JSON
-path. The remaining plan is [`roadmap.md`](roadmap.md).
+absent pending a storage design that keeps binary data out of the
+4.5-million-character JSON path. The remaining plan is [`roadmap.md`](roadmap.md).

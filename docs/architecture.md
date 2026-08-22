@@ -115,8 +115,8 @@ keystrokes.
 `persistNow()` runs in two passes: pass one computes every write and the
 projected total size without touching `localStorage`; pass two commits. That
 keeps the size cap all-or-nothing — if the projected total would exceed
-`RUNTIME_LIMITS.storedBytes` (4 MB), nothing is written at all and persistence
-is disabled for the page rather than half-applied.
+`RUNTIME_LIMITS.storedBytes` (4.5 million characters), nothing is written at
+all and persistence is disabled for the page rather than half-applied.
 
 Migration from the old single-blob layout is write-before-delete: every record
 and the index are written under the new scheme and verified byte-for-byte
@@ -374,8 +374,11 @@ vault switches the app's active graph from its randomly generated local one
 (`did:ng:<private_store_id>`) to the vault's (`did:ng:<vaultId>`), and starts
 the sync engine.
 
-Pairing does **not** migrate the previous unpaired graph. Export a backup
-first, import it after.
+Creating a vault for the active local datalet carries that datalet's records
+into the new vault before switching graphs. Joining an **existing** vault is
+deliberately different: its contents replace the active view and the local
+records are not uploaded over it. Export before joining and import afterward
+when the two datasets should be combined explicitly.
 
 The Settings UI represents the vault UUID and 24-byte bearer token as one
 versioned Crockford-base32 pairing code. Its trailing mod-37 symbol catches
@@ -600,8 +603,9 @@ p50/p95/p99/max rather than hiding coupling in an average.
 | Neo4j outage | Ingest is unaffected; the consumer logs, stops, and is picked up again by the 3 s discovery poll. |
 | Leaked token | Rotate it. The old token dies immediately, and stream tickets bound to the old generation are rejected on the next connect. Other devices need the new token entered by hand. |
 
-Import and pairing still reload deliberately; they replace a whole graph, and a
-reload is simpler and more robust than re-targeting every open subscription.
+Import, vault creation and joining still reload deliberately; they replace a
+whole graph, and a reload is simpler and more robust than re-targeting every
+open subscription.
 
 ---
 
@@ -619,7 +623,7 @@ src/
 │   ├── DataletSettings.tsx     The datalet list, switching, and adding one
 │   ├── CloneCodes.tsx          Publish, list and revoke COPY- codes
 │   ├── StorageUsage.tsx        How full this browser is; the persistence request
-│   ├── SyncSettings.tsx        Vault create / join / rotate / delete / pair codes
+│   ├── SyncSettings.tsx        Vault create / join / rotate / leave / pair codes
 │   ├── PairingQr.tsx           Renders the LG1 code as a QR; scan where supported
 │   ├── RuntimeSafety.tsx       Error boundary, issue banner, inline circuit notice
 │   ├── icons.tsx               Inline SVG icons
@@ -696,8 +700,8 @@ server/test/                    Node test runner: patch algebra, live Redis/Neo4
 
 These are deliberate, not oversights, but they define where the product stops.
 
-- **The whole store is in memory, capped at 4 MB.** Startup loads every record
-  and subscriptions scan the full store. Realistic ceiling: hundreds to low
+- **The whole store is in memory, capped at 4.5 million characters.** Startup
+  loads every record and subscriptions scan the full store. Realistic ceiling: hundreds to low
   thousands of small records. Persistence is incremental; startup and query are
   not. An IndexedDB / windowed-subscription migration was considered and
   explicitly rejected as a different product.
@@ -722,7 +726,7 @@ These are deliberate, not oversights, but they define where the product stops.
   visible warning when a write is discarded. The local undo stack covers
   editing mistakes; it is not cross-device history.
 - **File and image fields do not exist**, pending a design that keeps binary
-  data out of the 4 MB JSON path. See [`roadmap.md`](roadmap.md).
+  data out of the 4.5-million-character JSON path. See [`roadmap.md`](roadmap.md).
 - **One upstream dependency bug is worked around, not fixed.** `@ng-org/orm`'s
   subscription lifecycle can leave two live subscriptions over the same
   records. The engine's inert-batch guard makes the write path indifferent to

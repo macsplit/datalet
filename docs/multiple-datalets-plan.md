@@ -1,15 +1,15 @@
 # Plan: More Than One Datalet
 
-**Status: active.** D1, D2 and D3 landed 2026-08-21. Adding a second datalet
-from the interface is the remaining gap - the switcher and its rules exist, but
-nothing yet creates a second entry. Written
-2026-08-21 from the code as it stood at `bc82c8c` and kept current as work
-lands.
+**Status: complete.** D1, D2 and D3 landed 2026-08-21; the ways to add a
+second datalet then landed through
+[`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md). Written
+2026-08-21 from the code as it stood at `bc82c8c`; the present-tense baseline
+below records the system this plan changed.
 
-Today the app holds exactly one graph. `usePrivateNuri` resolves to either this
-device's `private_store_id` or, once paired, the vault's id — and pairing
-*switches* rather than adds. There is no list, no switcher, and no way back to
-a graph you have left.
+At the start of this plan the app held exactly one graph. `usePrivateNuri`
+resolved to either this device's `private_store_id` or, once paired, the
+vault's id — and pairing *switched* rather than added. There was no list, no
+switcher, and no way back to a graph you had left.
 
 This plans a **datalet**: one named, self-contained instance of the app — its
 schemas, tabs, blocks, widgets, theme and records — of which you may hold

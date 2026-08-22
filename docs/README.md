@@ -7,7 +7,7 @@
 | [`architecture.md`](architecture.md) | **How the whole thing works today** — the browser engine, the metadata model, the optional sync tier, and where the constraints are. Read this first. |
 | [`roadmap.md`](roadmap.md) | What is left, what was deliberately deferred, and what is out of scope on purpose. |
 | [`product-assessment.md`](product-assessment.md) | What the project *is*, what it is good for, and which additions would cost it that. Kept accurate as work lands. |
-| [`multiple-datalets-plan.md`](multiple-datalets-plan.md) | **Proposed, not started.** Holding several datalets and using one at a time, why only the active one can be resident, and why that makes more than one require sync. Includes the storage arithmetic it turns on. |
+| [`multiple-datalets-plan.md`](multiple-datalets-plan.md) | **Complete.** How holding several datalets while using one at a time was designed and built, why only the active one is resident, and why that makes more than one require sync. Includes the storage arithmetic it turned on. |
 | [`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) | **Complete.** How a datalet is gained — started, joined or copied — why joining and copying are opposites, why a copy code hands over everything, and why the one-step backup route was declined. |
 
 ## Sync tier

@@ -565,7 +565,8 @@ against §3/§9 as specified.
 4. Add HLC-based LWW conflict resolution + tombstones (§5) — needed before
    this is safe with real concurrent multi-device edits, but not needed to
    validate the transport/fanout plumbing in steps 1–3.
-5. Vault pairing UI in Settings (§8.4) + bearer-token enforcement (§9).
+5. Vault pairing UI under Settings → Manage datalets (§8.4) + bearer-token
+   enforcement (§9).
 6. Load/soak test: many idle SSE connections, burst writes, simulated long
    node-offline periods, Redis/Neo4j restart under load.
 

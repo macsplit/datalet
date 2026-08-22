@@ -1,9 +1,9 @@
 # Remote Sync Layer — Reproducible Debian Deployment
 
-Status: reference deployment for the implemented `server/` sync tier. The
-Docker Compose, Dockerfile, proxy, and systemd snippets below are templates;
-the repository does not currently contain a ready-made `deploy/` directory,
-so create those files from the snippets or adapt them to the target host.
+Status: reference deployment for the implemented `server/` sync tier. A
+ready-made Docker Compose stack lives in [`deploy/`](../deploy); the proxy and
+native/systemd material below are templates for operators who need those
+deployment shapes.
 
 Target: Debian 12 ("bookworm") or 13 ("trixie"), amd64/arm64. Two supported
 paths are documented: **Docker Compose** (recommended — fewer moving parts
@@ -384,7 +384,8 @@ here to generate or rotate at the deployment level. A requested temporary
 pair exchange holds that token in Redis only for its configured TTL so it can
 hand the credential to the redeeming device. A leaked *vault*
 token is rotated per-vault instead, via `POST /sync/vaults/rotate` (§9),
-exposed in the app as the "Rotate token" button in Settings.
+exposed in the app as the **Rotate pairing code** button under Settings →
+Manage datalets.
 
 Follow the repo's existing convention (`secrets.md`) for documenting where
 these values live locally without committing the values themselves.

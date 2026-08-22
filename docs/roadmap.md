@@ -83,8 +83,8 @@ clear-browsing-data hazard and puts records in OS backups — a genuine gain for
 the "data that should not be in anyone's SaaS" use case. Against that: it costs
 the "open a URL, nothing to install" property, adds a signing and update
 pipeline to a project whose value is partly its smallness, and fixes none of
-the ceiling — the 4 MB cap and the full-store startup load are decisions, and
-lifting them because a desktop shell makes it easy is exactly the creep
+the ceiling — the 4.5-million-character cap and the full-store startup load are
+decisions, and lifting them because a desktop shell makes it easy is exactly the creep
 [`product-assessment.md`](product-assessment.md) warns about. If it is ever
 built, **Tauri deserves weighing over Electron**: the renderer needs nothing
 from Node, so the same custom-protocol model applies at a tenth of the size.
@@ -101,8 +101,8 @@ urgent.
 got to" — deliberately not built.
 
 File and image values collide head-on with the architecture: the whole store
-lives in memory under a 4 MB cap, and every patch value crosses the sync path
-as JSON. One photograph exhausts an entire vault.
+lives in memory under a 4.5-million-character cap, and every patch value
+crosses the sync path as JSON. One photograph exhausts an entire vault.
 
 Three options were weighed:
 
@@ -134,8 +134,8 @@ listed so they are not mistaken for oversights.
 - **End-to-end encryption, or encryption at rest** in the sync tier.
 - **Synchronous durability.** The ~1 s Redis AOF `everysec` crash window stays.
 - **IndexedDB or windowed subscriptions.** Considered and rejected in an
-  earlier tranche. The 4 MB cap and the full-store startup load remain, and
-  everything built since has been sized to live under them.
+  earlier tranche. The 4.5-million-character cap and the full-store startup
+  load remain, and everything built since has been sized to live under them.
 - **Font choice, of any kind.** The system stack is the answer: it renders
   readable text in the typeface the device is designed around, at no bundle
   cost and with no network surface. Vendored fonts were planned and then
@@ -209,8 +209,8 @@ having on its own merits.
 ### More than one datalet
 
 
-[`multiple-datalets-plan.md`](multiple-datalets-plan.md) plans holding several
-datalets and using one at a time, in the shape of Joplin's profiles. It adds no
+[`multiple-datalets-plan.md`](multiple-datalets-plan.md) planned and delivered
+holding several datalets and using one at a time, in the shape of Joplin's profiles. It adds no
 capability to a datalet — nothing new can be modelled, stored or rendered — and
 the engine is already multi-graph, so it is largely exposing what exists.
 

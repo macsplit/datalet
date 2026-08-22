@@ -34,9 +34,9 @@ vault.](images/sync-paired.png)
 - For remote pairing, a connected device can create a `PAIR-XXXX-XXXX-X` code
   that expires after ten minutes and works once. Redeeming it returns the same
   durable vault credentials; rotation invalidates any outstanding codes.
-- Pairing switches the active graph; it does not automatically migrate an
-  existing unpaired graph. Export before pairing and import afterward to seed
-  a new vault with existing local data.
+- Creating a vault carries the active local datalet's records into it. Joining
+  an existing vault does not upload the local records over that vault; export
+  before joining and import afterward when the datasets should be combined.
 - Multiple devices paired to the same vault converge to the same state.
 - No user accounts, no login — possession of the pairing code (and therefore
   its embedded vault token) is the only credential.
@@ -131,9 +131,10 @@ vault.](images/sync-paired.png)
 | `DELETE /sync/clone-codes?vault=&code=` | withdraw one copy code |
 | `POST /sync/clone` | exchange a copy code for a *new* vault holding a copy |
 
-All endpoints except `/sync/health`, vault creation, and temporary-code
-redemption are bearer-protected. Redemption is protected by the temporary
-credential itself, exact-once consumption, expiry, and a per-IP rate limit.
+All endpoints except `/sync/health`, vault creation, temporary-code redemption,
+and copy-code redemption are bearer-protected. Those redemption routes are
+protected by their capability code and a per-IP rate limit; temporary pairing
+codes additionally have exact-once consumption and expiry.
 Other HTTP requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint
 accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 
