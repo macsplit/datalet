@@ -244,6 +244,35 @@ your records are exempt from routine cleanup; if it has not, the panel says so
 and offers to ask. Either way, exporting a backup is still the only thing that
 survives losing the device.
 
+## Datalets
+
+A **datalet** is one self-contained instance of this app — its records, schemas,
+tabs, blocks, widgets and theme. You can keep several and use one at a time,
+switching between them from **Settings → Switch datalet**.
+
+Only the datalet you have open is held in this browser, which is why keeping
+more than one requires each to be paired: the ones you are not using live in
+their vaults until you open them. A datalet with no vault has no other copy to
+come back from, so the app will ask you to pair the one you have before adding
+another.
+
+Two things that look alike and are opposites:
+
+- **Opening one from an `LG1` or `PAIR` code** gives you the *same* datalet in a
+  second place. Edits made here and there meet.
+- **Opening one from a `COPY` code** gives you a *new* datalet that started as a
+  copy of someone else's. From that moment the two are unrelated, and nothing
+  you do reaches theirs.
+
+**Settings → Give someone a copy** creates a `COPY` code for the datalet you
+have open. It hands over everything in it, including every record; the sync
+server can read all of it, as nothing here is end-to-end encrypted; and anyone
+holding the code can take a copy until you revoke it. Revoking stops further
+copies and does nothing about copies already taken.
+
+To start a datalet from a backup file, add an empty one and then use **Import
+backup**, which fills whichever datalet is open.
+
 When optional remote sync is configured, the same data and builder metadata
 are copied to a paired vault across devices. Synced data is not end-to-end
 encrypted: the server can read it. Clearing browser storage still deletes the

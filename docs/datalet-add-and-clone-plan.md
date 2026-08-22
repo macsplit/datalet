@@ -1,6 +1,6 @@
 # Plan: Gaining a Datalet — Adding, Joining and Cloning
 
-**Status: active.** A1 to A4 landed; the backup route and A5 have not, and A5 may never. Written 2026-08-21 from the code as it
+**Status: complete.** A1 to A4 landed. The backup route was **declined**, and A5 landed in a reduced form. See both below. Written 2026-08-21 from the code as it
 stands at `65e3be4`, and depends on
 [`multiple-datalets-plan.md`](multiple-datalets-plan.md), whose registry,
 switcher and eviction rules already exist.
@@ -62,11 +62,20 @@ into a hidden vault", using the same primitive, if it ever earns its place.
 **Not encrypted, and said so.** See A4 below; the plan is to state it rather
 than to soften it.
 
-**Not, for now, a datalet from a backup file.** Adopting a vault reloads the
-page, so a backup's contents would have to survive the reload and be applied
-afterwards - real machinery for the least essential of the four routes, with
-whole-graph import already available beside it. Left out rather than bolted on;
-the other three routes do not need it.
+**Not a one-step datalet from a backup file — declined.** Three shapes were
+weighed and all cost more than they return. Uploading the backup to a
+populating endpoint fails on `MAX_BODY_BYTES`, which is 2 MB against a backup
+of up to 4.5M characters, and raising a global guard for one route is the wrong
+trade. Applying it after the adopting reload means stashing the whole backup in
+localStorage across that reload, transiently doubling the very footprint the
+one-resident rule exists to bound. Writing it locally and letting sync push it
+up leaves the new vault empty server-side until the upload finishes, which is
+the fault the clone route was reversed to avoid.
+
+Meanwhile the outcome is already reachable in two steps with no new code: add
+an empty datalet, then **Import backup**, which fills whichever datalet is
+open. The panel now says so. This is one click saved against three bad
+mechanisms, so it is a decision rather than a gap.
 
 ---
 
@@ -174,13 +183,18 @@ because all three are true whether or not they are said:
    this product is, not a gap in it.
 3. Revoking stops **future** copies. It does nothing about copies already taken.
 
-## A5. Provenance, optional — **small, take it or leave it**
+## A5. Provenance — **landed reduced, 2026-08-22**
 
-A vault's `seq` is monotonic and already recorded, so a clone could note "taken
-from vault X at seq 412". That is provenance, not a relationship: nothing is
-pushed, nothing is listed, nobody is notified. Included because it costs almost
-nothing and a live clone otherwise has no way to say which moment it captured.
-Drop it if it reads as version control by the back door.
+The `seq` stamp was **declined**: it answers "which revision" for a system that
+keeps no revisions, and nobody reads it.
+
+What landed instead answers a question that actually arises. A copy is created
+carrying the source's own `Settings.appTitle`, so a list holding both shows two
+identically named entries with nothing to tell them apart. A registry entry
+made by copying now records **when**, and the list shows it. A datalet joined
+from an `LG1` code is deliberately not marked, since it is the same datalet
+rather than a copy - and a test pins that distinction, because join and copy
+looking alike is the confusion this whole plan is built around avoiding.
 
 ---
 

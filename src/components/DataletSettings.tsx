@@ -51,12 +51,14 @@ export function DataletSettings() {
   const [adding, setAdding] = useState(false);
   const [joinCode, setJoinCode] = useState("");
 
-  const adopt = async (work: () => Promise<{ vaultId: string; vaultToken: string }>) => {
+  const adopt = async (
+    work: () => Promise<{ vaultId: string; vaultToken: string; copiedAt?: number }>,
+  ) => {
     setAdding(true);
     setError("");
     try {
-      const vault = await work();
-      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri);
+      const { copiedAt, ...vault } = await work();
+      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri, { copiedAt });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "That datalet could not be added.");
       setAdding(false);
@@ -85,7 +87,9 @@ export function DataletSettings() {
       if (!response.ok || !body.vaultId || !body.vaultToken) {
         throw new Error(body.reason ?? `That copy could not be made (status ${response.status}).`);
       }
-      return { vaultId: body.vaultId, vaultToken: body.vaultToken };
+      // Noted because a copy arrives carrying the source's own title, so two
+      // identically named entries would otherwise be indistinguishable.
+      return { vaultId: body.vaultId, vaultToken: body.vaultToken, copiedAt: Date.now() };
     }
     if (code.toUpperCase().startsWith("PAIR")) {
       const response = await fetch("/sync/pair-redeem", {
@@ -138,6 +142,11 @@ export function DataletSettings() {
               <span className="field-label">
                 {dataletLabel(entry, isActive, appTitle)}
                 {isActive && <span className="badge">Open</span>}
+                {entry.copiedAt !== undefined && (
+                  <span className="helper-text">
+                    {` copied ${new Date(entry.copiedAt).toLocaleDateString()}`}
+                  </span>
+                )}
               </span>
               {!isActive && (
                 <button
@@ -190,6 +199,10 @@ export function DataletSettings() {
               Add
             </button>
           </div>
+          <p className="helper-text">
+            To start a datalet from a backup file, add an empty one and then use
+            <strong> Import backup</strong> below, which fills whichever datalet is open.
+          </p>
           <p className="helper-text">
             An <strong>LG1</strong> or <strong>PAIR</strong> code opens the same datalet
             here as well, so edits made in either place meet. A <strong>COPY</strong> code

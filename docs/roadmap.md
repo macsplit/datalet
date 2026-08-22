@@ -51,8 +51,9 @@ so only the active datalet is resident, and the rest must be recoverable from
 their vaults. **Holding more than one therefore requires pairing** — local-only
 use stays exactly as it is, with one datalet and no network.
 
-The registry, switcher and eviction rules have landed; nothing in the interface
-creates a second datalet yet. That flow, and cloning, are planned together in
+Datalets are built: the registry, the switcher with its restore-before-evict
+rules, adding one, and copy codes with revocation. The flow and cloning were
+planned together in
 [`datalet-add-and-clone-plan.md`](datalet-add-and-clone-plan.md) — they share a
 destination, since every way of gaining a datalet ends in a vault that is
 paired, added and switched to.

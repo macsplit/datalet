@@ -29,6 +29,15 @@ export type Datalet = {
   id: string;
   /** Present once paired. Absent means the device's local-only datalet. */
   vault?: DataletVault;
+  /**
+   * When this datalet was made by copying another, if it was.
+   *
+   * Not version control, and deliberately not the source's sequence number: a
+   * copy starts with the same `appTitle` as the datalet it came from, so
+   * without this the list shows two identically named entries and no way to
+   * tell which is which.
+   */
+  copiedAt?: number;
 };
 
 /**
@@ -134,11 +143,11 @@ export function unpairActiveDatalet(): void {
 }
 
 /** Add a datalet for a vault this browser has just created or joined. */
-export function addDatalet(vault: DataletVault): Datalet {
+export function addDatalet(vault: DataletVault, options: { copiedAt?: number } = {}): Datalet {
   const registry = readDatalets() ?? { activeId: "", entries: [] };
   const existing = registry.entries.find((entry) => entry.vault?.vaultId === vault.vaultId);
   if (existing) return existing;
-  const entry: Datalet = { id: vault.vaultId, vault };
+  const entry: Datalet = { id: vault.vaultId, vault, ...options };
   writeDatalets({ activeId: registry.activeId || entry.id, entries: [...registry.entries, entry] });
   return entry;
 }

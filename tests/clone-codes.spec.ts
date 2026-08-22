@@ -110,6 +110,42 @@ test("a COPY code makes a new datalet rather than opening the original", async (
 
   // The original is still listed: a copy adds, it does not take over.
   const entries = await page.evaluate(({ key }) =>
-    JSON.parse(localStorage.getItem(key) ?? "{}").entries as { id: string }[], { key: REGISTRY_KEY });
+    JSON.parse(localStorage.getItem(key) ?? "{}").entries as
+      { id: string; copiedAt?: number }[], { key: REGISTRY_KEY });
   expect(entries.map((entry) => entry.id)).toEqual(["a", vaultB.vaultId]);
+
+  // A copy arrives carrying the source's title, so without this the list would
+  // show two identically named entries with nothing to tell them apart.
+  const copy = entries.find((entry) => entry.id === vaultB.vaultId);
+  expect(typeof copy?.copiedAt).toBe("number");
+  const joined = entries.find((entry) => entry.id === "a");
+  expect(joined?.copiedAt).toBeUndefined();
+});
+
+test("a datalet opened from an LG1 code is not marked as a copy", async ({ page }) => {
+  // Joining and copying look alike and are opposites; only one makes a copy.
+  await seedPaired(page);
+  await page.route("**/sync/clone-codes*", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ codes: [] }),
+  }));
+  await page.goto("/settings");
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(localStorage.getItem(
+      "meta-ui-builder:sync-outbox:aaaaaaaa-0000-0000-0000-000000000000") ?? "[]").length)).toBe(0);
+
+  const code = await page.evaluate(async ({ vaultId, token }) => {
+    const mod = await import("/src/utils/pairingCode.ts");
+    return mod.encodePairingCode(vaultId, token);
+  }, { vaultId: vaultB.vaultId, token: vaultB.vaultToken });
+
+  await page.getByLabel("Or open one from a code").fill(code);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .toBe(vaultB.vaultId);
+  const entries = await page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").entries as
+      { id: string; copiedAt?: number }[], { key: REGISTRY_KEY });
+  expect(entries.find((entry) => entry.id === vaultB.vaultId)?.copiedAt).toBeUndefined();
 });

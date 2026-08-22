@@ -133,9 +133,13 @@ export async function switchToDatalet(target: Datalet, localGraph: string | unde
  * the registry rather than replacing it. This is what separates joining from
  * the first pairing, which converts the datalet you already have.
  */
-export async function adoptVaultAsDatalet(vault: VaultConfig, localGraph: string | undefined) {
+export async function adoptVaultAsDatalet(
+  vault: VaultConfig,
+  localGraph: string | undefined,
+  options: { copiedAt?: number } = {},
+) {
   const leaving = canLeaveActiveDatalet();
   if (!leaving.ok) throw new Error(leaving.message);
-  const entry = addDatalet(vault);
+  const entry = addDatalet(vault, options);
   await adopt(entry, localGraph);
 }
