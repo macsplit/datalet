@@ -20,8 +20,13 @@ import {
   deleteVault,
   entriesSince,
   rotateVaultToken,
+  cloneVault,
+  createCloneCode,
+  listCloneCodes,
   redeemPairCode,
+  revokeCloneCode,
   scanVaultIds,
+  vaultForCloneCode,
   snapshot,
   subscribeLive,
   VAULT_DELETED_CHANNEL,
@@ -32,6 +37,7 @@ import {
 import { newBlockingConnection } from "./redis/client.js";
 import { serveStatic } from "./staticServer.js";
 import { checkRateLimit } from "./redis/rateLimit.js";
+import { normalizeCloneCode } from "./pairCode.js";
 import {
   PAIR_REDEEM_RATE_LIMIT,
   PAIR_REDEEM_RATE_WINDOW_SECONDS,
@@ -295,6 +301,69 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
           sendJson(res, 200, credentials);
         } catch (error) {
           sendJson(res, 400, { reason: error instanceof Error ? error.message : "invalid temporary pair code" });
+        }
+        return;
+      }
+
+      if (url.pathname === "/sync/clone-codes") {
+        const vaultId = url.searchParams.get("vault") ?? "";
+        if (!(await vaultExists(vaultId))) {
+          sendJson(res, 404, { reason: "unknown vault" });
+          return;
+        }
+        const token = bearerToken(req);
+        if (!token || !(await checkVaultToken(vaultId, token))) {
+          sendJson(res, 401, { reason: "invalid token" });
+          return;
+        }
+        if (req.method === "POST") {
+          sendJson(res, 200, await createCloneCode(vaultId));
+          return;
+        }
+        if (req.method === "GET") {
+          sendJson(res, 200, { codes: await listCloneCodes(vaultId) });
+          return;
+        }
+        if (req.method === "DELETE") {
+          const code = url.searchParams.get("code") ?? "";
+          sendJson(res, 200, { revoked: await revokeCloneCode(vaultId, code) });
+          return;
+        }
+      }
+
+      if (url.pathname === "/sync/clone" && req.method === "POST") {
+        // Redemption creates a vault, so it carries the same abuse surface as
+        // vault creation and is limited the same way.
+        const withinLimit = await checkRateLimit(
+          `clone:${clientIp(req)}`,
+          PAIR_REDEEM_RATE_LIMIT,
+          PAIR_REDEEM_RATE_WINDOW_SECONDS,
+        );
+        if (!withinLimit) {
+          sendJson(res, 429, { reason: "too many copies from this address - try again later" });
+          return;
+        }
+        const body = (await readJsonBody(req)) as { code?: string };
+        let normalized: string;
+        try {
+          normalized = normalizeCloneCode(body?.code ?? "");
+        } catch (error) {
+          sendJson(res, 400, { reason: error instanceof Error ? error.message : "invalid code" });
+          return;
+        }
+        const sourceVaultId = await vaultForCloneCode(normalized);
+        // A withdrawn code and one that never existed are answered the same
+        // way: neither should tell a guesser which it was.
+        if (!sourceVaultId || !(await vaultExists(sourceVaultId))) {
+          sendJson(res, 404, { reason: "that copy code is not valid" });
+          return;
+        }
+        try {
+          sendJson(res, 200, await cloneVault(sourceVaultId));
+        } catch (error) {
+          sendJson(res, 500, {
+            reason: error instanceof Error ? error.message : "the copy could not be made",
+          });
         }
         return;
       }

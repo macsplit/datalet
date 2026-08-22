@@ -654,7 +654,7 @@ server/src/
 ├── patchApply.ts               Patch algebra shared with the materializer
 ├── materializer.ts             Sharded, multiplexed consumer groups → Neo4j;
 │                               tombstone sweep, idle reporting, stats logging
-├── pairCode.ts                 One-use PAIR- code generation and normalization
+├── pairCode.ts                 PAIR- and COPY- code generation and normalization
 ├── config.ts                   Tombstone retention, idle window, admin token
 ├── contentSecurityPolicy.ts    The shipped CSP, as header and meta variants
 ├── cleanupNeo4jLabels.ts       Optional dry-run-first legacy label cleanup

@@ -8,7 +8,7 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
 import { listDatalets, type Datalet } from "../utils/datalets";
@@ -39,7 +39,15 @@ export function DataletSettings() {
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState("");
 
-  const leaving = canLeaveActiveDatalet();
+  // Re-checked on a timer rather than once per render: the commonest refusal
+  // is a queued outbox, which clears itself moments later as the changes sync.
+  // Evaluated only at render, the panel would stay refused with nothing to act
+  // on and no way forward short of reloading.
+  const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet());
+  useEffect(() => {
+    const timer = setInterval(() => setLeaving(canLeaveActiveDatalet()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
   const [adding, setAdding] = useState(false);
   const [joinCode, setJoinCode] = useState("");
 
@@ -63,6 +71,22 @@ export function DataletSettings() {
 
   const joinFromCode = () => adopt(async () => {
     const code = joinCode.trim();
+    if (code.toUpperCase().startsWith("COPY")) {
+      // A copy code makes a new datalet from someone else's; it never grants
+      // access to theirs. The server does the copying, so what comes back is
+      // a vault of your own that happens to start out looking like theirs.
+      const response = await fetch("/sync/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const body = (await response.json()) as
+        { vaultId?: string; vaultToken?: string; reason?: string };
+      if (!response.ok || !body.vaultId || !body.vaultToken) {
+        throw new Error(body.reason ?? `That copy could not be made (status ${response.status}).`);
+      }
+      return { vaultId: body.vaultId, vaultToken: body.vaultToken };
+    }
     if (code.toUpperCase().startsWith("PAIR")) {
       const response = await fetch("/sync/pair-redeem", {
         method: "POST",
@@ -151,7 +175,7 @@ export function DataletSettings() {
               id="datalet-join-code"
               className="input"
               value={joinCode}
-              placeholder="LG1-…"
+              placeholder="LG1-… or COPY-…"
               spellCheck={false}
               autoCapitalize="characters"
               autoCorrect="off"
@@ -168,7 +192,9 @@ export function DataletSettings() {
           </div>
           <p className="helper-text">
             An <strong>LG1</strong> or <strong>PAIR</strong> code opens the same datalet
-            here as well, so edits made in either place meet. It does not make a copy.
+            here as well, so edits made in either place meet. A <strong>COPY</strong> code
+            makes a new datalet of your own from someone else's — from then on the two are
+            unrelated, and nothing you do reaches theirs.
           </p>
         </div>
       </div>

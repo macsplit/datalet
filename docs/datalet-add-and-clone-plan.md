@@ -1,6 +1,6 @@
 # Plan: Gaining a Datalet — Adding, Joining and Cloning
 
-**Status: active.** A1 and A2 landed 2026-08-21, without the backup route; A3 to A5 have not started. Written 2026-08-21 from the code as it
+**Status: active.** A1 to A4 landed; the backup route and A5 have not, and A5 may never. Written 2026-08-21 from the code as it
 stands at `65e3be4`, and depends on
 [`multiple-datalets-plan.md`](multiple-datalets-plan.md), whose registry,
 switcher and eviction rules already exist.
@@ -120,7 +120,7 @@ So: leave the server quota as the abuse ceiling it is, **stop describing it in
 later tidy-up into parity — and record the encoding difference where someone
 would look before attempting one.
 
-## A3. Publish a clone code — **medium**
+## A3. Publish a clone code — **completed 2026-08-22**
 
 From the active datalet: produce a `COPY-…` code that redeems into a complete
 copy of its graph.
@@ -139,13 +139,25 @@ copy of its graph.
   ongoing sense.
 - Rate-limited per IP on redemption, as pair-code redemption already is.
 
-**Why not copy server-side.** A server that created the vault and filled it
-would need a new endpoint, new copy logic and its own quota interaction.
-Returning a snapshot instead collapses cloning into a path that already works,
-at the cost of the recipient uploading the graph to their own vault as ordinary
-patches — bounded by the size check in A2, so seconds.
+**Reversed on implementation: the copy is made server-side after all.** The
+plan had redemption return records for the recipient to upload into a vault of
+their own. That path leaves the new vault empty on the server until the upload
+finishes, so a failure part-way produces a datalet that is complete locally and
+partial remotely — and the next time it was opened, the restore would hand back
+the partial copy. `POST /sync/clone` therefore creates the vault and fills it
+before returning credentials, and the client then joins it through the path
+that already existed. Less client machinery, not more.
 
-## A4. Revocation, and saying what a code does — **ships with A3, not after**
+**A second correction, found by a failing test.** The copy first read through
+`snapshot()`, which reads the Neo4j mirror. That mirror trails accepted writes
+by seconds under load and indefinitely if the materializer is stopped, so a
+clone could quietly hand over a stale or empty datalet. It now reads the
+accepted state from Redis. The copy is still written through `applyBatch`
+rather than straight into Redis, because a direct write would never reach the
+stream, and so never reach Neo4j — a clone that looked complete and came back
+empty the first time anyone opened it.
+
+## A4. Revocation, and saying what a code does — **completed 2026-08-22**
 
 A code you cannot see is a code you cannot revoke, so the list and the revoke
 are part of publishing, not a follow-up.

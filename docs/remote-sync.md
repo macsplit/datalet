@@ -116,12 +116,38 @@ built when, and the defects found doing it, see
 | `POST /sync/stream-ticket?vault=` | exchange bearer auth for a one-hour stream-only ticket |
 | `GET /sync/stream?vault=&since=&ticket=` | live + replayed patches, SSE |
 | `GET /sync/admin/vaults` | operator-only per-vault stats; see below |
+| `POST /sync/clone-codes?vault=` | issue a durable, revocable copy code |
+| `GET /sync/clone-codes?vault=` | list this vault's live copy codes |
+| `DELETE /sync/clone-codes?vault=&code=` | withdraw one copy code |
+| `POST /sync/clone` | exchange a copy code for a *new* vault holding a copy |
 
 All endpoints except `/sync/health`, vault creation, and temporary-code
 redemption are bearer-protected. Redemption is protected by the temporary
 credential itself, exact-once consumption, expiry, and a per-IP rate limit.
 Other HTTP requests use `Authorization: Bearer <vaultToken>`; the SSE endpoint
 accepts only the short-lived ticket returned by `/sync/stream-ticket`.
+
+### Copying a vault
+
+A **copy code** (`COPY-XXXX-XXXX-X`, the same Crockford encoding and check
+symbol as a pair code) is a durable, revocable capability to take a copy —
+neither read nor write access in the ongoing sense. `POST /sync/clone` creates
+a **new** vault, fills it from the source, and returns the new vault's own
+credentials. The source's token is never issued to the redeemer and is
+unaffected by having been copied.
+
+Unlike a pair code it is long-lived and multi-use, so the list and the
+withdrawal are part of the feature: a code that cannot be found again cannot be
+revoked. Withdrawing stops future copies and does nothing about copies already
+taken. Redemption is rate-limited per IP, because it creates a vault.
+
+Two implementation details worth keeping. The copy reads the **accepted** state
+from Redis rather than `snapshot()`, which reads the Neo4j mirror — that mirror
+trails accepted writes and is empty if the materializer is stopped, so cloning
+from it would hand over a stale or empty datalet. And the copy is written
+through `applyBatch` rather than straight into Redis, because a direct write
+would never reach the stream and so never reach Neo4j, producing a clone that
+looked complete and came back empty the first time it was opened.
 
 ### Operator statistics
 

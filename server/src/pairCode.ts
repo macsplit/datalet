@@ -12,8 +12,11 @@ import { randomBytes } from "node:crypto";
 
 const DATA_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CHECK_ALPHABET = `${DATA_ALPHABET}*~$=U`;
-const PREFIX = "PAIR";
 const PAYLOAD_CHARACTERS = 8;
+
+/** Code kinds. The prefix is what tells one from another in a single input. */
+export const PAIR_PREFIX = "PAIR";
+export const CLONE_PREFIX = "COPY";
 
 function canonicalCharacter(character: string): string {
   if (character === "O") return "0";
@@ -31,12 +34,12 @@ function checksum(payload: string): string {
   return CHECK_ALPHABET[remainder];
 }
 
-function format(payload: string, check: string): string {
-  return `${PREFIX}-${payload.slice(0, 4)}-${payload.slice(4)}-${check}`;
+function format(prefix: string, payload: string, check: string): string {
+  return `${prefix}-${payload.slice(0, 4)}-${payload.slice(4)}-${check}`;
 }
 
 /** Generate 40 random bits plus a Crockford mod-37 check symbol. */
-export function generatePairCode(): string {
+export function generateCode(prefix: string): string {
   const bytes = randomBytes(5);
   let payload = "";
   let bits = 0;
@@ -50,23 +53,35 @@ export function generatePairCode(): string {
       buffer &= (1 << bits) - 1;
     }
   }
-  return format(payload, checksum(payload));
+  return format(prefix, payload, checksum(payload));
 }
 
-/** Normalize separators/aliases and reject a mistyped or malformed code. */
-export function normalizePairCode(input: string): string {
+/**
+ * Normalize separators and Crockford aliases, and reject a mistyped or
+ * malformed code. Separators are stripped before the prefix is checked, so a
+ * code pasted without its hyphens is still valid input.
+ */
+export function normalizeCode(prefix: string, input: string): string {
   const compact = input.trim().toUpperCase().replace(/[\s-]/g, "");
-  if (!compact.startsWith(PREFIX) || compact.length !== PREFIX.length + PAYLOAD_CHARACTERS + 1) {
-    throw new Error("Temporary pair codes have the form PAIR-XXXX-XXXX-X.");
+  if (!compact.startsWith(prefix) || compact.length !== prefix.length + PAYLOAD_CHARACTERS + 1) {
+    throw new Error(`Codes of this kind have the form ${prefix}-XXXX-XXXX-X.`);
   }
-  const body = compact.slice(PREFIX.length);
+  const body = compact.slice(prefix.length);
   const payload = [...body.slice(0, PAYLOAD_CHARACTERS)].map(canonicalCharacter).join("");
   const suppliedCheck = canonicalCharacter(body.at(-1)!);
   if ([...payload].some((character) => !DATA_ALPHABET.includes(character))) {
     throw new Error("Pair code contains a character outside Crockford base32.");
   }
   if (checksum(payload) !== suppliedCheck) {
-    throw new Error("That temporary pair code has a typo (its check symbol does not match).");
+    throw new Error("That code has a typo (its check symbol does not match).");
   }
-  return format(payload, suppliedCheck);
+  return format(prefix, payload, suppliedCheck);
 }
+
+/** A one-use pairing handoff. */
+export const generatePairCode = () => generateCode(PAIR_PREFIX);
+export const normalizePairCode = (input: string) => normalizeCode(PAIR_PREFIX, input);
+
+/** A durable, revocable capability to take a copy of a vault. */
+export const generateCloneCode = () => generateCode(CLONE_PREFIX);
+export const normalizeCloneCode = (input: string) => normalizeCode(CLONE_PREFIX, input);

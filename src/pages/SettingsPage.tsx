@@ -13,6 +13,7 @@ import { Link } from "@tanstack/react-router";
 import { SyncSettings } from "../components/SyncSettings";
 import { DataBackup } from "../components/DataBackup";
 import { DataletSettings } from "../components/DataletSettings";
+import { CloneCodes } from "../components/CloneCodes";
 
 export function SettingsPage() {
   const { appTitle, setAppTitle } = useSettings();
@@ -86,6 +87,7 @@ export function SettingsPage() {
         </div>
       </section>
       <DataletSettings />
+      <CloneCodes />
       <DataBackup />
       <SyncSettings />
     </div>

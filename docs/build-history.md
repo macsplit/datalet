@@ -43,6 +43,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 19 | Theme in the graph T1-T5: the project's first Content Security Policy, an allowlisted colour-role set with a closed value grammar, per-role light/dark fields on Settings, and a generated stylesheet rather than inline custom properties. |
 | 20 | Theme follow-ups: the colour controls moved onto their own page, the picker and preview merged into one swatch, a per-colour reset, and a minimum-contrast floor whose sweep tests found two real defects in it. |
 | 21 | Persistent storage requested and its answer reported honestly, plus a theme-color that follows the stored palette per scheme. |
+| 22 | Datalets: whole-origin storage accounting, per-datalet pairing, a switcher that restores before evicting, adding one, and copy codes that hand over a copy rather than access. |
 
 ---
 

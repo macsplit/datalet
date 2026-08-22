@@ -28,7 +28,7 @@ import {
   STREAM_MAXLEN,
   VAULT_QUOTA_BYTES,
 } from "./redis/config.js";
-import { generatePairCode, normalizePairCode } from "./pairCode.js";
+import { generateCloneCode, generatePairCode, normalizePairCode } from "./pairCode.js";
 import {
   deleteVaultData,
   deleteVaultMeta,
@@ -443,6 +443,127 @@ export async function applyBatch(
  * all already requires Redis to be up, so this doesn't add a new
  * dependency, and it saves tracking a second durable seq counter in Neo4j.
  */
+/** Encode a path segment the way patchApply.ts decodes it (RFC 6901). */
+function escapeSegment(segment: string): string {
+  return segment.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+/**
+ * The vault's current records as Redis holds them - every write that has been
+ * accepted, whether or not the materializer has caught up.
+ *
+ * A copy must read this rather than `snapshot()`, which reads the Neo4j
+ * mirror. That mirror trails the accepted state by seconds under load and
+ * indefinitely if the materializer is stopped, so cloning from it would
+ * quietly hand over a stale or empty datalet.
+ */
+export async function readAcceptedRecords(vaultId: string): Promise<Store> {
+  const stored = await redis().hgetall(storeKey(vaultId));
+  const records: Store = {};
+  for (const [subjectId, raw] of Object.entries(stored)) {
+    try {
+      records[subjectId] = JSON.parse(raw) as Store[string];
+    } catch {
+      // A record Redis cannot parse is skipped rather than aborting the copy.
+    }
+  }
+  return records;
+}
+
+const cloneCodeKey = (code: string) =>
+  `vault:clone-code:${createHash("sha256").update(code).digest("hex")}`;
+const cloneCodesKey = (vaultId: string) => `vault:${vaultId}:clone-codes`;
+
+export type CloneCode = { code: string; createdAt: number };
+
+/**
+ * Issue a durable, revocable capability to take a copy of this vault.
+ *
+ * Unlike a pair code this is long-lived and multi-use, because it hands over a
+ * copy rather than a credential - so the list below is not a convenience, it
+ * is the only way a code can be found again to withdraw it. The plaintext is
+ * kept in the vault-scoped set for exactly that reason: reading it already
+ * requires the vault token, which grants strictly more.
+ */
+export async function createCloneCode(vaultId: string): Promise<CloneCode> {
+  const code = generateCloneCode();
+  const entry: CloneCode = { code, createdAt: Date.now() };
+  await redis().set(cloneCodeKey(code), vaultId);
+  await redis().hset(cloneCodesKey(vaultId), code, JSON.stringify(entry));
+  return entry;
+}
+
+/** Every code that can currently be redeemed for a copy of this vault. */
+export async function listCloneCodes(vaultId: string): Promise<CloneCode[]> {
+  const stored = await redis().hvals(cloneCodesKey(vaultId));
+  return stored
+    .map((raw) => { try { return JSON.parse(raw) as CloneCode; } catch { return undefined; } })
+    .filter((entry): entry is CloneCode => entry !== undefined)
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Withdraw one code. Copies already taken are unaffected, and stay unaffected. */
+export async function revokeCloneCode(vaultId: string, code: string): Promise<boolean> {
+  const removed = await redis().hdel(cloneCodesKey(vaultId), code);
+  await redis().del(cloneCodeKey(code));
+  return removed > 0;
+}
+
+/** The vault a code copies from, or undefined once it has been withdrawn. */
+export async function vaultForCloneCode(code: string): Promise<string | undefined> {
+  return (await redis().get(cloneCodeKey(code))) ?? undefined;
+}
+
+/**
+ * Copy a vault into a brand new one and return its credentials.
+ *
+ * The copy is written through `applyBatch` rather than straight into Redis,
+ * because `/sync/snapshot` reads from Neo4j and Neo4j is fed by the vault's
+ * stream. A direct write would leave a clone that looked complete in Redis and
+ * came back empty the first time anyone opened it.
+ */
+export async function cloneVault(
+  sourceVaultId: string,
+): Promise<{ vaultId: string; vaultToken: string }> {
+  const source = { records: await readAcceptedRecords(sourceVaultId) };
+  const created = await createVault();
+  const graph = `did:ng:${created.vaultId}`;
+  const entries = Object.entries(source.records);
+
+  // Chunked so one enormous graph does not become a single Lua call, and
+  // numbered so each batch has its own idempotency key.
+  const CHUNK = 100;
+  for (let index = 0; index < entries.length; index += CHUNK) {
+    const patches: Patch[] = [];
+    for (const [subjectId, record] of entries.slice(index, index + CHUNK)) {
+      patches.push({ op: "add", path: `/${escapeSegment(subjectId)}` });
+      for (const [property, value] of Object.entries(record)) {
+        if (value === undefined) continue;
+        const path = `/${escapeSegment(subjectId)}/${escapeSegment(property)}`;
+        // The clone belongs to its own graph; every other field travels as it is.
+        if (property === "@graph") patches.push({ op: "add", path, value: graph });
+        else if (Array.isArray(value)) patches.push({ op: "add", path, value, type: "set" });
+        else patches.push({ op: "add", path, value });
+      }
+    }
+    if (patches.length === 0) continue;
+    const result = await applyBatch(created.vaultId, {
+      nodeId: "clone",
+      batchId: `clone-${created.vaultId}-${index}`,
+      hlc: `${String(Date.now()).padStart(15, "0")}-${String(index).padStart(6, "0")}-clone`,
+      shape: "did:ng:z:Clone",
+      patches,
+    });
+    if (!result.accepted) {
+      // Leave nothing half-built: the caller gets an error, not a vault
+      // holding part of someone else's datalet.
+      await deleteVault(created.vaultId).catch(() => undefined);
+      throw new Error(result.reason || "the copy was refused");
+    }
+  }
+  return created;
+}
+
 export async function snapshot(vaultId: string): Promise<{ seq: number; records: Store }> {
   const [seqStr, records] = await Promise.all([redis().get(seqKey(vaultId)), readVaultRecords(vaultId)]);
   return { seq: Number(seqStr ?? 0), records };
