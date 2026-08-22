@@ -168,11 +168,10 @@ test("builds nested blocks and supports widget add, reorder, delete, and cascade
   ]);
   await page.goto(`/settings/tabs/${tabId}/blocks`);
 
-  await page.getByRole("button", { name: "+ Add block" }).click();
+  await page.getByRole("button", { name: "+ Add layout block" }).click();
   const layout = page.locator("article.builder-card").filter({ hasText: "Layout block" }).first();
   await layout.getByLabel("Layout mode").selectOption({ label: "Grid" });
-  await layout.getByLabel("New block type").selectOption("data");
-  await layout.getByRole("button", { name: "+ Add block" }).click();
+  await layout.getByRole("button", { name: "+ Add data block" }).click();
 
   const dataBlock = layout.locator("article.builder-card").filter({ hasText: "Data block" }).first();
   await expect(dataBlock.locator(".builder-widget-card")).toHaveCount(4);
@@ -244,4 +243,45 @@ test("deleting a schema removes its data blocks and repairs surviving references
     referenceTarget: undefined,
     widgetType: "did:ng:z:text",
   });
+});
+
+test("adding a block creates it directly, with no form to submit first", async ({ page }) => {
+  const tabId = "tab-idiom";
+  const schemaId = "did:ng:z:meta:schema:idiom";
+  await seedSession(page);
+  await seedRecords(page, [
+    ...singletonRecords,
+    { "@graph": GRAPH, "@id": tabId, "@type": "did:ng:z:Tab", title: "Idiom", order: 1 },
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Things" },
+    { "@graph": GRAPH, "@id": "property-thing", "@type": "did:ng:z:PropertyDef", schemaId, name: "Name", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+  ]);
+  await page.goto(`/settings/tabs/${tabId}/blocks`);
+
+  // The builder's idiom everywhere else: press Add, get a defaulted item, edit
+  // it in place. There is no type to choose and no schema to choose before the
+  // block exists, so nothing reads as a Save that consumes what you typed.
+  await expect(page.getByLabel("New block type")).toHaveCount(0);
+  await expect(page.getByLabel("Data block schema")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "+ Add data block" }).click();
+  const dataBlock = page.locator("article.builder-card").filter({ hasText: "Data block" }).first();
+  await expect(dataBlock).toBeVisible();
+  // Defaulted to a real schema, and changeable on the block itself afterwards.
+  await expect(dataBlock.getByLabel("Schema", { exact: true })).toHaveValue(schemaId);
+});
+
+test("a nested block list says which level it is", async ({ page }) => {
+  const tabId = "tab-levels";
+  await seedSession(page);
+  await seedRecords(page, [
+    ...singletonRecords,
+    { "@graph": GRAPH, "@id": tabId, "@type": "did:ng:z:Tab", title: "Levels", order: 1 },
+  ]);
+  await page.goto(`/settings/tabs/${tabId}/blocks`);
+
+  await expect(page.getByRole("heading", { name: "Blocks on this tab" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Add layout block" }).click();
+  // Two identical "Blocks" headings read as a duplicate rather than as the
+  // layout's contents, which is what made the two levels confusing.
+  await expect(page.getByRole("heading", { name: "Nested blocks" })).toBeVisible();
 });

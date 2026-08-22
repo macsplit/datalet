@@ -745,7 +745,8 @@ function BlockListEditor({
   const { blocks, createBlock } = useBlocks(parent);
   const { properties: allProperties } = usePropertyDefs();
   const { createWidget } = useWidgets();
-  const [newType, setNewType] = useState<"layout" | "data">("layout");
+  // Only a default for what a new data block starts on - the block's own
+  // editor is where the schema is actually chosen and changed.
   const [schemaId, setSchemaId] = useState(schemas[0]?.["@id"] ?? "");
   const schemaIds = schemas.map((schema) => schema["@id"]).join("|");
 
@@ -755,7 +756,7 @@ function BlockListEditor({
     }
   }, [schemaId, schemaIds]);
 
-  const addBlock = () => {
+  const addBlock = (newType: "layout" | "data") => {
     if (newType === "data") {
       if (!schemaId) return;
       const schema = schemas.find((candidate) => candidate["@id"] === schemaId);
@@ -812,45 +813,32 @@ function BlockListEditor({
 
   return (
     <div className="builder-block-list">
+      {/* The same list renders at every level, so it has to say which level
+          it is: an unlabelled second "Blocks" heading inside a layout block
+          reads as a duplicate of the page's own rather than as its contents. */}
       <div className="builder-property-header">
         <div>
-          <p className="label-accent">Structure</p>
-          <h3 className="title">Blocks</h3>
+          <p className="label-accent">{depth === 0 ? "Structure" : "Inside this layout"}</p>
+          <h3 className="title">{depth === 0 ? "Blocks on this tab" : "Nested blocks"}</h3>
         </div>
+        {/* Two direct actions rather than pick-a-type, pick-a-schema, submit.
+            Everywhere else in the builder an Add button creates a defaulted
+            item you then edit in place; this was the one screen that made you
+            fill a form first and press what read as Save. The schema a data
+            block uses is editable on the block itself, so choosing it up front
+            was asking for a decision twice. */}
         <div className="builder-actions">
-          <select
-            className="select builder-compact-select"
-            aria-label="New block type"
-            value={newType}
-            onChange={(event) =>
-              setNewType(event.target.value as "layout" | "data")
-            }
-          >
-            <option value="layout">Layout block</option>
-            <option value="data">Data block</option>
-          </select>
-          {newType === "data" && (
-            <select
-              className="select builder-compact-select"
-              aria-label="Data block schema"
-              value={schemaId}
-              onChange={(event) => setSchemaId(event.target.value)}
-            >
-              {schemas.length === 0 && <option value="">No schemas</option>}
-              {schemas.map((schema) => (
-                <option value={schema["@id"]} key={schema["@id"]}>
-                  {schema.name}
-                </option>
-              ))}
-            </select>
-          )}
+          <button type="button" className="secondary-btn" onClick={() => addBlock("layout")}>
+            + Add layout block
+          </button>
           <button
             type="button"
             className="primary-btn"
-            disabled={newType === "data" && !schemaId}
-            onClick={addBlock}
+            disabled={!schemaId}
+            title={schemaId ? undefined : "Create a schema first"}
+            onClick={() => addBlock("data")}
           >
-            + Add block
+            + Add data block
           </button>
         </div>
       </div>
