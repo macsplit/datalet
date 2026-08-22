@@ -228,6 +228,42 @@ test("manual pairing remains available when QR scanning is unsupported", async (
   await expect(page.getByText(/QR scanning needs HTTPS or localhost/i)).toBeVisible();
 });
 
+test("pairing-code controls do not reveal a horizontal scrollbar on hover", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.addInitScript(({ configKey, vaultId, vaultToken }) => {
+    localStorage.clear();
+    localStorage.setItem(configKey, JSON.stringify({
+      vaultId,
+      vaultToken,
+      nodeId: "pairing-row-node",
+    }));
+  }, { configKey: CONFIG_KEY, vaultId: VAULT_ID, vaultToken: VAULT_TOKEN });
+  await page.route("**/sync/stream-ticket?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ticket: "pairing-row-ticket" }),
+  }));
+  await page.route("**/sync/stream?*", (route) => route.abort());
+  await page.goto("/settings/datalets");
+
+  const row = page.locator(".pairing-code-row");
+  await expect(row).toBeVisible();
+  const overflow = () => row.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(await overflow()).toBe(0);
+
+  for (const control of [
+    row.getByLabel("Pairing code", { exact: true }),
+    row.getByRole("button", { name: "Show" }),
+    row.getByRole("button", { name: "Copy pairing code" }),
+  ]) {
+    await control.hover();
+    expect(await overflow()).toBe(0);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(overflow).toBe(0);
+});
+
 test("a connected device can issue a one-use temporary pair code", async ({ page }) => {
   await page.addInitScript(({ configKey, vaultId, vaultToken }) => {
     localStorage.clear();

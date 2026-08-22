@@ -68,7 +68,7 @@
     --color-success-hover: #15803d;
 
     --shadow-panel: 0 25px 60px rgba(20, 20, 23, 0.08);
-    --shadow-button: 0 15px 30px rgba(109, 77, 230, 0.22);
+    --shadow-button: 0 3px 8px rgba(109, 77, 230, 0.22);
     --focus-ring: 0 0 0 3px rgba(109, 77, 230, 0.35);
 }
 
@@ -97,7 +97,7 @@
         --color-success-hover: #22c55e;
 
         --shadow-panel: 0 25px 60px rgba(0, 0, 0, 0.5);
-        --shadow-button: 0 15px 30px rgba(139, 111, 240, 0.25);
+        --shadow-button: 0 3px 8px rgba(139, 111, 240, 0.25);
         --focus-ring: 0 0 0 3px rgba(139, 111, 240, 0.45);
     }
 }
@@ -371,6 +371,22 @@ a {
 
 .layout-row > * {
     flex: 1 0 min(360px, 100%);
+}
+
+/* A code plus two short actions is not the equal-width content that
+   `.layout-row` is designed for. Giving all three its 360px basis made this
+   row overflow by a few pixels; Chromium then painted and faded an overlay
+   scrollbar whenever the pointer entered it, which looked like a flashing
+   lower border. */
+.pairing-code-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: start;
+    gap: var(--space-4);
+}
+
+.pairing-code-row > .secondary-btn {
+    min-width: 7rem;
 }
 
 .pairing-qr {
@@ -1056,6 +1072,14 @@ select:focus-visible {
 
     .builder-compact-select {
         width: 100%;
+    }
+
+    .pairing-code-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .pairing-code-row > .input {
+        grid-column: 1 / -1;
     }
 }
 

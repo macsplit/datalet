@@ -233,7 +233,7 @@ export function SyncSettings() {
           <label className="field-label" htmlFor="sync-pairing-code">
             Pairing code
           </label>
-          <div className="layout-row">
+          <div className="pairing-code-row">
             <textarea
               id="sync-pairing-code"
               className="input"
