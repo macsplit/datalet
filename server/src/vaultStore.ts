@@ -25,11 +25,12 @@ import { watchVaultStream } from "./redis/streamWatcher.js";
 import {
   BATCH_DEDUP_TTL_SECONDS,
   PAIR_CODE_TTL_SECONDS,
+  COPY_CODE_TTL_SECONDS,
+  INVITE_TOKEN_TTL_SECONDS,
   STREAM_MAXLEN,
   VAULT_QUOTA_BYTES,
 } from "./redis/config.js";
 import { generateCloneCode, generatePairCode, normalizePairCode } from "./pairCode.js";
-import { COPY_CODE_TTL_SECONDS } from "./redis/config.js";
 import {
   deleteVaultData,
   deleteVaultMeta,
@@ -618,4 +619,20 @@ export async function sweepVaultTombstones(vaultId: string): Promise<number> {
  */
 export function subscribeLive(vaultId: string, listener: (entry: LogEntry) => void): () => void {
   return watchVaultStream(streamKey(vaultId), listener);
+}
+
+/** Generate a single-use invite token for a code (COPY or PAIR). */
+export async function createInviteToken(codeType: "COPY" | "PAIR", code: string): Promise<{ inviteToken: string; expiresAt: number }> {
+  const token = randomUUID();
+  const expiresAt = Date.now() + INVITE_TOKEN_TTL_SECONDS * 1000;
+  const key = `invite:${codeType}:${token}`;
+  await redis().set(key, code, "EX", INVITE_TOKEN_TTL_SECONDS);
+  return { inviteToken: token, expiresAt };
+}
+
+/** Redeem an invite token, returning the code it wraps. Single-use. */
+export async function redeemInviteToken(codeType: "COPY" | "PAIR", token: string): Promise<string | undefined> {
+  const key = `invite:${codeType}:${token}`;
+  const code = await redis().getdel(key);
+  return code ?? undefined;
 }
