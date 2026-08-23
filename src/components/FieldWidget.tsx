@@ -300,7 +300,7 @@ export function FieldWidget({
   if (fieldType === "did:ng:z:longText") {
     const text = typeof value === "string" ? value : "";
     return (
-      <div className="field-group">
+      <div className="field-group field-group-full-width">
         <label className="field-label" htmlFor={inputId}>{label}</label>
         {isEditing ? (
           <textarea
@@ -319,7 +319,7 @@ export function FieldWidget({
   if (fieldType === "did:ng:z:markdown") {
     const text = typeof value === "string" ? value : "";
     return (
-      <div className="field-group">
+      <div className="field-group field-group-full-width">
         <label className="field-label" htmlFor={inputId}>{label}</label>
         {isEditing ? (
           <textarea

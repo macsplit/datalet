@@ -609,6 +609,14 @@ a {
     gap: var(--space-4);
 }
 
+/* Long text and markdown hold paragraphs, not short scalar values - they
+   read better spanning the row than squeezed beside a sibling field into a
+   210px column, however many siblings there are. Harmless outside a grid
+   parent, so the class needs no `.info-grid` scoping of its own. */
+.field-group-full-width {
+    grid-column: 1 / -1;
+}
+
 .option-picker {
     display: flex;
     flex-direction: column;

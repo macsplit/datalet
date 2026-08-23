@@ -179,6 +179,23 @@ function noteFixture(body = "") {
   ];
 }
 
+function mixedFieldsFixture() {
+  const schemaId = "did:ng:z:meta:schema:mixed";
+  const blockId = "block-mixed";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Mixed" },
+    { "@graph": GRAPH, "@id": "property-mixed-title", "@type": "did:ng:z:PropertyDef", schemaId, name: "Title", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-mixed-notes", "@type": "did:ng:z:PropertyDef", schemaId, name: "Notes", order: 1, dataType: "did:ng:z:text", cardinality: "did:ng:z:optional", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-mixed-body", "@type": "did:ng:z:PropertyDef", schemaId, name: "Body", order: 2, dataType: "did:ng:z:text", cardinality: "did:ng:z:optional", enumOptions: [] },
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId, parentTabId: "did:ng:z:HomeTab" },
+    { "@graph": GRAPH, "@id": "widget-mixed-title", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Title", label: "Title", fieldType: "did:ng:z:text" },
+    { "@graph": GRAPH, "@id": "widget-mixed-notes", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:field", propertyName: "Notes", label: "Notes", fieldType: "did:ng:z:longText" },
+    { "@graph": GRAPH, "@id": "widget-mixed-body", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 2, widgetType: "did:ng:z:field", propertyName: "Body", label: "Body", fieldType: "did:ng:z:markdown" },
+    { "@graph": GRAPH, "@id": "mixed-0", "@type": `did:ng:z:user:${schemaId}`, Title: "Alpha", Notes: "some notes", Body: "some body" },
+  ];
+}
+
 const SEARCH_LABEL = "Search Books";
 
 test("search narrows a data block to matching records", async ({ page }) => {
@@ -783,6 +800,24 @@ test("a markdown field prints as rendered markup, not its raw source", async ({ 
   // Not the raw markdown source sitting in the cell as plain text.
   await expect(sheet.locator("td")).not.toContainText("# Title");
   await expect(sheet.locator("td")).not.toContainText("**bold**");
+});
+
+test("long-text and markdown fields span the full row width, unlike a short field beside them", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, mixedFieldsFixture());
+  await page.goto("/");
+
+  const grid = page.locator(".info-grid").first();
+  const gridBox = await grid.boundingBox();
+  const titleBox = await grid.locator(".field-group", { hasText: "Title" }).boundingBox();
+  const notesBox = await grid.locator(".field-group-full-width", { hasText: "Notes" }).boundingBox();
+  const bodyBox = await grid.locator(".field-group-full-width", { hasText: "Body" }).boundingBox();
+
+  // A short field still shares the row with a sibling; long text and markdown
+  // each claim (almost) the whole grid width regardless of what's beside them.
+  expect(titleBox!.width).toBeLessThan(gridBox!.width * 0.9);
+  expect(notesBox!.width).toBeGreaterThan(gridBox!.width * 0.9);
+  expect(bodyBox!.width).toBeGreaterThan(gridBox!.width * 0.9);
 });
 
 test("unsafe URL schemes render as text rather than active links", async ({ page }) => {
