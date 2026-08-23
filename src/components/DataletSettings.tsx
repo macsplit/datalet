@@ -331,7 +331,7 @@ export function DataletSettings() {
               id="datalet-join-code"
               className="input"
               value={joinCode}
-              placeholder="LG1-… or COPY-…"
+              placeholder="LG1-…, PAIR-…, or COPY-…"
               spellCheck={false}
               autoCapitalize="characters"
               autoCorrect="off"
@@ -350,7 +350,7 @@ export function DataletSettings() {
             Use an <strong>LG1</strong> or <strong>PAIR</strong> code to add an existing
             datalet to this device. A <strong>COPY</strong> code creates a separate datalet
             from someone else's data. The original and the copy remain independent.
-            A pasted invite link works here too, exactly like the code it wraps.
+            A pasted invite link works here too - no need to open it first.
           </p>
           <p className="helper-text">
             To start a datalet from a backup file, add an empty one and then use
