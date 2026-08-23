@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
 
 const DATA_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CHECK_ALPHABET = `${DATA_ALPHABET}*~$=U`;
-const PAYLOAD_CHARACTERS = 8;
+const PAYLOAD_CHARACTERS = 16;  // 80 bits = 16 * 5-bit chars (Crockford base32)
 
 /** Code kinds. The prefix is what tells one from another in a single input. */
 export const PAIR_PREFIX = "PAIR";
@@ -35,12 +35,12 @@ function checksum(payload: string): string {
 }
 
 function format(prefix: string, payload: string, check: string): string {
-  return `${prefix}-${payload.slice(0, 4)}-${payload.slice(4)}-${check}`;
+  return `${prefix}-${payload.slice(0, 8)}-${payload.slice(8)}-${check}`;
 }
 
-/** Generate 40 random bits plus a Crockford mod-37 check symbol. */
+/** Generate 80 random bits plus a Crockford mod-37 check symbol. */
 export function generateCode(prefix: string): string {
-  const bytes = randomBytes(5);
+  const bytes = randomBytes(10);  // 80 bits
   let payload = "";
   let bits = 0;
   let buffer = 0;
@@ -82,6 +82,6 @@ export function normalizeCode(prefix: string, input: string): string {
 export const generatePairCode = () => generateCode(PAIR_PREFIX);
 export const normalizePairCode = (input: string) => normalizeCode(PAIR_PREFIX, input);
 
-/** A durable, revocable capability to take a copy of a vault. */
+/** A revocable capability to take a copy of a vault, with 80-bit entropy and a 30-day TTL. */
 export const generateCloneCode = () => generateCode(CLONE_PREFIX);
 export const normalizeCloneCode = (input: string) => normalizeCode(CLONE_PREFIX, input);

@@ -9,11 +9,11 @@ function compact(code: string): string {
   return code.replaceAll("-", "");
 }
 
-test("temporary pair codes carry 40 random bits and normalize Crockford aliases", () => {
+test("temporary pair codes carry 80 random bits and normalize Crockford aliases", () => {
   const codes = new Set(Array.from({ length: 100 }, () => generatePairCode()));
   assert.equal(codes.size, 100);
   for (const code of codes) {
-    assert.match(code, /^PAIR-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-Z*~$=]$/);
+    assert.match(code, /^PAIR-[0-9A-HJKMNP-TV-Z]{8}-[0-9A-HJKMNP-TV-Z]{8}-[0-9A-Z*~$=]$/);
     assert.equal(normalizePairCode(code.toLowerCase()), code);
     assert.equal(normalizePairCode(`  ${code.replaceAll("-", " ")}  `), code);
   }

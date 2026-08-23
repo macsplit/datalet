@@ -17,7 +17,7 @@ type CloneCode = { code: string; createdAt: number };
 /**
  * Publishing a copy of this datalet.
  *
- * The list is not a convenience. A copy code is long-lived and multi-use, so
+ * The list is not a convenience. A copy code is multi-use but expires after 30 days, so
  * one that cannot be found again cannot be withdrawn - which is why it ships
  * with the publishing rather than after it.
  */
@@ -116,7 +116,7 @@ export function CloneCodes() {
         </button>
       </div>
       <p className="helper-text">
-        A copy code lets someone take their own datalet from this one. They do not get
+        A copy code lets someone take their own datalet from this one. Codes expire after 30 days (you can revoke them earlier). They do not get
         access to yours, and nothing they change afterwards comes back here. It copies
         everything, including your records, and the sync server can read all of it.
       </p>

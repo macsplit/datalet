@@ -178,7 +178,7 @@ export function DataletSettings() {
         <ul className="helper-text">
           <li>
             its vault on the sync server — every record in it, and the server's own
-            durable copy
+valid for 30 days
           </li>
           <li>this browser's record of it</li>
         </ul>

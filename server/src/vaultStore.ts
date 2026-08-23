@@ -29,6 +29,7 @@ import {
   VAULT_QUOTA_BYTES,
 } from "./redis/config.js";
 import { generateCloneCode, generatePairCode, normalizePairCode } from "./pairCode.js";
+import { COPY_CODE_TTL_SECONDS } from "./redis/config.js";
 import {
   deleteVaultData,
   deleteVaultMeta,
@@ -488,7 +489,9 @@ export type CloneCode = { code: string; createdAt: number };
 export async function createCloneCode(vaultId: string): Promise<CloneCode> {
   const code = generateCloneCode();
   const entry: CloneCode = { code, createdAt: Date.now() };
-  await redis().set(cloneCodeKey(code), vaultId);
+  // COPY codes now expire (revocable) but with 80-bit entropy + long TTL they're secure
+  // for shareable links. The TTL provides expiration; entropy provides brute-force resistance.
+  await redis().set(cloneCodeKey(code), vaultId, "EX", COPY_CODE_TTL_SECONDS);
   await redis().hset(cloneCodesKey(vaultId), code, JSON.stringify(entry));
   return entry;
 }
