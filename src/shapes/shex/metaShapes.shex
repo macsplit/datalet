@@ -52,7 +52,7 @@ ex:WidgetShape {
     // rdfs:comment "Optional display label override" ;
   ex:propertyName xsd:string ?
     // rdfs:comment "The bound PropertyDef's name (field widgets only)" ;
-  ex:fieldType [ex:text ex:longText ex:url ex:email ex:number ex:currency ex:date ex:dateTime ex:dropdown ex:multiSelect ex:checkbox ex:reference] ?
+  ex:fieldType [ex:text ex:longText ex:markdown ex:url ex:email ex:number ex:currency ex:date ex:dateTime ex:dropdown ex:multiSelect ex:checkbox ex:reference] ?
     // rdfs:comment "How to render the bound field (field widgets only)" ;
 }
 

@@ -190,6 +190,7 @@ export interface Widget {
   fieldType?:
     | "did:ng:z:text"
     | "did:ng:z:longText"
+    | "did:ng:z:markdown"
     | "did:ng:z:url"
     | "did:ng:z:email"
     | "did:ng:z:number"

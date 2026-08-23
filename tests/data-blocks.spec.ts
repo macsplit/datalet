@@ -165,6 +165,20 @@ function contactFixture(website = "", email = "", notes = "") {
   ];
 }
 
+function noteFixture(body = "") {
+  const schemaId = "did:ng:z:meta:schema:notes";
+  const blockId = "block-notes";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Notes" },
+    { "@graph": GRAPH, "@id": "property-note-body", "@type": "did:ng:z:PropertyDef", schemaId, name: "Body", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:optional", enumOptions: [] },
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId, parentTabId: "did:ng:z:HomeTab" },
+    { "@graph": GRAPH, "@id": "widget-note-body", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Body", label: "Body", fieldType: "did:ng:z:markdown" },
+    { "@graph": GRAPH, "@id": "widget-note-actions", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:editDeleteActions" },
+    { "@graph": GRAPH, "@id": "note-0", "@type": `did:ng:z:user:${schemaId}`, Body: body },
+  ];
+}
+
 const SEARCH_LABEL = "Search Books";
 
 test("search narrows a data block to matching records", async ({ page }) => {
@@ -642,6 +656,115 @@ test("URL, email, and long-text controls persist and render appropriately", asyn
   const notes = page.locator(".preserve-whitespace");
   await expect(notes).toHaveText("First line\nSecond line");
   await expect(notes).toHaveCSS("white-space", "pre-wrap");
+});
+
+test("a markdown field edits as monospace text and displays as a formatted block", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, noteFixture());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  const body = page.getByLabel("Body");
+  await expect(body).toHaveJSProperty("tagName", "TEXTAREA");
+  await expect(body).toHaveCSS("font-family", /mono/i);
+
+  await body.fill(
+    "# Title\n\nSome **bold**, some *italic*, and `inline code`.\n\n"
+      + "- one\n- two\n\n> a quote\n\n```\nconst x = 1;\n```\n\n"
+      + "A [safe link](https://example.com/page).",
+  );
+  await page.getByRole("button", { name: "Done editing" }).click();
+
+  const rendered = page.locator(".markdown-body");
+  await expect(rendered.locator("h1")).toHaveText("Title");
+  await expect(rendered.locator("strong")).toHaveText("bold");
+  await expect(rendered.locator("em")).toHaveText("italic");
+  await expect(rendered.locator("code").first()).toHaveText("inline code");
+  await expect(rendered.locator("li")).toHaveCount(2);
+  await expect(rendered.locator("blockquote")).toContainText("a quote");
+  await expect(rendered.locator("pre code")).toHaveText("const x = 1;");
+  const link = rendered.getByRole("link", { name: "safe link" });
+  await expect(link).toHaveAttribute("href", "https://example.com/page");
+  await expect(link).toHaveAttribute("target", "_blank");
+
+  // Persists as plain markdown source, not pre-rendered HTML.
+  await expect.poll(() => page.evaluate(
+    ({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null")?.Body,
+    { prefix: RECORD_PREFIX, key: `${GRAPH}|note-0` },
+  )).toContain("# Title");
+});
+
+test("a markdown field never interprets raw HTML in its source, only escapes it", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(
+    page,
+    noteFixture(
+      "Before <script>window.__pwned = true;</script> after, "
+        + '<img src=x onerror="window.__pwned = true">, plain <b>not bold</b>.',
+    ),
+  );
+  await page.goto("/");
+
+  // Never executed: nothing in this test could have set this had the markup
+  // actually run rather than been printed as text.
+  expect(await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned))
+    .toBeUndefined();
+  await expect(page.locator(".markdown-body script")).toHaveCount(0);
+  await expect(page.locator(".markdown-body img")).toHaveCount(0);
+  await expect(page.locator(".markdown-body b")).toHaveCount(0);
+  await expect(page.getByText("<script>window.__pwned = true;</script>")).toBeVisible();
+  await expect(page.getByText("<b>not bold</b>")).toBeVisible();
+});
+
+test("a markdown link degrades to visible text instead of an active link when it isn't safe", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(
+    page,
+    noteFixture(
+      "[bad](javascript:alert(1)) and [relative](./notes.md) and [anchor](#section).",
+    ),
+  );
+  await page.goto("/");
+
+  const rendered = page.locator(".markdown-body");
+  await expect(rendered.locator("a")).toHaveCount(0);
+  await expect(rendered).toContainText("[bad](javascript:alert(1))");
+  await expect(rendered).toContainText("[relative](./notes.md)");
+  await expect(rendered).toContainText("[anchor](#section)");
+});
+
+test("markdown image syntax renders as a plain link, never an auto-loading <img>", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(
+    page,
+    noteFixture("![tracking pixel](https://example.com/pixel.png)"),
+  );
+  await page.goto("/");
+
+  const rendered = page.locator(".markdown-body");
+  await expect(rendered.locator("img")).toHaveCount(0);
+  const link = rendered.getByRole("link", { name: "tracking pixel" });
+  await expect(link).toHaveAttribute("href", "https://example.com/pixel.png");
+});
+
+test("a markdown field's editor cannot type past its length cap", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, noteFixture());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Edit record" }).click();
+  const body = page.getByLabel("Body");
+  await expect(body).toHaveJSProperty("maxLength", 50_000);
+
+  // Programmatic fill is fast and gets close to the cap; the cap itself is
+  // then exercised with real keystrokes, which is what the browser's native
+  // maxlength enforcement actually gates - a raw property assignment would
+  // not prove anything about the attribute doing its job.
+  await body.fill("x".repeat(49_995));
+  await body.pressSequentially("1234567890");
+  const finalValue = await body.inputValue();
+  expect(finalValue).toHaveLength(50_000);
+  expect(finalValue.endsWith("12345")).toBe(true);
 });
 
 test("unsafe URL schemes render as text rather than active links", async ({ page }) => {

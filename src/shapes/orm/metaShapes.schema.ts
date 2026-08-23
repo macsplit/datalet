@@ -319,6 +319,10 @@ export const metaShapesSchema: Schema = {
           },
           {
             valType: "iri",
+            literals: ["did:ng:z:markdown"],
+          },
+          {
+            valType: "iri",
             literals: ["did:ng:z:url"],
           },
           {

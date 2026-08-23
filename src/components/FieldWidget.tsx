@@ -11,6 +11,8 @@ import { usePropertyDefs } from "../hooks/usePropertyDefs";
 import { useMetaStore } from "../hooks/MetaStoreContext";
 import { buildShapeType } from "../utils/dynamicSchema";
 import { clearUndoDisplayForRecord } from "../utils/localNgEngine";
+import { safeWebUrl } from "../utils/urlSafety";
+import { MARKDOWN_FIELD_MAX_LENGTH, renderMarkdownToSafeHtml } from "../utils/markdown";
 
 const EMPTY_REFERENCE_SHAPE = {
   shape: "did:ng:z:MissingReferenceShape",
@@ -54,17 +56,6 @@ export function displayDate(value: unknown, includeTime: boolean): string {
       ? { dateStyle: "medium", timeStyle: "short" }
       : { dateStyle: "medium" },
   ).format(date);
-}
-
-function safeWebUrl(value: string): string | undefined {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:"
-      ? parsed.href
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function ReferenceField({
@@ -320,6 +311,34 @@ export function FieldWidget({
           />
         ) : (
           <p className="value-text preserve-whitespace">{text || "Not set"}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (fieldType === "did:ng:z:markdown") {
+    const text = typeof value === "string" ? value : "";
+    return (
+      <div className="field-group">
+        <label className="field-label" htmlFor={inputId}>{label}</label>
+        {isEditing ? (
+          <textarea
+            id={inputId}
+            className="textarea textarea-mono"
+            value={text}
+            maxLength={MARKDOWN_FIELD_MAX_LENGTH}
+            onChange={(event) => setScalar(event.target.value)}
+          />
+        ) : text ? (
+          // A div, not a <p>: the rendered markdown can itself contain block
+          // elements (headings, lists, a blockquote), which is invalid
+          // nested inside a <p>.
+          <div
+            className="value-text markdown-body"
+            dangerouslySetInnerHTML={{ __html: renderMarkdownToSafeHtml(text) }}
+          />
+        ) : (
+          <p className="value-text">Not set</p>
         )}
       </div>
     );
