@@ -1287,4 +1287,25 @@ select:focus-visible {
         letter-spacing: 0.04em;
         text-transform: uppercase;
     }
+
+    /* A markdown field's rendered headings otherwise carry the screen's
+       accent hues (.markdown-body h2/h3) - stated as ink here for the same
+       reason .print-sheet h1 above states its own color rather than
+       inheriting it. Code/blockquote backgrounds are dropped for the same
+       "ink, not a screenshot" reason. */
+    .print-sheet .markdown-body h1,
+    .print-sheet .markdown-body h2,
+    .print-sheet .markdown-body h3 {
+        color: #000;
+    }
+
+    .print-sheet .markdown-body code,
+    .print-sheet .markdown-body pre {
+        background: none;
+    }
+
+    .print-sheet .markdown-body blockquote {
+        border-left-color: #000;
+        color: #333;
+    }
 }

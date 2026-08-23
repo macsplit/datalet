@@ -767,6 +767,24 @@ test("a markdown field's editor cannot type past its length cap", async ({ page 
   expect(finalValue.endsWith("12345")).toBe(true);
 });
 
+test("a markdown field prints as rendered markup, not its raw source", async ({ page }) => {
+  await seedSession(page);
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await seedNewFormat(page, noteFixture("# Title\n\nSome **bold** text."));
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Print Notes" }).click();
+  const sheet = page.locator(".print-sheet");
+  const cell = sheet.locator("td .markdown-body");
+  await expect(cell.locator("h1")).toHaveText("Title");
+  await expect(cell.locator("strong")).toHaveText("bold");
+  // Not the raw markdown source sitting in the cell as plain text.
+  await expect(sheet.locator("td")).not.toContainText("# Title");
+  await expect(sheet.locator("td")).not.toContainText("**bold**");
+});
+
 test("unsafe URL schemes render as text rather than active links", async ({ page }) => {
   await seedSession(page);
   await seedNewFormat(

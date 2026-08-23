@@ -19,6 +19,7 @@ import {
 } from "../utils/dynamicSchema";
 import { RecordCard } from "./RecordCard";
 import { displayDate } from "./FieldWidget";
+import { renderMarkdownToSafeHtml } from "../utils/markdown";
 import { DownloadIcon, PrinterIcon } from "./icons";
 import { useSettings } from "../hooks/useSettings";
 import { RuntimeCircuitNotice } from "./RuntimeSafety";
@@ -446,7 +447,18 @@ function ResolvedDataBlock({
                 <tr key={`${record["@graph"]}|${record["@id"]}`}>
                   {printColumns.map((column) => (
                     <td key={column.name}>
-                      {printableValue(record[column.name], column.fieldType, format, record["@graph"])}
+                      {column.fieldType === "did:ng:z:markdown" ? (
+                        <div
+                          className="markdown-body"
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdownToSafeHtml(
+                              typeof record[column.name] === "string" ? record[column.name] as string : "",
+                            ),
+                          }}
+                        />
+                      ) : (
+                        printableValue(record[column.name], column.fieldType, format, record["@graph"])
+                      )}
                     </td>
                   ))}
                 </tr>
