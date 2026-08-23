@@ -27,6 +27,7 @@ import { SchemaEditorPage } from "./pages/SchemaEditorPage";
 import { TabsManagerPage } from "./pages/TabsManagerPage";
 import { BlocksBuilderPage } from "./pages/BlocksBuilderPage";
 import { AboutPage } from "./pages/AboutPage";
+import { JoinPage } from "./pages/JoinPage";
 import { SettingsProvider, useSettings } from "./hooks/useSettings";
 import { useTabs } from "./hooks/useTabs";
 import { RuntimeIssueBanner } from "./components/RuntimeSafety";
@@ -156,6 +157,12 @@ const homeRoute = createRoute({
   component: TabPage,
 });
 
+const joinRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/join",
+  component: JoinPage,
+});
+
 function RoutedTabPage() {
   const { tabId } = useParams({ from: "/tab/$tabId" });
   const { tabs, userTabs } = useTabs();
@@ -219,6 +226,7 @@ const aboutRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
+  joinRoute,
   tabRoute,
   settingsRoute,
   themeRoute,
