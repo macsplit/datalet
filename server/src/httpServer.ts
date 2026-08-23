@@ -32,12 +32,14 @@ import {
   VAULT_DELETED_CHANNEL,
   vaultExists,
   vaultStats,
+  createInviteToken,
+  redeemInviteToken,
   type LogEntry,
 } from "./vaultStore.js";
 import { newBlockingConnection } from "./redis/client.js";
 import { serveStatic } from "./staticServer.js";
 import { checkRateLimit } from "./redis/rateLimit.js";
-import { normalizeCloneCode } from "./pairCode.js";
+import { normalizeCloneCode, normalizePairCode } from "./pairCode.js";
 import {
   PAIR_REDEEM_RATE_LIMIT,
   PAIR_REDEEM_RATE_WINDOW_SECONDS,
@@ -365,6 +367,58 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
             reason: error instanceof Error ? error.message : "the copy could not be made",
           });
         }
+        return;
+      }
+
+      if (url.pathname === "/sync/invite-token" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as { codeType?: string; code?: string };
+        const codeType = body.codeType as "COPY" | "PAIR" | undefined;
+        if (!codeType || !["COPY", "PAIR"].includes(codeType)) {
+          sendJson(res, 400, { reason: "invalid or missing codeType" });
+          return;
+        }
+        if (!body.code) {
+          sendJson(res, 400, { reason: "missing code" });
+          return;
+        }
+        try {
+          const normalized = codeType === "COPY" 
+            ? normalizeCloneCode(body.code)
+            : normalizePairCode(body.code);
+          const { inviteToken, expiresAt } = await createInviteToken(codeType, normalized);
+          sendJson(res, 200, { inviteToken, expiresAt });
+        } catch (error) {
+          sendJson(res, 400, { reason: error instanceof Error ? error.message : "invalid code" });
+        }
+        return;
+      }
+
+      if (url.pathname === "/sync/invite-redeem" && req.method === "POST") {
+        const withinLimit = await checkRateLimit(
+          `invite:${clientIp(req)}`,
+          PAIR_REDEEM_RATE_LIMIT,
+          PAIR_REDEEM_RATE_WINDOW_SECONDS,
+        );
+        if (!withinLimit) {
+          sendJson(res, 429, { reason: "too many redemptions from this address - try again later" });
+          return;
+        }
+        const body = (await readJsonBody(req)) as { codeType?: string; inviteToken?: string };
+        const codeType = body.codeType as "COPY" | "PAIR" | undefined;
+        if (!codeType || !["COPY", "PAIR"].includes(codeType)) {
+          sendJson(res, 400, { reason: "invalid or missing codeType" });
+          return;
+        }
+        if (!body.inviteToken) {
+          sendJson(res, 400, { reason: "missing inviteToken" });
+          return;
+        }
+        const code = await redeemInviteToken(codeType, body.inviteToken);
+        if (!code) {
+          sendJson(res, 404, { reason: "that invite link has expired or was already used" });
+          return;
+        }
+        sendJson(res, 200, { code });
         return;
       }
 
