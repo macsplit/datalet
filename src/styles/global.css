@@ -362,11 +362,36 @@ a {
     gap: var(--space-6);
 }
 
+/*
+ * A row of controls - buttons, inputs, text - of whatever count a call site
+ * needs. Every usage has varied between 2 and 4+ children over time, and
+ * `overflow-x: auto` used to be the escape hatch for whichever one didn't
+ * fit: each child holds `flex-shrink: 0`, so once combined widths passed the
+ * container's, the row could only overflow, never shrink. That overflow was
+ * usually a handful of pixels, which Chromium answers with a thin overlay
+ * scrollbar that fades in and out on hover - not a visible scrollable strip,
+ * but a flashing line under the row. This has been independently
+ * rediscovered and patched at the call site at least three times (see the
+ * `.pairing-code-row` note below, and CloneCodes.tsx's fourth button before
+ * this fix), because the scrollbar reads as an animation glitch, not as
+ * "content overflowed," so the fix kept landing on the symptom instead of
+ * here.
+ *
+ * `flex-wrap: wrap` removes the failure mode at its root rather than at
+ * each call site: a child that does not fit moves to the next line instead
+ * of overflowing, for any number of children at any width. There is no
+ * combination of child count and container width that can trigger the old
+ * scrollbar artifact again - wrapping is not a wider margin of safety, it
+ * is a different failure mode that this component cannot enter. If a call
+ * site DOES need everything held to one line no matter what, that is a
+ * deliberate, different layout - reach for something like
+ * `.pairing-code-row`'s grid instead of adding overflow-x back here.
+ */
 .layout-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: var(--space-4);
-    overflow-x: auto;
 }
 
 .layout-row > * {
