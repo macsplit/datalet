@@ -31,7 +31,7 @@ vault.](images/sync-paired.png)
 - A connected device displays that code as a QR. A joining device can scan it
   when the browser provides `BarcodeDetector` over HTTPS or localhost; the
   manual code field remains available everywhere, including plain-HTTP LANs.
-- For remote pairing, a connected device can create a `PAIR-XXXX-XXXX-X` code
+- For remote pairing, a connected device can create a `PAIR-XXXXXXXX-XXXXXXXX-X` code
   that expires after ten minutes and works once. Redeeming it returns the same
   durable vault credentials; rotation invalidates any outstanding codes.
 - Creating a vault carries the active local datalet's records into it. Joining
@@ -126,10 +126,12 @@ vault.](images/sync-paired.png)
 | `POST /sync/stream-ticket?vault=` | exchange bearer auth for a one-hour stream-only ticket |
 | `GET /sync/stream?vault=&since=&ticket=` | live + replayed patches, SSE |
 | `GET /sync/admin/vaults` | operator-only per-vault stats; see below |
-| `POST /sync/clone-codes?vault=` | issue a durable, revocable copy code |
+| `POST /sync/clone-codes?vault=` | issue a revocable, 30-day copy code |
 | `GET /sync/clone-codes?vault=` | list this vault's live copy codes |
 | `DELETE /sync/clone-codes?vault=&code=` | withdraw one copy code |
 | `POST /sync/clone` | exchange a copy code for a *new* vault holding a copy |
+| `POST /sync/invite-token` | wrap a COPY or PAIR code in a single-use, 7-day link token |
+| `POST /sync/invite-redeem` | exchange a link token for the code it wraps; single-use |
 
 All endpoints except `/sync/health`, vault creation, temporary-code redemption,
 and copy-code redemption are bearer-protected. Those redemption routes are
@@ -140,17 +142,43 @@ accepts only the short-lived ticket returned by `/sync/stream-ticket`.
 
 ### Copying a vault
 
-A **copy code** (`COPY-XXXX-XXXX-X`, the same Crockford encoding and check
-symbol as a pair code) is a durable, revocable capability to take a copy —
-neither read nor write access in the ongoing sense. `POST /sync/clone` creates
-a **new** vault, fills it from the source, and returns the new vault's own
-credentials. The source's token is never issued to the redeemer and is
-unaffected by having been copied.
+A **copy code** (`COPY-XXXXXXXX-XXXXXXXX-X`, the same Crockford encoding and
+check symbol as a pair code, 80 bits of payload) is a revocable, 30-day
+capability to take a copy — neither read nor write access in the ongoing
+sense. `POST /sync/clone` creates a **new** vault, fills it from the source,
+and returns the new vault's own credentials. The source's token is never
+issued to the redeemer and is unaffected by having been copied.
 
 Unlike a pair code it is long-lived and multi-use, so the list and the
 withdrawal are part of the feature: a code that cannot be found again cannot be
 revoked. Withdrawing stops future copies and does nothing about copies already
 taken. Redemption is rate-limited per IP, because it creates a vault.
+
+Entropy and TTL were both raised together (from 40 bits/no expiry to 80
+bits/30 days): 40 bits was too weak for a code with no expiration, and a code
+that never expires is a permanent liability if it leaks. Neither change alone
+would have been enough.
+
+### Invite links: wrapping a code in a disposable token
+
+A COPY or PAIR code is a human-typable secret, meant to be read aloud or typed
+in. Sharing it as a raw link (`?code=COPY-...`) would put the actual secret in
+browser history, referrer headers, and server logs anywhere the link passes
+through. Instead, `POST /sync/invite-token` mints a single-use UUID token that
+*wraps* a code without exposing it, valid for 7 days. The resulting link is
+`https://<host>/join?token=<uuid>`.
+
+`POST /sync/invite-redeem` exchanges the token for the code it wraps, using
+`GETDEL` so the exchange is atomic and the token cannot be redeemed twice. The
+client's `/join` page performs this exchange, shows a confirmation step naming
+what the code does, and then proceeds exactly as if the code had been typed in
+by hand. `codeType` (`COPY` or `PAIR`) is explicit on both endpoints, so a
+token minted for one kind cannot be redeemed as the other.
+
+The token's 7-day lifetime is deliberately shorter than a copy code's 30 days:
+a code may be shared multiple times over its life, but each individual link
+should go stale quickly if unused. Redemption is rate-limited the same way
+pair/clone redemption is.
 
 Two implementation details worth keeping. The copy reads the **accepted** state
 from Redis rather than `snapshot()`, which reads the Neo4j mirror — that mirror

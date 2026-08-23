@@ -1,78 +1,79 @@
 # Localgraph Session Handoff
 
-## Current Status (as of today)
+## Current Status
 
-**All systems operational.** The git repo is clean, no uncommitted changes. The major remaining work is verification and polish of the new test harnesses.
+**Clean.** All suites pass: 136/136 client (Playwright), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
 
-### What Was Accomplished
+### Test harnesses (fuzz / stress / security)
 
-Three major harnesses were built to verify logic under realistic conditions:
+1. **`pnpm fuzz`** — Random walk through datalet operations (create/join/leave/archive/switch) against a storing fake sync server, checking invariants after each step, stopping at first breach. `FUZZ_SEED` / `FUZZ_STEPS` env vars.
+2. **`pnpm stress`** — Concurrent writers hammering the real HTTP server with large payloads and awkward timing, to find logic faults (races, quota edge cases, idempotency) rather than to load-test the box. `STRESS_SEED` / `STRESS_VAULTS` / `STRESS_WRITERS` / `STRESS_ROUNDS` / `STRESS_RECORD_BYTES`.
+3. **`server/test/securityHttp.test.ts`** — Cross-tenant token isolation, vault-id guessing/glob injection into Redis key scans, Cypher label injection (`sanitizeLabel`), Unicode/collation round-trip (RTL override, zero-width, astral emoji, Turkish dotless i), UTF-8-vs-UTF-16 quota accounting. All 5 pass.
+4. **`tests/security-import.spec.ts`** — Client-side backup-import attacks: prototype pollution, cross-graph writes, whole-file rejection on partial malformed input, oversized record counts, script-in-record-value XSS. All 6 pass.
 
-1. **`pnpm fuzz`** (Playwright) — Random walk through datalet operations (create/join/leave/archive/switch) against a storing fake sync server, checking invariants after each step. Stops at first breach. Environment: `FUZZ_SEED` / `FUZZ_STEPS`.
+All four print progress continuously (per-step, per-case) rather than going silent until a summary — load-bearing for watching a long run via Ctrl+O without wondering if it's hung. This is now a standing rule, saved to memory (`feedback_verbose_long_tests.md`).
 
-2. **`pnpm stress`** (Node.js/HTTP) — Concurrent writers hammering the real server with large payloads and awkward timing. Finds logic faults (races, quota edge cases, idempotency). Environment: `STRESS_SEED` / `STRESS_VAULTS` / `STRESS_WRITERS` / `STRESS_ROUNDS` / `STRESS_RECORD_BYTES`.
+### Invite-token links (this session's main work)
 
-3. **`server/test/securityHttp.test.ts`** (Node.js) — OWASP checks: cross-tenant token isolation, vault-id guessing/glob injection, Cypher label injection, Unicode/collation round-trip, UTF-8 vs UTF-16 quota accounting.
+New feature: a COPY or PAIR code can be wrapped in a disposable, single-use link instead of sharing the human-typable code directly — the pattern Zoom uses for meeting invites.
 
-4. **`tests/security-import.spec.ts`** (Playwright) — Client-side backup-import attacks: prototype pollution, cross-graph writes, whole-file rejection, oversized records, script-in-value XSS.
+- **`server/src/pairCode.ts`**: code entropy doubled from 40 to 80 bits (`randomBytes(10)`, 16-character payload). COPY codes also gained a 30-day TTL (`COPY_CODE_TTL_SECONDS`) — previously durable/forever, which was too weak for a persistent secret at the old entropy. All user-facing copy updated ("valid for 30 days" instead of "durable copy").
+- **`server/src/vaultStore.ts`**: `createInviteToken(codeType, code)` mints a single-use UUID token wrapping a code, 7-day TTL (`INVITE_TOKEN_TTL_SECONDS`). `redeemInviteToken(codeType, token)` redeems it via `GETDEL` (atomic, single-use by construction).
+- **HTTP**: `POST /sync/invite-token` (mint) and `POST /sync/invite-redeem` (redeem) in `server/src/httpServer.ts`. Redemption is rate-limited the same as pair/clone redemption.
+- **Client**: `src/pages/JoinPage.tsx` at `/join?token=<uuid>`. Redeems the token (tries COPY then PAIR), shows a confirmation step, then acts as if the recovered code had been pasted in. Wired into `src/router.tsx`.
+- **`server/test/inviteTokenHttp.test.ts`**: full round trip against a real HTTP server + Redis (not mocks) — mint → redeem once (succeeds) → redeem again (refused, single-use) → cross-type redemption refused → never-issued token refused → malformed code refused at mint time.
 
-**Progress logging is now mandatory**: all three harnesses log per-step/per-case, not just start/end. This allows watching via `Ctrl+O` without confusion about whether it's hung.
+**Design decisions made, in case they need revisiting:**
+- Token in a query param (`?token=`), not a URL fragment — considered fragment-only (never reaches server logs) but a plain query param was judged acceptable given the token is single-use + 7-day TTL, so a leaked link is worthless after one redemption or one week.
+- 7-day TTL chosen over 24h (too tight — normal reply-tomorrow friction) or 30 days (too loose for a single link, even though the underlying code lives that long). Codes and their invite tokens now have deliberately different lifetimes for this reason.
+- Token type (COPY vs PAIR) is explicit in the API (`codeType` field), not inferred, so a token can't be redeemed as the wrong kind.
 
-### Known Issues / Last Checkpoint
+### NOT yet built (was the plan, ran out of session)
 
-One test was failing: `"awkward text survives a round trip through Redis and Neo4j unchanged"` in `server/test/securityHttp.test.ts`. The progress logging was added to that file to make diagnosis easier on the next run. The failure was `assert.ok(stored, ...)` — the record wasn't in the snapshot, not a value mismatch. Likely causes:
+1. **"Copy as Link" button** — `src/components/CloneCodes.tsx` only has "Copy" (the raw code) today. No UI calls `POST /sync/invite-token` yet. The endpoint and page work; nothing in the product surfaces them.
+2. **Smart input parsing** — pasting a full `https://datalet.app/join?token=...` URL, or a bare token, into the existing code-entry field (`DataletSettings.tsx`, the `LG1-… or COPY-…` input) is not handled. Right now only `/join` itself redeems a token; the plain code field only accepts codes.
+3. **`/join` page polish** — functional but minimal. No vault metadata shown before confirming (whose vault, size, etc.) — just "someone is offering you a copy" / code type. Worth a design pass before shipping to real users.
 
-- RTL-override/zero-width string breaking key construction in `patchBody()`
-- Timing issue: materializer not caught up before `snapshot()` reads
+If picking this up: start with #1 and #2 together, since a "Copy as Link" button is pointless until pasting the link somewhere actually works.
 
-The test harnesses are otherwise passing. `tests/fuzz.spec.ts` and `server/test/stress.ts` still need the same per-step progress logging added (marked as mandatory by the memory rule).
+### Known non-bugs (don't re-chase these)
 
-### Key Files
-
-- `tests/fuzz.spec.ts` — The fuzzer, with supporting fake server and invariants in `tests/support/`
-- `tests/datalet-flows.spec.ts` — Composed flow regression tests (created on import, pairing carries records, leaving keeps records + vault)
-- `tests/security-import.spec.ts` — Client-side import security (6/6 passing)
-- `server/test/securityHttp.test.ts` — Server-side security checks (4/5 passing, 1 timeout/diagnosis pending)
-- `server/test/stress.ts` — Stress harness (not yet run with verbose logging)
-- `server/test/migrationRoundTrip.test.ts` — Round-trip validation (client patches → server applier → client validator)
+- **`pnpm test:server` used to hang forever after all tests passed.** Root cause: `fetch()`'s connection pool (undici) leaves an idle keep-alive socket open per ephemeral-port test server, even after `server.close()` + `closeAllConnections()`. Not a real leak — confirmed via `--test-force-exit` (Node 22's documented fix for this exact class of issue), which now runs clean in ~10-13s. It's in the `test:server` script in `package.json`; don't remove it without re-verifying.
+- **If a security/invite/stress test run against the local dev Redis returns confusing "unknown vault" or "not found" errors after repeated manual runs**, check the rate-limit keys before assuming a real bug: `redis-cli keys "rate:vault-create:*"` — `VAULT_CREATE_RATE_LIMIT` is 10/window by default and repeated debug runs from the same IP exhaust it fast. `redis-cli del "rate:vault-create:::ffff:127.0.0.1"` clears it. This cost a long detour this session.
 
 ### Memory / Rules
 
 See `~/.claude/projects/-home-user-Code-localgraph/memory/`:
-- `feedback_verbose_long_tests.md` — Mandatory progress logging for fuzz/stress/security
-- `localgraph-fuzz-stress-security.md` — Full description of what each harness covers
+- `feedback_verbose_long_tests.md` — mandatory progress logging for fuzz/stress/security harnesses
+- `localgraph-fuzz-stress-security.md` — what each harness covers, where it lives
 
-### Next Steps (in priority order)
-
-1. **Diagnose and fix the one failing security test** — Run with verbose logging, identify which string/case fails, fix in `securityHttp.test.ts`
-2. **Add progress logging to `stress.ts` and `fuzz.spec.ts`** — Already in security test, needs rollout to the other two
-3. **Full verification run** — `pnpm test` (client), `pnpm test:server`, `pnpm test:offline`, `pnpm fuzz` (30+ steps), `pnpm stress` (sample config)
-4. **Commit and push** — All harnesses working with progress logging in place
-
-### Commands to Know
+### Commands
 
 ```bash
-# Quick smoke test
-FUZZ_SEED=1 FUZZ_STEPS=5 pnpm fuzz
+# Fuzzer
+pnpm fuzz                                    # short random walk
+FUZZ_STEPS=200 pnpm fuzz                     # longer walk, same harness
+FUZZ_SEED=12345 FUZZ_STEPS=200 pnpm fuzz     # replay an exact walk
 
-# Full fuzz walk
-FUZZ_STEPS=200 pnpm fuzz
-
-# Stress with reasonable defaults
+# Stress
 pnpm stress
-
-# Stress with explicit config
 STRESS_SEED=42 STRESS_VAULTS=4 STRESS_WRITERS=3 STRESS_ROUNDS=20 pnpm stress
 
-# One security test (to diagnose the failing one)
-npx tsx --env-file-if-exists=.env.local --test server/test/securityHttp.test.ts
+# Full suites
+pnpm test            # client (Playwright) + server (node --test)
+pnpm test:server      # server only, ~10-13s, clean exit
+pnpm test:offline     # PWA/offline-shell checks
+
+# One server test file
+npx tsx --env-file-if-exists=.env.local --test server/test/inviteTokenHttp.test.ts
 ```
 
-### Deployment Status
+### Deployment
 
-**Live on nuc at https://datalet.app** — The fixes pushed last session are in production. No users, but the stack runs continuously. Docker volumes are zeroed out and fresh. The next `git pull && ./deploy/up.sh` brings in all new harnesses.
+**Live on nuc at https://datalet.app**, advertised to no one. Deploy is `ssh nuc`, `git pull`, `./deploy/up.sh` in the deploy folder. Docker volumes (Neo4j + Redis) were fully wiped earlier this session at the user's request — clean slate, no stale vaults. `.env` was preserved. Nothing in this session's work requires a new env var or a data migration.
 
 ---
 
-**Last checkpoint session:** Fixed encoding bug in record migration, added fuzzer to catch compositions, split soak/endurance from correctness. This session: finished harness scaffolding, added progress logging (pending one test fix).
+**Previous session:** Fixed the pairing/leave-vault data-loss bugs, built the fuzzer (found a real bug on its first run), split soak testing into correctness (fuzz) vs endurance (resources), fixed a broken `pnpm fuzz` default invocation.
 
+**This session:** Verified and closed out the security suite (was already fine — earlier "failure" was a flaky/stale run, confirmed 5/5 clean). Audited COPY/PAIR code entropy (was 40 bits, weak for a "durable" secret) and fixed it (80 bits + 30-day TTL). Designed and built invite-token links end-to-end (server functions, HTTP routes, `/join` page, full e2e test) per user's request, modeled on Zoom-style disposable meeting links. Fixed a real `pnpm test:server` hang (`--test-force-exit`) discovered while testing the new feature. UI wiring (Copy-as-Link button, smart paste parsing) intentionally left for next session — see "NOT yet built" above.

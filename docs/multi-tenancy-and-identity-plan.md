@@ -439,6 +439,14 @@ instead of durable:
 - Code format: 8 Crockford base32 characters (40 bits) plus a check symbol —
   `PAIR-K3RM-9T7A-X` — short enough to read over a phone call. (The original
   eight-character example omitted the ninth check character.)
+  **Update:** the payload was later doubled to 16 characters (80 bits) —
+  `PAIR-K3RM9T7A-XXXXXXXX-X` — because the same generator is shared with COPY
+  codes, and a COPY code has no short-lived TTL to fall back on if guessed.
+  PAIR codes inherited the change; they didn't strictly need it (10-minute TTL
+  + single use already made 40 bits adequate), but splitting the generator to
+  keep PAIR shorter wasn't judged worth the complexity. See
+  `docs/remote-sync.md`'s "Copying a vault" section for the COPY-code
+  rationale.
 
 **This is machinery that already exists.** `vault:<id>:stream-ticket:<hash>`
 is the same pattern — a short-lived, single-purpose credential bound to the
@@ -580,7 +588,7 @@ integration test reports as `ok … # SKIP` and leaves the suite green.
 | Half-applied batch at the quota edge | A4 in `applyBatch.lua` | All-or-nothing refusal, mirroring `persistNow()`'s two-pass discipline |
 | Duplicate shard configuration | A2 | Redis shard claim with heartbeat; loud log; documented procedure |
 | Stale Neo4j labels after A3 | Existing deployments | Harmless by design; optional cleanup script |
-| Pairing-code brute force | B5 | 40 bits + 10-minute TTL + single use + per-IP rate limit + rotation invalidation |
+| Pairing-code brute force | B5 | 80 bits (raised from 40, see update above) + 10-minute TTL + single use + per-IP rate limit + rotation invalidation |
 | Label staleness across blocks | B1 | Documented and accepted for sort/search/export/print; editing control keeps its subscription |
 
 ## Effect on existing documents

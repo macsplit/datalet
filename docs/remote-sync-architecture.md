@@ -481,7 +481,7 @@ per-user records. Concretely:
   Settings (`SyncSettings.tsx`). Any other device still holding the old
   token gets 401s until it's manually given the new one — inherent to a
   shared-secret scheme with no per-device identity, not a bug.
-- An authenticated device can create a ten-minute `PAIR-XXXX-XXXX-X` exchange
+- An authenticated device can create a ten-minute `PAIR-XXXXXXXX-XXXXXXXX-X` exchange
   credential through `POST /sync/pair-code`. `POST /sync/pair-redeem` consumes
   it exactly once and returns the vault id and durable token. The Redis Lua
   redemption compares the stored token-generation hash atomically, so rotation
@@ -506,8 +506,9 @@ per-user records. Concretely:
   a real attack. Neo4j mirroring closes the Redis-only identity-loss gap
   found during hard-kill testing. The explicit exception is a temporary pair
   exchange: its Redis value must contain the durable token so redemption can
-  return it, but its key is a hash of a 40-bit random code, it has a ten-minute
-  TTL, and atomic redemption deletes it before returning.
+  return it, but its key is a hash of an 80-bit random code (raised from 40 —
+  see `docs/remote-sync.md`), it has a ten-minute TTL, and atomic redemption
+  deletes it before returning.
 - `POST /sync/vaults` is rate-limited per client IP (`VAULT_CREATE_RATE_LIMIT`,
   default 10/hour) — the one endpoint with no auth at all (it *creates* the
   credential), so it's the one open abuse/storage-exhaustion vector a
