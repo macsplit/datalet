@@ -15,6 +15,27 @@ import { copyText } from "../utils/clipboard";
 type CloneCode = { code: string; createdAt: number };
 
 /**
+ * Mint a single-use, 7-day link wrapping a code, and return the full URL to
+ * share. A raw `?code=COPY-...` link was the alternative rejected earlier:
+ * the code itself would then sit in browser history, referrer headers and
+ * server logs anywhere the link passed through. A wrapping token carries
+ * none of that - it is worthless to anyone but the one-time exchange.
+ */
+async function inviteLinkFor(codeType: "COPY" | "PAIR", code: string): Promise<string> {
+  const response = await fetch("/sync/invite-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ codeType, code }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => undefined) as { reason?: string } | undefined;
+    throw new Error(body?.reason ?? `Could not create a link (status ${response.status}).`);
+  }
+  const { inviteToken } = await response.json() as { inviteToken: string };
+  return `${window.location.origin}/join?token=${inviteToken}`;
+}
+
+/**
  * Publishing a copy of this datalet.
  *
  * The list is not a convenience. A copy code is multi-use but expires after 30 days, so
@@ -27,6 +48,7 @@ export function CloneCodes() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
+  const [linking, setLinking] = useState("");
 
   useEffect(() => {
     if (!config) return;
@@ -93,15 +115,36 @@ export function CloneCodes() {
     }
   };
 
+  // Keyed as "code:<value>" or "link:<value>" - the two buttons in a row
+  // would otherwise both read "Copied" whichever one someone actually pressed,
+  // since they'd share the same bare code as their key.
   const copy = async (code: string) => {
     if (await copyText(code)) {
-      setCopied(code);
+      setCopied(`code:${code}`);
       setTimeout(() => setCopied(""), 2000);
       return;
     }
     // Never silently: a Copy button that does nothing is indistinguishable
     // from a broken app, and the next paste would be of something stale.
     setError("This browser would not let the page copy for you. Select the code and copy it by hand.");
+  };
+
+  const copyAsLink = async (code: string) => {
+    setLinking(code);
+    setError("");
+    try {
+      const link = await inviteLinkFor("COPY", code);
+      if (await copyText(link)) {
+        setCopied(`link:${code}`);
+        setTimeout(() => setCopied(""), 2000);
+      } else {
+        setError("This browser would not let the page copy for you. The link was created but not copied.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "That link could not be created.");
+    } finally {
+      setLinking("");
+    }
   };
 
   return (
@@ -134,7 +177,18 @@ export function CloneCodes() {
                   aria-label={`Copy the code ${entry.code}`}
                   onClick={() => void copy(entry.code)}
                 >
-                  {copied === entry.code ? "Copied" : "Copy"}
+                  {copied === `code:${entry.code}` ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  aria-label={`Copy a link for the code ${entry.code}`}
+                  disabled={linking === entry.code}
+                  onClick={() => void copyAsLink(entry.code)}
+                >
+                  {linking === entry.code
+                    ? "Working…"
+                    : copied === `link:${entry.code}` ? "Copied" : "Copy as Link"}
                 </button>
                 <button
                   type="button"

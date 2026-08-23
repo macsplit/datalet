@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 136/136 client (Playwright), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
+**Clean.** All suites pass: 143/143 client (Playwright), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
 
 ### Test harnesses (fuzz / stress / security)
 
@@ -13,28 +13,34 @@
 
 All four print progress continuously (per-step, per-case) rather than going silent until a summary — load-bearing for watching a long run via Ctrl+O without wondering if it's hung. This is now a standing rule, saved to memory (`feedback_verbose_long_tests.md`).
 
-### Invite-token links (this session's main work)
+### Invite-token links
 
 New feature: a COPY or PAIR code can be wrapped in a disposable, single-use link instead of sharing the human-typable code directly — the pattern Zoom uses for meeting invites.
 
 - **`server/src/pairCode.ts`**: code entropy doubled from 40 to 80 bits (`randomBytes(10)`, 16-character payload). COPY codes also gained a 30-day TTL (`COPY_CODE_TTL_SECONDS`) — previously durable/forever, which was too weak for a persistent secret at the old entropy. All user-facing copy updated ("valid for 30 days" instead of "durable copy").
 - **`server/src/vaultStore.ts`**: `createInviteToken(codeType, code)` mints a single-use UUID token wrapping a code, 7-day TTL (`INVITE_TOKEN_TTL_SECONDS`). `redeemInviteToken(codeType, token)` redeems it via `GETDEL` (atomic, single-use by construction).
 - **HTTP**: `POST /sync/invite-token` (mint) and `POST /sync/invite-redeem` (redeem) in `server/src/httpServer.ts`. Redemption is rate-limited the same as pair/clone redemption.
-- **Client**: `src/pages/JoinPage.tsx` at `/join?token=<uuid>`. Redeems the token (tries COPY then PAIR), shows a confirmation step, then acts as if the recovered code had been pasted in. Wired into `src/router.tsx`.
+- **Client**: `src/pages/JoinPage.tsx` at `/join?token=<uuid>`. Redeems the token (tries COPY then PAIR), shows a confirmation step, then genuinely completes the join/copy — calls `redeemDataletCode` + `adoptVaultAsDatalet` directly, the same as the manual-paste path, rather than copying to clipboard and dumping the user back at Settings to paste it in a second time. Wired into `src/router.tsx`.
+- **`src/utils/codeRedemption.ts`** (new, this follow-up session): the code-type-branching logic (`COPY`/`PAIR`/`LG1`) that used to live only in `DataletSettings.tsx` is now `redeemDataletCode`, shared by both the manual field and `/join`. Also holds `extractInviteToken` (recognizes a pasted invite link or bare token) and `redeemInviteToken` (tries COPY then PAIR against `/sync/invite-redeem`).
+- **`src/components/CloneCodes.tsx`**: "Copy as Link" button next to "Copy" on each COPY code, calling `POST /sync/invite-token` and copying the resulting `/join?token=...` URL. Its "Copied" state is tracked separately from the plain "Copy" button's (`code:<value>` vs `link:<value>` keys) so pressing one doesn't falsely flip the other.
+- **`src/components/DataletSettings.tsx`**: the "Or open one from a code" field now recognizes a pasted invite link (or its bare token) via `extractInviteToken`, exchanges it for the code it wraps, then proceeds exactly as if the code itself had been pasted.
+- Deliberately **not** wired up for PAIR's temporary code (`SyncSettings.tsx`, the 10-minute pairing exchange): wrapping a 10-minute code in a 7-day link would look like a week-long invite that silently stops working after 10 minutes. The backend already supports `codeType: "PAIR"` for future use; only the UI trigger was withheld.
 - **`server/test/inviteTokenHttp.test.ts`**: full round trip against a real HTTP server + Redis (not mocks) — mint → redeem once (succeeds) → redeem again (refused, single-use) → cross-type redemption refused → never-issued token refused → malformed code refused at mint time.
+- **`tests/join.spec.ts`** (new) and **`tests/clone-codes.spec.ts`** (extended): COPY and PAIR links redeem and complete the join without a second manual paste; an expired/reused token shows a clear message; a link with no token doesn't hang; the same `canLeaveActiveDatalet` data-loss guard the manual field uses also blocks joining via a link; "Copy as Link" mints correctly and its state is independent of "Copy"; pasting a full link into the manual field joins successfully.
 
 **Design decisions made, in case they need revisiting:**
 - Token in a query param (`?token=`), not a URL fragment — considered fragment-only (never reaches server logs) but a plain query param was judged acceptable given the token is single-use + 7-day TTL, so a leaked link is worthless after one redemption or one week.
 - 7-day TTL chosen over 24h (too tight — normal reply-tomorrow friction) or 30 days (too loose for a single link, even though the underlying code lives that long). Codes and their invite tokens now have deliberately different lifetimes for this reason.
 - Token type (COPY vs PAIR) is explicit in the API (`codeType` field), not inferred, so a token can't be redeemed as the wrong kind.
+- PAIR's UI trigger withheld (see above) — worth reconsidering if a use case for a longer-lived PAIR flow ever emerges.
 
-### NOT yet built (was the plan, ran out of session)
+### A real bug this follow-up session found and fixed in `JoinPage.tsx`
 
-1. **"Copy as Link" button** — `src/components/CloneCodes.tsx` only has "Copy" (the raw code) today. No UI calls `POST /sync/invite-token` yet. The endpoint and page work; nothing in the product surfaces them.
-2. **Smart input parsing** — pasting a full `https://datalet.app/join?token=...` URL, or a bare token, into the existing code-entry field (`DataletSettings.tsx`, the `LG1-… or COPY-…` input) is not handled. Right now only `/join` itself redeems a token; the plain code field only accepts codes.
-3. **`/join` page polish** — functional but minimal. No vault metadata shown before confirming (whose vault, size, etc.) — just "someone is offering you a copy" / code type. Worth a design pass before shipping to real users.
+The confirm screen computed `canLeaveActiveDatalet()` once, inline, at render. `DataletSettings.tsx` deliberately re-polls that same check every second, because the commonest refusal - a queued outbox - clears itself moments later as changes sync, asynchronously and outside React's knowledge; computed only once, a screen that isn't otherwise re-rendering never notices the refusal clear, and its button stays disabled indefinitely. `JoinPage.tsx` now polls the same way. Caught by an end-to-end test, not by inspection - the fix was verified by deliberately reverting it and confirming the test fails, then restoring it and confirming the test passes.
 
-If picking this up: start with #1 and #2 together, since a "Copy as Link" button is pointless until pasting the link somewhere actually works.
+### Also fixed: a broken sentence from the entropy/TTL session
+
+A blind text-replace two sessions ago (`"durable copy"` → `"valid for 30 days"`, meant for the COPY-code description) also matched an unrelated sentence in the permanent-erasure warning describing what gets removed from the server, leaving `"...and the server's own\nvalid for 30 days"` - a sentence fragment shown to anyone erasing a datalet. No test asserted that exact text, so it shipped silently for two sessions. Restored via `git log -p` to find the original wording.
 
 ### Known non-bugs (don't re-chase these)
 
@@ -76,4 +82,6 @@ npx tsx --env-file-if-exists=.env.local --test server/test/inviteTokenHttp.test.
 
 **Previous session:** Fixed the pairing/leave-vault data-loss bugs, built the fuzzer (found a real bug on its first run), split soak testing into correctness (fuzz) vs endurance (resources), fixed a broken `pnpm fuzz` default invocation.
 
-**This session:** Verified and closed out the security suite (was already fine — earlier "failure" was a flaky/stale run, confirmed 5/5 clean). Audited COPY/PAIR code entropy (was 40 bits, weak for a "durable" secret) and fixed it (80 bits + 30-day TTL). Designed and built invite-token links end-to-end (server functions, HTTP routes, `/join` page, full e2e test) per user's request, modeled on Zoom-style disposable meeting links. Fixed a real `pnpm test:server` hang (`--test-force-exit`) discovered while testing the new feature. UI wiring (Copy-as-Link button, smart paste parsing) intentionally left for next session — see "NOT yet built" above.
+**Prior session:** Verified and closed out the security suite. Audited COPY/PAIR code entropy (was 40 bits, weak for a "durable" secret) and fixed it (80 bits + 30-day TTL). Designed and built invite-token links end-to-end (server functions, HTTP routes, `/join` page, full e2e test) per user's request, modeled on Zoom-style disposable meeting links. Fixed a real `pnpm test:server` hang (`--test-force-exit`). UI wiring (Copy-as-Link button, smart paste parsing) left for the follow-up.
+
+**This session:** Finished the UI wiring - "Copy as Link" button, smart paste parsing for a pasted link/token, and `/join` actually completing the join instead of copy-to-clipboard-and-redirect. Along the way, found and fixed two real bugs: `JoinPage.tsx`'s confirm button could stay stuck disabled because it checked the data-loss guard once instead of polling it (matching `DataletSettings.tsx`'s existing pattern), and a broken sentence in the permanent-erasure warning left over from an earlier session's blind text-replace. Extracted the code-redemption branching logic into `src/utils/codeRedemption.ts`, shared by the manual field and `/join` so they can never judge a pasted code or link differently. 143/143 client, 78/78 server, all green.

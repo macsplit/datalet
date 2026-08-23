@@ -18,7 +18,7 @@ import {
   canLeaveActiveDatalet,
   switchToDatalet,
 } from "../utils/dataletSwitch";
-import { decodePairingCode } from "../utils/pairingCode";
+import { redeemDataletCode, extractInviteToken, redeemInviteToken } from "../utils/codeRedemption";
 import { randomUuid } from "../utils/randomId";
 
 /**
@@ -91,39 +91,16 @@ export function DataletSettings() {
   });
 
   const joinFromCode = () => adopt(async () => {
-    const code = joinCode.trim();
-    if (code.toUpperCase().startsWith("COPY")) {
-      // A copy code makes a new datalet from someone else's; it never grants
-      // access to theirs. The server does the copying, so what comes back is
-      // a vault of your own that happens to start out looking like theirs.
-      const response = await fetch("/sync/clone", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const body = (await response.json()) as
-        { vaultId?: string; vaultToken?: string; reason?: string };
-      if (!response.ok || !body.vaultId || !body.vaultToken) {
-        throw new Error(body.reason ?? `That copy could not be made (status ${response.status}).`);
-      }
-      // Noted because a copy arrives carrying the source's own title, so two
-      // identically named entries would otherwise be indistinguishable.
-      return { vaultId: body.vaultId, vaultToken: body.vaultToken, copiedAt: Date.now() };
+    // A pasted invite link (or its bare token) is not itself a code - it has
+    // to be exchanged for one first. Recognized here rather than only at
+    // /join, because the code-entry field is the box someone reaches for by
+    // habit, whatever they were actually handed.
+    const token = extractInviteToken(joinCode);
+    if (token) {
+      const { code } = await redeemInviteToken(token);
+      return redeemDataletCode(code);
     }
-    if (code.toUpperCase().startsWith("PAIR")) {
-      const response = await fetch("/sync/pair-redeem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const body = (await response.json()) as
-        { vaultId?: string; vaultToken?: string; reason?: string };
-      if (!response.ok || !body.vaultId || !body.vaultToken) {
-        throw new Error(body.reason ?? `Redeeming that code failed with status ${response.status}.`);
-      }
-      return { vaultId: body.vaultId, vaultToken: body.vaultToken };
-    }
-    return decodePairingCode(code);
+    return redeemDataletCode(joinCode);
   });
 
   const goTo = async (entry: Datalet) => {
@@ -373,6 +350,7 @@ export function DataletSettings() {
             Use an <strong>LG1</strong> or <strong>PAIR</strong> code to add an existing
             datalet to this device. A <strong>COPY</strong> code creates a separate datalet
             from someone else's data. The original and the copy remain independent.
+            A pasted invite link works here too, exactly like the code it wraps.
           </p>
           <p className="helper-text">
             To start a datalet from a backup file, add an empty one and then use

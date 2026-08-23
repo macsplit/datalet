@@ -149,3 +149,68 @@ test("a datalet opened from an LG1 code is not marked as a copy", async ({ page 
       { id: string; copiedAt?: number }[], { key: REGISTRY_KEY });
   expect(entries.find((entry) => entry.id === vaultB.vaultId)?.copiedAt).toBeUndefined();
 });
+
+test("Copy as Link mints a single-use token and copies the resulting URL", async ({ page }) => {
+  await seedPaired(page);
+  await page.route("**/sync/clone-codes*", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ codes: [{ code: "COPY-K3RM-9T7A-X", createdAt: Date.now() }] }),
+  }));
+  let mintedFor: { codeType?: string; code?: string } = {};
+  await page.route("**/sync/invite-token", async (route) => {
+    mintedFor = JSON.parse(route.request().postData() ?? "{}") as { codeType?: string; code?: string };
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ inviteToken: "11111111-1111-4111-8111-111111111111", expiresAt: Date.now() + 1000 }),
+    });
+  });
+
+  await page.goto("/settings/datalets");
+  await expect(page.getByLabel("Copy code COPY-K3RM-9T7A-X")).toBeVisible();
+
+  await page.getByRole("button", { name: "Copy a link for the code COPY-K3RM-9T7A-X" }).click();
+  await expect(page.getByRole("button", { name: "Copy a link for the code COPY-K3RM-9T7A-X" }))
+    .toHaveText("Copied");
+
+  // The code itself, never the raw link, is what gets sent to mint the token.
+  expect(mintedFor).toEqual({ codeType: "COPY", code: "COPY-K3RM-9T7A-X" });
+
+  // "Copy" (the raw code) is unaffected by having pressed the link button - the
+  // two states are tracked independently, or one action would misreport the other.
+  await expect(page.getByRole("button", { name: "Copy the code COPY-K3RM-9T7A-X" }))
+    .toHaveText("Copy");
+});
+
+test("pasting a full invite link into the code field joins, same as pasting the code", async ({ page }) => {
+  await seedPaired(page);
+  await page.route("**/sync/clone-codes*", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ codes: [] }),
+  }));
+  await page.route("**/sync/invite-redeem", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as { codeType?: string; inviteToken?: string };
+    if (body.codeType !== "COPY" || body.inviteToken !== "22222222-2222-4222-8222-222222222222") {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ reason: "not found" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }) });
+  });
+  let cloneRequested = false;
+  await page.route("**/sync/clone", (route) => {
+    cloneRequested = true;
+    return route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+    });
+  });
+
+  await page.goto("/settings/datalets");
+  // What "Copy as Link" actually produces, pasted where someone reaches for it
+  // by habit rather than at /join specifically.
+  await page.getByLabel("Or open one from a code").fill(
+    "https://datalet.app/join?token=22222222-2222-4222-8222-222222222222");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .toBe(vaultB.vaultId);
+  expect(cloneRequested).toBe(true);
+});
