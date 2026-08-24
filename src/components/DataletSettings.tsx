@@ -57,16 +57,21 @@ export function DataletSettings() {
   // is a queued outbox, which clears itself moments later as the changes sync.
   // Evaluated only at render, the panel would stay refused with nothing to act
   // on and no way forward short of reloading.
-  const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet());
+  const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet(privateNuri));
   useEffect(() => {
     // The local datalet has to be a registry entry before the guard is asked
     // about it, or the answer is "nothing to protect" and the controls offer
     // an action that will refuse itself on click.
     ensureLocalDatalet();
-    setLeaving(canLeaveActiveDatalet());
-    const timer = setInterval(() => setLeaving(canLeaveActiveDatalet()), 1_000);
+    // Also re-checked immediately: `privateNuri` starts undefined and
+    // resolves a moment later (usePrivateNuri.ts), which is why it's a
+    // dependency here rather than a one-time effect - a genuinely empty
+    // local datalet should not spend up to a second longer than necessary
+    // looking refused just because the graph it needs wasn't known yet.
+    setLeaving(canLeaveActiveDatalet(privateNuri));
+    const timer = setInterval(() => setLeaving(canLeaveActiveDatalet(privateNuri)), 1_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [privateNuri]);
   const [adding, setAdding] = useState(false);
   const [joinCode, setJoinCode] = useState("");
 

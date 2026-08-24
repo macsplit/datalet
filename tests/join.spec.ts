@@ -265,21 +265,18 @@ test("a link with no token at all is refused rather than hanging", async ({ page
   await expect(page.getByText(/missing its invite token/)).toBeVisible();
 });
 
-test("a completely fresh browser - never visited before - gets a real error, not a silent no-op", async ({ page }) => {
-  // No addInitScript at all: no local-session, no datalet registry, nothing.
-  // The guard (canLeaveActiveDatalet) is checked twice: once at render, to
-  // decide whether the button is enabled, and again inside
-  // adoptVaultAsDatalet, after ensureLocalDatalet() has just created this
-  // browser's own "this device" registry entry for the first time. On a
-  // truly fresh browser the first check sees no registry at all (nothing to
-  // protect, enabled) and the second sees the entry that was just created
-  // (vault-less, refused) - correctly, not a bug (see adoptVaultAsDatalet's
-  // own comment). What matters here is that the refusal actually reaches
-  // the screen: this exact sequence used to reach it after the URL had
-  // already been silently swapped to /settings/datalets, which unmounts
-  // this page and swallows the error - see the beforeReload fix in
-  // dataletSwitch.ts. Reported as: accepted a copy link, nothing changed,
-  // dropped on Settings with no explanation.
+test("a late failure gets a real error, not a silent no-op", async ({ page }) => {
+  // No addInitScript at all: no local-session, no datalet registry, nothing
+  // - a completely fresh browser, which is now correctly allowed to accept
+  // a copy link at all (see graphHasOnlyKnownBootstrapRecords). The failure
+  // this test forces instead is a late one, deep inside adopt() (a
+  // /sync/snapshot error - a quota check or a guard refusal would do the
+  // same), to prove the actual thing that was reported: this exact sequence
+  // used to reach its failure after the URL had already been silently
+  // swapped to /settings/datalets, which unmounts this page and swallows
+  // whatever error follows - see the beforeReload fix in dataletSwitch.ts.
+  // Reported as: accepted a copy link, nothing changed, dropped on Settings
+  // with no explanation.
   await page.route("**/sync/invite-redeem", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
   }));
@@ -287,29 +284,39 @@ test("a completely fresh browser - never visited before - gets a real error, not
     status: 200, contentType: "application/json",
     body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
   }));
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => route.fulfill({
+    status: 500, contentType: "application/json", body: JSON.stringify({ reason: "down" }),
+  }));
 
   await page.goto("/join?token=55555555-5555-4555-8555-555555555555");
   await expect(page.getByRole("heading", { name: "Take a copy of a datalet" })).toBeVisible();
-  // Enabled at render - there is genuinely nothing to protect yet.
   await expect(page.getByRole("button", { name: "Take a copy" })).toBeEnabled();
   await page.getByRole("button", { name: "Take a copy" }).click();
 
-  // The refusal has to actually reach the screen, on the still-mounted page.
-  await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
+  // The failure has to actually reach the screen, on the still-mounted page.
+  await expect(page.getByText(/snapshot request failed/)).toBeVisible();
   await expect(page).toHaveURL(/\/join/);
 
-  // And nothing was silently half-adopted: the registry holds only the
-  // vault-less local placeholder ensureLocalDatalet created, never vaultB.
+  // And the failed vault was never switched into, whatever else the
+  // registry ended up holding - addDatalet() writes a retriable entry
+  // before adopt() ever reaches the failing fetch, which is fine (nothing
+  // was evicted or overwritten to get there); becoming the active datalet
+  // despite the failure would not be.
   const registry = await page.evaluate(({ key }) =>
-    JSON.parse(localStorage.getItem(key) ?? "{}") as { activeId?: string; entries?: { id: string }[] },
+    JSON.parse(localStorage.getItem(key) ?? "{}") as { activeId?: string },
     { key: REGISTRY_KEY });
-  expect(registry.entries?.map((entry) => entry.id)).not.toContain(vaultB.vaultId);
+  expect(registry.activeId).not.toBe(vaultB.vaultId);
 });
 
-test("the same data-loss guard as the manual field applies here: an unpaired datalet blocks joining another", async ({ page }) => {
+test("the same data-loss guard as the manual field applies here: an unpaired datalet WITH REAL RECORDS blocks joining another", async ({ page }) => {
   // The exact scenario the fuzzer's first-ever finding was about: adding a
   // second datalet before this one has ever synced would strand its records.
-  // A link must not be a side door around that guard.
+  // A link must not be a side door around that guard. The seeded record's id
+  // is deliberately NOT did:ng:z:HomeTab/SettingsSingleton with their exact
+  // default content - those two are exactly what the app writes into any
+  // fresh graph on its own (graphHasOnlyKnownBootstrapRecords), so using
+  // them here would test nothing: this has to be content only a person
+  // could have put there, or the guard has nothing real to refuse over.
   await page.addInitScript(() => {
     if (localStorage.getItem("join-seeded")) return;
     localStorage.clear();
@@ -321,6 +328,12 @@ test("the same data-loss guard as the manual field applies here: an unpaired dat
     localStorage.setItem("meta-ui-builder:datalets", JSON.stringify({
       activeId: "a", entries: [{ id: "a" }],
     }));
+    const graph = "did:ng:test-private-store";
+    const key = `${graph}|did:ng:z:meta:tab:user-notes`;
+    localStorage.setItem(`meta-ui-builder:ng-local-store:record:${key}`, JSON.stringify({
+      "@graph": graph, "@id": "did:ng:z:meta:tab:user-notes", "@type": "did:ng:z:Tab", title: "Notes", order: 1,
+    }));
+    localStorage.setItem("meta-ui-builder:ng-local-store:index", JSON.stringify([key]));
   });
   await page.route("**/sync/invite-redeem", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
@@ -329,4 +342,49 @@ test("the same data-loss guard as the manual field applies here: an unpaired dat
   await page.goto("/join?token=44444444-4444-4444-8444-444444444444");
   await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Take a copy" })).toBeDisabled();
+});
+
+test("a genuinely empty local placeholder does not block joining - there is nothing there to lose", async ({ page }) => {
+  // Reported live: a private window's first attempt at a copy link
+  // correctly showed the confirm screen (nothing existed yet to protect),
+  // but ensureLocalDatalet() creates a vault-less "this device" placeholder
+  // the moment adoption is attempted at all - and from then on, EVERY
+  // subsequent attempt in that same session/profile found that placeholder
+  // already sitting in the registry and refused unconditionally, forever,
+  // over a graph that had never held a single record. This is exactly that
+  // second attempt: the placeholder already exists (as it would after a
+  // first attempt, successful or not), but nothing was ever written to it.
+  await page.addInitScript(() => {
+    if (localStorage.getItem("join-seeded")) return;
+    localStorage.clear();
+    localStorage.setItem("join-seeded", "1");
+    localStorage.setItem("meta-ui-builder:local-session", JSON.stringify({
+      session_id: "join-session", private_store_id: "test-private-store",
+    }));
+    localStorage.setItem("meta-ui-builder:datalets", JSON.stringify({
+      activeId: "a", entries: [{ id: "a" }],
+    }));
+    // Deliberately no ng-local-store records at all: the placeholder exists,
+    // its graph is empty.
+  });
+  await page.route("**/sync/invite-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
+  }));
+  await page.route("**/sync/clone", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+  }));
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+
+  await page.goto("/join?token=77777777-7777-4777-8777-777777777777");
+  await expect(page.getByRole("heading", { name: "Take a copy of a datalet" })).toBeVisible();
+  await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Take a copy" })).toBeEnabled();
+  await page.getByRole("button", { name: "Take a copy" }).click();
+
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .toBe(vaultB.vaultId);
 });

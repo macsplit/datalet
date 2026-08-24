@@ -15,6 +15,7 @@ import {
   evictGraph,
   flushLocalPersistence,
   graphFootprint,
+  graphHasOnlyKnownBootstrapRecords,
   projectedGraphFootprint,
   readStorageUsage,
   reconcileGraphSnapshot,
@@ -37,6 +38,11 @@ import {
   type Datalet,
 } from "./datalets";
 import { SETTINGS_ID } from "../hooks/useSettings";
+import { HOME_TAB_ID } from "../hooks/useTabs";
+
+// The only two records the app ever writes into a fresh graph on its own,
+// unprompted - see graphHasOnlyKnownBootstrapRecords's own doc comment.
+const BOOTSTRAP_ONLY_IDS = [SETTINGS_ID, HOME_TAB_ID];
 
 /**
  * The datalet's own name, read out of the snapshot being adopted.
@@ -58,18 +64,36 @@ export type SwitchCheck =
 /**
  * Whether the datalet in use can be left. Separate from the switch so the
  * interface can explain the answer before anyone commits to it.
+ *
+ * `localGraph` lets the vault-less branch tell "nothing written yet" apart
+ * from "this browser's own work, unsynced." `ensureLocalDatalet()` creates a
+ * vault-less local entry eagerly - before anyone has done anything with the
+ * app at all, including on the very first visit a shared link is opened on -
+ * and the app then writes a default Settings record and Home tab into
+ * whatever graph is active within moments of rendering anything at all, so
+ * checking for zero records (`graphFootprint`) would still refuse: those two
+ * writes happen unprompted, on every device, whether or not anyone does
+ * anything else. `graphHasOnlyKnownBootstrapRecords` looks past exactly
+ * those two, not at whether the graph is literally empty. Omitting
+ * `localGraph` (or its graph being unresolved) stays conservative and
+ * refuses, same as before this existed.
  */
-export function canLeaveActiveDatalet(): SwitchCheck {
+export function canLeaveActiveDatalet(localGraph?: string): SwitchCheck {
   const active = activeDatalet();
   if (!active) return { ok: true };
   if (!active.vault) {
-    return {
-      ok: false,
-      reason: "unpaired",
-      message:
-        "This datalet is only in this browser, so there is no copy anywhere else. Set up "
-        + "sync for it before adding or opening another, or its records would be lost.",
-    };
+    const graph = dataletGraph(active, localGraph);
+    const nothingToProtect = graph !== undefined && graphHasOnlyKnownBootstrapRecords(graph, BOOTSTRAP_ONLY_IDS);
+    if (!nothingToProtect) {
+      return {
+        ok: false,
+        reason: "unpaired",
+        message:
+          "This datalet is only in this browser, so there is no copy anywhere else. Set up "
+          + "sync for it before adding or opening another, or its records would be lost.",
+      };
+    }
+    return { ok: true };
   }
   const pending = pendingOutboxCount(active.vault.vaultId);
   if (pending > 0) {
@@ -202,7 +226,7 @@ async function adopt(
  */
 export async function switchToDatalet(target: Datalet, localGraph: string | undefined) {
   ensureLocalDatalet();
-  const leaving = canLeaveActiveDatalet();
+  const leaving = canLeaveActiveDatalet(localGraph);
   if (!leaving.ok) throw new Error(leaving.message);
   await adopt(target, localGraph);
 }
@@ -223,16 +247,16 @@ export async function adoptVaultAsDatalet(
   // and adding a datalet stranded the local one's records in a graph nothing
   // pointed at. The rule was right; it just had nothing to apply to.
   //
-  // This is also the check that can fail here for the first time even
-  // though a caller already saw it pass: ensureLocalDatalet() only creates
-  // "this device"'s own registry entry the moment it first runs, which for
-  // a browser with no registry yet is right here, not before. A caller that
-  // read canLeaveActiveDatalet() earlier - to decide whether to enable a
-  // button, say - was reading a registry that did not have this entry in it
-  // yet, and can be told yes then no a moment later. That is correct, not a
-  // race to paper over: the entry it now finds is real.
+  // ensureLocalDatalet() creates "this device"'s own registry entry the
+  // moment it first runs, which for a browser with no registry yet is right
+  // here, not before - a caller that read canLeaveActiveDatalet() earlier
+  // (to decide whether to enable a button, say) was reading a registry that
+  // did not have this entry in it yet. Passing `localGraph` through both
+  // checks keeps them in agreement on a genuinely empty local datalet
+  // (nothing written, so nothing to protect either way); they can still
+  // legitimately disagree if real local content was written in between.
   ensureLocalDatalet();
-  const leaving = canLeaveActiveDatalet();
+  const leaving = canLeaveActiveDatalet(localGraph);
   if (!leaving.ok) throw new Error(leaving.message);
   const entry = addDatalet(vault, options);
   await adopt(entry, localGraph, true, options.beforeReload);

@@ -110,10 +110,31 @@ test("datalets live on their own page, reached from Settings", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 });
 
+/**
+ * A record the app would never write into a fresh graph on its own - unlike
+ * the default Home tab `seedDatalets` already seeds every test with, which
+ * `graphHasOnlyKnownBootstrapRecords` (dataletSwitch.ts) correctly treats as
+ * nothing to protect. A test asserting the unpaired guard actually refuses
+ * needs content only a person could have put there.
+ */
+async function seedRealLocalRecord(page: Page) {
+  await page.addInitScript(({ graph, recordPrefix, indexKey }) => {
+    if (localStorage.getItem("real-record-seeded")) return;
+    localStorage.setItem("real-record-seeded", "1");
+    const key = `${graph}|did:ng:z:meta:tab:user-notes`;
+    localStorage.setItem(`${recordPrefix}${key}`, JSON.stringify({
+      "@graph": graph, "@id": "did:ng:z:meta:tab:user-notes", "@type": "did:ng:z:Tab", title: "Notes", order: 1,
+    }));
+    const index = JSON.parse(localStorage.getItem(indexKey) ?? "[]") as string[];
+    localStorage.setItem(indexKey, JSON.stringify([...index, key]));
+  }, { graph: LOCAL_GRAPH, recordPrefix: RECORD_PREFIX, indexKey: INDEX_KEY });
+}
+
 test("an unpaired datalet cannot gain a second one, and says why", async ({ page }) => {
   // Forced rather than chosen: only the open datalet is resident, so the one
   // being left has to be recoverable from somewhere.
   await seedDatalets(page, { activeId: "local", entries: [{ id: "local" }] });
+  await seedRealLocalRecord(page);
   await page.goto("/settings/datalets");
   await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Start an empty one" })).toBeDisabled();
@@ -191,6 +212,7 @@ test("an unpaired datalet refuses to be left, because nothing else holds it", as
   await seedDatalets(page, {
     activeId: "local", entries: [{ id: "local" }, { id: "b", vault: vaultB }],
   });
+  await seedRealLocalRecord(page);
   await page.goto("/settings/datalets");
   await expect(page.getByText(/only in this browser, so there is no copy anywhere else/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Open" })).toBeDisabled();

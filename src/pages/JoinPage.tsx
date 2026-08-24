@@ -47,11 +47,16 @@ export function JoinPage() {
   // never notice it finish - the button would stay disabled for as long as the
   // person kept looking at an otherwise-unchanging screen. DataletSettings.tsx
   // solves the same problem the same way, for the same reason.
-  const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet());
+  const [leaving, setLeaving] = useState(() => canLeaveActiveDatalet(privateNuri));
   useEffect(() => {
-    const timer = setInterval(() => setLeaving(canLeaveActiveDatalet()), 1_000);
+    // Also re-checked immediately, not just on the next tick: `privateNuri`
+    // starts undefined and resolves a moment later (usePrivateNuri.ts), and
+    // the guard stays conservative until it does - a real empty datalet
+    // should not spend up to a second longer than necessary looking refused.
+    setLeaving(canLeaveActiveDatalet(privateNuri));
+    const timer = setInterval(() => setLeaving(canLeaveActiveDatalet(privateNuri)), 1_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [privateNuri]);
 
   useEffect(() => {
     if (!token) {

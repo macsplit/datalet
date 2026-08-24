@@ -1239,6 +1239,29 @@ export function graphFootprint(graph: string): number {
 }
 
 /**
+ * Whether `graph` holds nothing beyond records the app writes into any
+ * fresh graph on its own, unprompted - a default Settings singleton
+ * (SettingsProvider) and a default Home tab (MetaStoreContext.tsx), both
+ * within moments of the app rendering a page at all, whether or not anyone
+ * does anything else. Neither represents a choice anyone made, so a graph
+ * holding only records whose `@id` is in `knownIds` counts as empty for
+ * data-loss purposes even though `graphFootprint` would call it nonzero -
+ * `graphFootprint` measures storage pressure, this measures whether
+ * abandoning the graph would actually lose anything. An id this doesn't
+ * A graph with nothing in it at all also counts as "nothing to protect,"
+ * the same as one holding only known ids. An id this doesn't recognize
+ * makes the function conservative (protects) rather than permissive, which
+ * is the direction it's safe to be wrong in.
+ */
+export function graphHasOnlyKnownBootstrapRecords(graph: string, knownIds: readonly string[]): boolean {
+  for (const record of Object.values(store)) {
+    if (record?.["@graph"] !== graph) continue;
+    if (!knownIds.includes(String(record["@id"]))) return false;
+  }
+  return true;
+}
+
+/**
  * Characters a set of records would occupy if adopted into `graph`. Measured
  * before anything is written, because a check that fires afterwards has not
  * helped.
