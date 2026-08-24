@@ -123,9 +123,19 @@ export function adoptionFits(graph: string, records: Store, leaving: string | un
  * value. Reported as: a copy taken across browsers landed with an empty
  * Home screen, because this call returned before Neo4j had replayed the
  * copy that had already been accepted.
+ *
+ * The server discovers a newly created vault's stream on a 3-second poll
+ * (`VAULT_DISCOVERY_INTERVAL_MS`), so a vault created moments after a cycle
+ * fired waits nearly the full 3s before the materializer even starts on it,
+ * before any replay time on top. Measured directly against a freshly
+ * deployed instance: a source vault and its clone, both created seconds
+ * apart, took ~6s end to end - the original budget here (5s total) was
+ * short of that by a real margin, not just theoretically. The tail settles
+ * to 3s steps, matching that discovery cadence, rather than continuing to
+ * grow exponentially past the point where finer steps stop helping.
  */
 async function fetchVaultSnapshotSettled(vault: VaultConfig): Promise<{ seq: number; records: Store }> {
-  const backoffMs = [200, 400, 800, 1600, 2000];
+  const backoffMs = [200, 400, 800, 1600, 3000, 3000, 3000, 3000];
   let snapshot = await fetchVaultSnapshot(vault);
   for (const delay of backoffMs) {
     if (snapshot.seq === 0 || Object.keys(snapshot.records).length > 0) break;

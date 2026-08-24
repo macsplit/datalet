@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 168/168 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
+**Clean.** All suites pass: 169/169 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
 
 ### Test harnesses (fuzz / stress / security)
 
@@ -85,6 +85,8 @@ This is the real root cause the three fixes below were built around without know
 **Fix**: `cloneVault` now rewrites the subject id's graph prefix (everything before the first `|`) to the new vault's graph, in step with the `@graph` property it already rewrote.
 
 **Why the existing test never caught it**: `cloneHttp.test.ts`'s `seedVault()` fixture used a bare `"subject-1"` id with no graph prefix at all - so the mismatch had no graph segment to drift out of sync with. Fixed to use `${graph}|localId`, the compound form every real client actually uses, and the "rewritten into its own graph" test now asserts on the storage key itself (looked up by the clone's own graph prefix, and explicitly asserts nothing is left filed under the source's), not just the `@graph` property - proven bidirectionally, reverting the fix reproduces the exact assertion failure.
+
+**Deployed**: `nuc`'s volumes were wiped and redeployed from scratch (`docker compose down -v` + `up.sh`) at the user's explicit request, since there was no real user data at risk. This is also what surfaced one more real gap while re-verifying end to end against the freshly-wiped instance: a source vault and its clone, created seconds apart, took **~6s** for the clone's records to actually appear via `/sync/snapshot` - close to a full `VAULT_DISCOVERY_INTERVAL_MS` (3s) plus replay time, and past the original retry budget below (5 tries, ~5s total), which would have given up just short of it. `fetchVaultSnapshotSettled`'s backoff widened from `[200, 400, 800, 1600, 2000]` (~5s, 6 calls max) to `[200, 400, 800, 1600, 3000, 3000, 3000, 3000]` (~15s, 9 calls max) - fast early retries for the common near-instant case, settling to 3s steps matching the server's actual discovery cadence rather than continuing to grow exponentially past where finer steps stop helping. New test proves the budget reaches an 8th call (structurally unreachable with the old 5-entry array, which caps at 6), verified bidirectionally against a mock requiring exactly that.
 
 **How this was actually diagnosed**: after a redeploy and a Cloudflare-caching theory both checked out clean (confirmed `nuc`'s git HEAD, confirmed the container rebuild timestamp, confirmed the public JS bundle hash matched a build known to contain the latest fixes, confirmed the bundle contained the fix's own literal strings via grep), the user supplied a real, live, not-yet-used invite link. Redeeming and cloning it directly against production and inspecting the raw JSON - rather than going back and forth on what a browser screen looked like - showed the key/`@graph` mismatch immediately and unambiguously.
 

@@ -142,6 +142,59 @@ test("a copy's Home still populates when Neo4j hasn't caught up to the fresh clo
   await expect(page.getByText("Copied tab")).toBeVisible();
 });
 
+test("the retry budget survives a realistic materializer catch-up delay, not just a couple of quick tries", async ({ page }) => {
+  // Measured directly against a freshly deployed production instance: a
+  // source vault and its clone, created seconds apart, took ~6s for the
+  // clone's records to appear - close to a full VAULT_DISCOVERY_INTERVAL_MS
+  // (3s) plus replay time. The original budget (5 tries, ~5s total) was
+  // short of that by a real margin. This mock only succeeds on the 6th
+  // call, which the original budget could not reach in time but the
+  // current one comfortably does.
+  await seedPaired(page);
+  await page.route("**/sync/invite-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
+  }));
+  await page.route("**/sync/clone", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+  }));
+
+  // Only satisfied on the 8th call - unreachable with a 5-entry backoff
+  // array (1 initial fetch + 5 retries = 6 calls, maximum), reachable with
+  // the current one (1 + 8 = 9 calls, maximum). Not asserting the call
+  // count directly: what actually matters, and what a too-short budget
+  // silently gets wrong, is whether the record makes it onto Home at all -
+  // adoption "succeeds" either way, just with nothing in it if the budget
+  // gave up first.
+  let snapshotCalls = 0;
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => {
+    snapshotCalls += 1;
+    const records = snapshotCalls >= 8
+      ? {
+          [`did:ng:${vaultB.vaultId}|subject-1`]: {
+            "@id": "subject-1",
+            "@graph": `did:ng:${vaultB.vaultId}`,
+            "@type": "did:ng:z:Tab",
+            order: 0,
+            title: "Late tab",
+          },
+        }
+      : {};
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ seq: 1, records }) });
+  });
+
+  await page.goto("/join?token=66666666-6666-4666-8666-666666666666");
+  await waitForOutboxToDrain(page, "aaaaaaaa-0000-0000-0000-000000000000");
+  await page.getByRole("button", { name: "Take a copy" }).click();
+
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }), { timeout: 25_000 })
+    .toBe(vaultB.vaultId);
+
+  await page.goto("/");
+  await expect(page.getByText("Late tab")).toBeVisible();
+});
+
 test("a genuinely empty vault (seq 0) is trusted on the first snapshot, no retry", async ({ page }) => {
   await seedPaired(page);
   await page.route("**/sync/invite-redeem", (route) => route.fulfill({
