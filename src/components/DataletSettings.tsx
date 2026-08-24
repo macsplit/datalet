@@ -20,6 +20,7 @@ import {
 } from "../utils/dataletSwitch";
 import { redeemDataletCode, extractInviteToken, redeemInviteToken } from "../utils/codeRedemption";
 import { randomUuid } from "../utils/randomId";
+import { Spinner } from "./icons";
 
 /**
  * What to call a datalet in the list.
@@ -243,7 +244,9 @@ export function DataletSettings() {
               disabled={!leaving.ok || switching !== "" || adding}
               onClick={() => void goTo(entry)}
             >
-              {switching === entry.id ? "Opening…" : "Open"}
+              {switching === entry.id
+                ? <span className="btn-spinner"><Spinner label="Opening" />Opening…</span>
+                : "Open"}
             </button>
             {/* The open datalet cannot be archived: that would be an eviction
                 and a switch in one gesture, and would leave the app choosing
@@ -324,7 +327,9 @@ export function DataletSettings() {
             disabled={!leaving.ok || adding}
             onClick={() => void startEmpty()}
           >
-            {adding ? "Working…" : "Start an empty one"}
+            {adding
+              ? <span className="btn-spinner"><Spinner label="Working" />Working…</span>
+              : "Start an empty one"}
           </button>
         </div>
         <div className="field-group">
@@ -348,7 +353,10 @@ export function DataletSettings() {
               disabled={!leaving.ok || adding || joinCode.trim() === ""}
               onClick={() => void joinFromCode()}
             >
-              Add
+              {/* Can take up to ~15s for a fresh clone settling in on the
+                  server (see fetchVaultSnapshotSettled) - long enough that a
+                  static label alone would read as unresponsive. */}
+              {adding ? <span className="btn-spinner"><Spinner label="Adding" />Adding…</span> : "Add"}
             </button>
           </div>
           <p className="helper-text">

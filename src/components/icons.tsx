@@ -15,6 +15,31 @@
  * theme handling needed here.
  */
 
+/**
+ * An indeterminate progress ring for any wait with no fixed duration -
+ * adopting a datalet can now legitimately take up to ~15s (a fresh clone
+ * settling in on the server), long enough that static "Working…" text reads
+ * as stalled rather than in progress. `currentColor` and relative sizing
+ * (see `.spinner` in global.css) mean this drops into a button or a page
+ * the same way any other icon here does, at whatever size and color its
+ * context already sets.
+ */
+export function Spinner({ label = "Working" }: { label?: string }) {
+  return (
+    <svg
+      className="spinner"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role="status"
+      aria-label={label}
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function PencilIcon() {
   return (
     <svg

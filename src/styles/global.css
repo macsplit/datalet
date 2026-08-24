@@ -733,6 +733,55 @@ a {
     font-weight: 600;
 }
 
+/* ---------- Loading ---------- */
+
+/* Sized in em so it inherits whatever font-size its context already set -
+   a button's own size inside a button, a bit larger standalone on a page -
+   rather than needing a size prop of its own. */
+.spinner {
+    width: 1.1em;
+    height: 1.1em;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Continuous rotation is a known vestibular trigger for some readers; a
+   slower spin is still motion, so this switches to a fade rather than just
+   easing off the speed. */
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation: pulse 1.6s ease-in-out infinite;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.35;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.loading-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 1.3rem;
+}
+
+.btn-spinner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+}
+
 /* ---------- Buttons ---------- */
 
 .primary-btn {

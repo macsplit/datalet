@@ -15,6 +15,7 @@ import { canLeaveActiveDatalet } from "../utils/dataletSwitch";
 import { adoptVaultAsDatalet } from "../utils/dataletSwitch";
 import { redeemDataletCode, redeemInviteToken } from "../utils/codeRedemption";
 import { randomUuid } from "../utils/randomId";
+import { Spinner } from "../components/icons";
 
 type Stage =
   | { step: "loading" }
@@ -82,7 +83,10 @@ export function JoinPage() {
   if (stage.step === "loading") {
     return (
       <section className="panel">
-        <p className="helper-text">Checking this link…</p>
+        <div className="loading-row helper-text">
+          <Spinner label="Checking this link" />
+          <p>Checking this link…</p>
+        </div>
       </section>
     );
   }
@@ -111,7 +115,14 @@ export function JoinPage() {
   if (stage.step === "adding") {
     return (
       <section className="panel">
-        <p className="helper-text">Adding this datalet…</p>
+        <div className="loading-row helper-text">
+          <Spinner label="Adding this datalet" />
+          {/* Can genuinely take up to ~15s settling in on the server (a fresh
+              clone's records aren't always visible there immediately) - long
+              enough that static text alone reads as stalled rather than
+              working. */}
+          <p>Adding this datalet… this can take a little while.</p>
+        </div>
       </section>
     );
   }
@@ -119,7 +130,10 @@ export function JoinPage() {
   if (stage.step === "done") {
     return (
       <section className="panel">
-        <p className="helper-text">Done. Taking you there…</p>
+        <div className="loading-row helper-text">
+          <Spinner label="Done, taking you there" />
+          <p>Done. Taking you there…</p>
+        </div>
       </section>
     );
   }
