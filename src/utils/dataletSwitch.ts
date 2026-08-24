@@ -111,15 +111,51 @@ export function adoptionFits(graph: string, records: Store, leaving: string | un
   };
 }
 
-async function adopt(target: Datalet, localGraph: string | undefined) {
+/**
+ * `/sync/snapshot`'s `records` come from Neo4j, materialized asynchronously
+ * from the same accepted writes that bump `seq` in Redis immediately - a
+ * vault created moments ago (a fresh clone especially) can report a nonzero
+ * `seq` before the materializer has caught up, and come back with zero
+ * records even though real data was genuinely accepted. `seq === 0` means a
+ * genuinely empty vault and is trusted immediately; `seq > 0` with no
+ * records cannot mean "nothing to show" - it means "not there yet" - so
+ * that specific combination is retried briefly rather than taken at face
+ * value. Reported as: a copy taken across browsers landed with an empty
+ * Home screen, because this call returned before Neo4j had replayed the
+ * copy that had already been accepted.
+ */
+async function fetchVaultSnapshotSettled(vault: VaultConfig): Promise<{ seq: number; records: Store }> {
+  const backoffMs = [200, 400, 800, 1600, 2000];
+  let snapshot = await fetchVaultSnapshot(vault);
+  for (const delay of backoffMs) {
+    if (snapshot.seq === 0 || Object.keys(snapshot.records).length > 0) break;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    snapshot = await fetchVaultSnapshot(vault);
+  }
+  return snapshot;
+}
+
+async function adopt(
+  target: Datalet,
+  localGraph: string | undefined,
+  freshlyAdopted = false,
+  beforeReload?: () => void,
+) {
   if (!target.vault) throw new Error("That datalet has no vault to open from.");
   const active = activeDatalet();
   const leaving = active && active.id !== target.id ? dataletGraph(active, localGraph) : undefined;
   const targetGraph = dataletGraph(target, localGraph);
   if (!targetGraph) throw new Error("This device is still starting up; try again in a moment.");
 
-  // Fetch first: a failure here must leave the current datalet exactly as it was.
-  const snapshot = await fetchVaultSnapshot(target.vault);
+  // Fetch first: a failure here must leave the current datalet exactly as it
+  // was. Only a freshly adopted vault gets the settling retry: a vault
+  // already resident in this browser's registry has had plenty of time to
+  // materialize, so a nonzero seq with no records there is far more likely
+  // to mean "everything in it was deleted" than "not there yet" - retrying
+  // that case would just delay every reopen of a legitimately emptied vault.
+  const snapshot = freshlyAdopted
+    ? await fetchVaultSnapshotSettled(target.vault)
+    : await fetchVaultSnapshot(target.vault);
 
   const fits = adoptionFits(targetGraph, snapshot.records, leaving);
   if (!fits.ok) throw new Error(fits.message);
@@ -138,6 +174,14 @@ async function adopt(target: Datalet, localGraph: string | undefined) {
   // what the app is showing.
   setDataletArchived(target.id, false);
   if (incomingTitle) rememberActiveDataletTitle(incomingTitle);
+  // Only reached once every check above has already passed - the one point
+  // a caller can safely move the address bar ahead of the reload it's about
+  // to trigger. Called any earlier (e.g. before this function even runs) and
+  // a subsequent failure throws from a page a router history-listener has
+  // already navigated its own component away from, silently swallowing the
+  // error instead of showing it - see JoinPage.tsx for the incident this
+  // guards against.
+  beforeReload?.();
   window.location.reload();
 }
 
@@ -161,16 +205,25 @@ export async function switchToDatalet(target: Datalet, localGraph: string | unde
 export async function adoptVaultAsDatalet(
   vault: VaultConfig,
   localGraph: string | undefined,
-  options: { copiedAt?: number } = {},
+  options: { copiedAt?: number; beforeReload?: () => void } = {},
 ) {
   // Before the guard, not after. The registry was only ever written when a
   // vault was configured, so a browser that had never paired had no entry at
   // all - `canLeaveActiveDatalet` then found nothing to protect and said yes,
   // and adding a datalet stranded the local one's records in a graph nothing
   // pointed at. The rule was right; it just had nothing to apply to.
+  //
+  // This is also the check that can fail here for the first time even
+  // though a caller already saw it pass: ensureLocalDatalet() only creates
+  // "this device"'s own registry entry the moment it first runs, which for
+  // a browser with no registry yet is right here, not before. A caller that
+  // read canLeaveActiveDatalet() earlier - to decide whether to enable a
+  // button, say - was reading a registry that did not have this entry in it
+  // yet, and can be told yes then no a moment later. That is correct, not a
+  // race to paper over: the entry it now finds is real.
   ensureLocalDatalet();
   const leaving = canLeaveActiveDatalet();
   if (!leaving.ok) throw new Error(leaving.message);
   const entry = addDatalet(vault, options);
-  await adopt(entry, localGraph);
+  await adopt(entry, localGraph, true, options.beforeReload);
 }

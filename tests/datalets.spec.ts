@@ -55,7 +55,7 @@ async function seedDatalets(page: Page, seed: Seed) {
 async function stubSync(page: Page, opts: { snapshotRecords: Record<string, unknown> }) {
   await page.route("**/sync/snapshot?*", (route) => route.fulfill({
     status: 200, contentType: "application/json",
-    body: JSON.stringify({ seq: 1, records: opts.snapshotRecords }),
+    body: JSON.stringify({ seq: Object.keys(opts.snapshotRecords).length > 0 ? 1 : 0, records: opts.snapshotRecords }),
   }));
   await page.route("**/sync/patches?*", (route) => route.fulfill({
     status: 200, contentType: "application/json",

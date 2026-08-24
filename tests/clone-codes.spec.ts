@@ -25,7 +25,7 @@ async function seedPaired(page: Page) {
     }));
   }, { vault: vaultA });
   await page.route("**/sync/snapshot?*", (route) => route.fulfill({
-    status: 200, contentType: "application/json", body: JSON.stringify({ seq: 1, records: {} }),
+    status: 200, contentType: "application/json", body: JSON.stringify({ seq: 0, records: {} }),
   }));
   await page.route("**/sync/patches?*", (route) => route.fulfill({
     status: 200, contentType: "application/json",

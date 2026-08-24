@@ -130,9 +130,19 @@ export function JoinPage() {
       // land back on this same URL and retry redemption against a token
       // that redeemInviteToken already consumed, turning a successful join
       // into a false "link expired" error. Moving the address first, without
-      // a navigation of its own, means the reload lands somewhere sane.
-      window.history.replaceState(null, "", "/settings/datalets");
-      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri, { copiedAt });
+      // a navigation of its own, means the reload lands somewhere sane - but
+      // it has to happen only once success is certain, as beforeReload here
+      // rather than inline above this call: the router's history listener
+      // reacts to replaceState the moment it runs and unmounts this page, so
+      // a failure past that point (the data-loss guard, a quota check, a
+      // network error) would throw into a component already gone, and the
+      // catch below would set state nobody was left mounted to render -
+      // silently dropping whoever hit it on Settings with nothing adopted
+      // and no explanation, which is exactly what got reported.
+      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri, {
+        copiedAt,
+        beforeReload: () => window.history.replaceState(null, "", "/settings/datalets"),
+      });
       setStage({ step: "done" });
     } catch (error) {
       setStage({

@@ -537,33 +537,38 @@ export async function cloneVault(
   // Chunked so one enormous graph does not become a single Lua call, and
   // numbered so each batch has its own idempotency key.
   const CHUNK = 100;
-  for (let index = 0; index < entries.length; index += CHUNK) {
-    const patches: Patch[] = [];
-    for (const [subjectId, record] of entries.slice(index, index + CHUNK)) {
-      patches.push({ op: "add", path: `/${escapeSegment(subjectId)}` });
-      for (const [property, value] of Object.entries(record)) {
-        if (value === undefined) continue;
-        const path = `/${escapeSegment(subjectId)}/${escapeSegment(property)}`;
-        // The clone belongs to its own graph; every other field travels as it is.
-        if (property === "@graph") patches.push({ op: "add", path, value: graph });
-        else if (Array.isArray(value)) patches.push({ op: "add", path, value, type: "set" });
-        else patches.push({ op: "add", path, value });
+  try {
+    for (let index = 0; index < entries.length; index += CHUNK) {
+      const patches: Patch[] = [];
+      for (const [subjectId, record] of entries.slice(index, index + CHUNK)) {
+        patches.push({ op: "add", path: `/${escapeSegment(subjectId)}` });
+        for (const [property, value] of Object.entries(record)) {
+          if (value === undefined) continue;
+          const path = `/${escapeSegment(subjectId)}/${escapeSegment(property)}`;
+          // The clone belongs to its own graph; every other field travels as it is.
+          if (property === "@graph") patches.push({ op: "add", path, value: graph });
+          else if (Array.isArray(value)) patches.push({ op: "add", path, value, type: "set" });
+          else patches.push({ op: "add", path, value });
+        }
       }
+      if (patches.length === 0) continue;
+      const result = await applyBatch(created.vaultId, {
+        nodeId: "clone",
+        batchId: `clone-${created.vaultId}-${index}`,
+        hlc: `${String(Date.now()).padStart(15, "0")}-${String(index).padStart(6, "0")}-clone`,
+        shape: "did:ng:z:Clone",
+        patches,
+      });
+      if (!result.accepted) throw new Error(result.reason || "the copy was refused");
     }
-    if (patches.length === 0) continue;
-    const result = await applyBatch(created.vaultId, {
-      nodeId: "clone",
-      batchId: `clone-${created.vaultId}-${index}`,
-      hlc: `${String(Date.now()).padStart(15, "0")}-${String(index).padStart(6, "0")}-clone`,
-      shape: "did:ng:z:Clone",
-      patches,
-    });
-    if (!result.accepted) {
-      // Leave nothing half-built: the caller gets an error, not a vault
-      // holding part of someone else's datalet.
-      await deleteVault(created.vaultId).catch(() => undefined);
-      throw new Error(result.reason || "the copy was refused");
-    }
+  } catch (error) {
+    // Leave nothing half-built - not just on an explicit rejection, but on
+    // anything that stops the loop early, including a Redis error mid-batch.
+    // Either way the caller gets a clean error rather than a vault holding
+    // only some of someone else's datalet; its credentials were never
+    // returned, so nothing could have looked at it as "their copy" yet.
+    await deleteVault(created.vaultId).catch(() => undefined);
+    throw error;
   }
   return created;
 }
