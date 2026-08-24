@@ -96,6 +96,43 @@ test("creates and edits a schema while preserving property order across reload",
   await expect(page.getByText("2 properties", { exact: true })).toBeVisible();
 });
 
+test("every created property gets a clean, non-composite subject id", async ({ page }) => {
+  // Reported live: a PropertyDef's auto-generated @id came back with the
+  // vault's own graph embedded in it TWICE, joined by a literal "|"
+  // (did:ng:V|did:ng:V:q:R instead of did:ng:V:q:R) - traced to
+  // @ng-org/orm's own id generator: its "@id": "" auto-id path prefers an
+  // internal deep-signal watcher path over the @graph a caller explicitly
+  // passes, and under a condition this app hasn't been able to pin down,
+  // that path can hold a stale composite value instead of being empty.
+  // Once written, that shape permanently fails every future copy/join of
+  // the vault holding it (validGraphSnapshot's key === graph|@id check),
+  // with no recovery short of deleting the affected record.
+  // usePropertyDefs.ts now generates the id itself (generateSubjectId)
+  // instead of relying on the ORM's own auto-id path - this asserts that
+  // invariant directly, on the exact sequence that produced the bug: the
+  // first property added right after a brand new schema.
+  await seedSession(page);
+  await seedRecords(page, singletonRecords);
+  await page.goto("/settings/schemas");
+
+  await page.getByRole("button", { name: "+ New schema" }).click();
+  await page.getByLabel("Schema name").fill("Notes");
+  await page.getByLabel("Schema name").press("Enter");
+  await page.getByRole("button", { name: "+ Add property" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Title");
+  await page.getByLabel("Name", { exact: true }).press("Enter");
+
+  await expect.poll(
+    async () => (await persistedRecords(page)).some((record) => record["@type"] === "did:ng:z:PropertyDef"),
+    { message: "expected a PropertyDef record to have been created" },
+  ).toBe(true);
+  const records = await persistedRecords(page);
+  const property = records.find((record) => record["@type"] === "did:ng:z:PropertyDef")!;
+  const id = property["@id"] as string;
+  expect(id).not.toContain("|");
+  expect(id.startsWith(`${GRAPH}:q:`)).toBe(true);
+});
+
 test("creates, renames, reorders, and deletes navigation tabs", async ({ page }) => {
   await seedSession(page);
   await seedRecords(page, singletonRecords);

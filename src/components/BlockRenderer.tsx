@@ -24,6 +24,7 @@ import { DownloadIcon, PrinterIcon } from "./icons";
 import { useSettings } from "../hooks/useSettings";
 import { RuntimeCircuitNotice } from "./RuntimeSafety";
 import { RUNTIME_LIMITS } from "../utils/runtimeHealth";
+import { generateSubjectId } from "../utils/randomId";
 import {
   getLastUndoRecords,
   getUndoAppliedRevision,
@@ -151,7 +152,9 @@ function ResolvedDataBlock({
     if (!privateNuri) return;
     const record: DynamicRecord = {
       "@graph": privateNuri,
-      "@id": "",
+      // Generated here, not left to the ORM's own auto-id ("@id": "") -
+      // see generateSubjectId's own doc comment.
+      "@id": generateSubjectId(privateNuri),
       "@type": dynamicTypeIri(schema),
     };
     for (const property of properties) {

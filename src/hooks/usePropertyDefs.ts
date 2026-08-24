@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { PropertyDef } from "../shapes/orm/metaShapes.typings";
 import { byOrderThenId, nextOrder } from "./metaHookUtils";
 import { useMetaStore } from "./MetaStoreContext";
+import { generateSubjectId } from "../utils/randomId";
 
 export type CreatePropertyDef = Pick<PropertyDef, "schemaId" | "name"> &
   Partial<
@@ -25,7 +26,9 @@ export function usePropertyDefs(schemaId?: string) {
       );
       propertySet.add({
         "@graph": privateNuri,
-        "@id": "",
+        // Generated here, not left to the ORM's own auto-id ("@id": "") -
+        // see generateSubjectId's own doc comment.
+        "@id": generateSubjectId(privateNuri),
         "@type": "did:ng:z:PropertyDef",
         schemaId: values.schemaId,
         name: values.name,

@@ -1,4 +1,27 @@
 /**
+ * A fresh subject id for a new record in `graph`, in the `graph:q:random`
+ * shape `@ng-org/orm`'s own auto-id convention uses (only for consistency -
+ * nothing downstream parses this shape).
+ *
+ * Not delegated to the ORM's own id generation (an empty `"@id": ""` on
+ * `.add()`): its generator prefers an internal deep-signal watcher path
+ * over the `@graph` a caller explicitly passes, and under a condition this
+ * app hasn't been able to pin down, that path can hold a stale composite
+ * value instead of being empty - producing an `@id` with the graph
+ * embedded in it twice (`did:ng:V|did:ng:V:q:R` instead of
+ * `did:ng:V:q:R`). Once written, that shape permanently fails
+ * `validGraphSnapshot`'s `key === graph|@id` check on every future
+ * copy/join of the vault holding it, with no way to recover except
+ * deleting the affected record - reported live, traced to one PropertyDef
+ * created this way. Generating the id ourselves and passing it explicitly
+ * takes the ORM's `object["@id"] !== ""` branch instead, which uses it
+ * verbatim and never consults the buggy path-based branch at all.
+ */
+export function generateSubjectId(graph: string): string {
+  return `${graph}:q:${randomUuid()}`;
+}
+
+/**
  * Generate an RFC 4122-shaped v4 UUID even when randomUUID is unavailable.
  * Browsers can omit/deny randomUUID on plain-HTTP LAN origins while still
  * exposing getRandomValues, so browser identity must never call it directly.

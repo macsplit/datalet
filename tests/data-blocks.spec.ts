@@ -535,6 +535,59 @@ test("typing a value is one undo, and a pause starts the next one", async ({ pag
   await expect(undo).toBeDisabled();
 });
 
+test("a newly created record gets a clean, non-composite subject id", async ({ page }) => {
+  // Same invariant as builders.spec.ts's PropertyDef test, for the other
+  // site that used to rely on @ng-org/orm's own buggy "@id": "" auto-id
+  // path: BlockRenderer.tsx's createRecord. See that test's comment for the
+  // full story - a malformed id here is just as permanent and just as
+  // fatal to every future copy/join of the vault holding it.
+  await seedSession(page);
+  const records = booksFixture([{ title: "Dune", rating: 5 }]);
+  records.push({
+    "@graph": GRAPH,
+    "@id": "widget-add",
+    "@type": "did:ng:z:Widget",
+    parentBlockId: BLOCK_ID,
+    order: 2,
+    widgetType: "did:ng:z:addButton",
+    label: "Add book",
+  });
+  await seedNewFormat(page, records);
+  await page.goto("/");
+
+  const before = await page.evaluate((key) =>
+    JSON.parse(localStorage.getItem(key) ?? "[]") as string[], INDEX_KEY);
+
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(page.locator(".record-card")).toHaveCount(2);
+
+  // Persistence is debounced relative to the render, and the app's own
+  // Settings/Home-tab bootstrap writes (SettingsProvider, MetaStoreContext)
+  // land around the same time - filtering by the dynamic user-record type
+  // (did:ng:z:user:<schema>) is what actually isolates the new book, not
+  // just "anything not in `before`".
+  const isNewBook = (record: { "@type"?: string } | null) =>
+    typeof record?.["@type"] === "string" && record["@type"].startsWith("did:ng:z:user:");
+  await expect.poll(async () => {
+    const after = await page.evaluate((key) =>
+      JSON.parse(localStorage.getItem(key) ?? "[]") as string[], INDEX_KEY);
+    const newKeys = after.filter((key) => !before.includes(key));
+    const records = await Promise.all(newKeys.map((key) =>
+      page.evaluate(({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null"), { prefix: RECORD_PREFIX, key })));
+    return records.some(isNewBook);
+  }, { message: "expected a newly created book record to appear in the persisted index" }).toBe(true);
+
+  const after = await page.evaluate((key) =>
+    JSON.parse(localStorage.getItem(key) ?? "[]") as string[], INDEX_KEY);
+  const newKeys = after.filter((key) => !before.includes(key));
+  const newRecords: Array<{ "@type"?: string; "@id"?: string }> = await Promise.all(newKeys.map((key) =>
+    page.evaluate(({ prefix, key }) => JSON.parse(localStorage.getItem(prefix + key) ?? "null"), { prefix: RECORD_PREFIX, key })));
+  const record = newRecords.find(isNewBook)!;
+  const id = record["@id"] as string;
+  expect(id).not.toContain("|");
+  expect(id.startsWith(`${GRAPH}:q:`)).toBe(true);
+});
+
 test("undo is session-local and Ctrl/Cmd+Z removes a newly created record", async ({ page }) => {
   await seedSession(page);
   const records = booksFixture([{ title: "Dune", rating: 5 }]);
