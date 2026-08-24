@@ -497,6 +497,23 @@ function schedulePersist() {
 
 type LocalPatchListener = (patches: Patch[], shape: string) => void;
 const localPatchListeners = new Set<LocalPatchListener>();
+const externalRevisionListeners = new Set<() => void>();
+let externalRevision = 0;
+
+/** React-facing invalidation for patches applied through the backend callback. */
+export function subscribeExternalRevision(listener: () => void): () => void {
+  externalRevisionListeners.add(listener);
+  return () => externalRevisionListeners.delete(listener);
+}
+
+export function getExternalRevision(): number {
+  return externalRevision;
+}
+
+function emitExternalRevision() {
+  externalRevision += 1;
+  for (const listener of externalRevisionListeners) listener();
+}
 
 /**
  * Notified with every locally-applied patch batch, once per affected shape.
@@ -972,6 +989,7 @@ function applyExternalPatches(
   }
   schedulePersist();
   broadcastToLocalSubscriptions(effectivePatches, undefined, shape);
+  emitExternalRevision();
   if (relayToTabs) {
     try {
       postCrossTabPatches(effectivePatches, shape);

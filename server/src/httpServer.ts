@@ -558,7 +558,7 @@ export function createSyncServer(staticDir: string, options: SyncServerOptions =
         // nothing committed during the replay window can be missed - any
         // resulting duplicate delivery is harmless (client dedupes by
         // batchId). See vaultStore.ts's subscribeLive doc comment.
-        const unsubscribe = subscribeLive(vaultId, writeEntry);
+        const unsubscribe = subscribeLive(vaultId, writeEntry, startSeq);
         let responses = liveResponses.get(vaultId);
         if (!responses) {
           responses = new Set();

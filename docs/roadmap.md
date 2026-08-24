@@ -13,6 +13,38 @@ work lands.
 
 ## Open
 
+### User-story browser journeys
+
+The deterministic journey specification is now
+[`user-story-tests.md`](user-story-tests.md). J1 through J3 are implemented: a
+48-record reading log is imported, used, exported, deleted from and restored;
+and a project tracker is built through the UI, populated with 24 records, then
+evolved through schema, renderer, filtering, sorting and backup recovery; then
+two real browser contexts pair, edit live and offline, reconnect, and converge
+with the Neo4j-backed snapshot.
+
+J2 found a real interaction that focused tests had missed: editing the active
+sort field could move a card to another page and unmount its form before the
+person could finish. Result order is now frozen only while an editor is open.
+
+J3 found three more composed sync defects: a stale in-memory acknowledgement
+could erase a newer durable outbox entry; a Redis `$` watcher could skip the
+patch between historical replay and live SSE; and a received patch could reach
+localStorage without invalidating the mounted React shape consumer. The
+outbox now acknowledges against the latest queue, the watcher starts at the
+caller's explicit cursor, and the app-owned shape wrapper bridges external
+engine revisions into React. No vendored dependency code was changed.
+
+What remains is source-versus-copy independence after sharing a moderate
+datalet (J4), then a multi-datalet lifecycle journey (J5).
+
+### Backup export integrity
+
+Add a top-level integrity hash so a hand-edited backup is detectable and
+explicitly unsupported rather than silently accepted as a genuine export. The
+format and compatibility policy still need designing; implementation follows
+the user-story tranche above.
+
 ### Multi-hour endurance run — resource behaviour only
 
 Re-scoped. This item used to carry two unrelated questions: does anything break
@@ -320,6 +352,10 @@ terminal, then stop the stack with Ctrl-C rather than killing its children (see
 the README's note on orphaned servers). The smoke must traverse two browser
 contexts, Redis, the materializer and a Neo4j-backed snapshot, and must clean up
 its temporary vault.
+
+The real two-device user story is `pnpm test:smoke:user-story-sync`. It starts
+its own materializer by default; when `./run.sh` already supplies one, set
+`SMOKE_EXTERNAL_MATERIALIZER=1`.
 
 `pnpm test:server` loads `.env.local` itself, so integration tests run rather
 than skip. Check the `# skipped` count anyway: a skip reports as `ok … # SKIP`,

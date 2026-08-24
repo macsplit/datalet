@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useShape } from "@ng-org/orm/react";
+import { useShape } from "../hooks/useShape";
 import type {
   PropertyDef,
   Widget,

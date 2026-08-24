@@ -68,6 +68,13 @@ With the full stack running, `pnpm test:smoke:sync` performs a short
 browser-to-Redis-to-Neo4j-to-second-browser verification and cleans up its
 temporary vault afterward.
 
+`pnpm test:smoke:user-story-sync` runs the longer J3 journey: one browser
+builds a tracker, a second pairs through a one-use code, both edit live and
+offline, then reconnect and prove both screens plus the materialized snapshot
+converge. It starts its own materializer by default. If `./run.sh` is already
+running one, use `SMOKE_EXTERNAL_MATERIALIZER=1 pnpm
+test:smoke:user-story-sync`.
+
 With Redis and Neo4j available, `pnpm test:multi-tenant` runs the standalone
 200-vault materializer harness. It reports blocking-connection growth, Redis
 memory, per-vault correctness, and materialization lag percentiles, then cleans

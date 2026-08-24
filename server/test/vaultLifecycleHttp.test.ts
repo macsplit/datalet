@@ -10,6 +10,7 @@ import {
   applyBatch,
   createStreamTicket,
   createVault,
+  deleteVault,
   streamKey,
 } from "../src/vaultStore.js";
 
@@ -30,6 +31,54 @@ async function close(server: Server): Promise<void> {
   server.close();
   await once(server, "close");
 }
+
+test("an already-open SSE stream receives the next accepted patch", async (t) => {
+  try {
+    await redis().ping();
+  } catch (error) {
+    if (process.env.REQUIRE_SYNC_INTEGRATION === "1") throw error;
+    t.skip(`Redis unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+
+  const { vaultId } = await createVault();
+  const ticket = await createStreamTicket(vaultId);
+  const server = createSyncServer("/tmp/localgraph-no-static-files");
+  const base = await listen(server);
+  const controller = new AbortController();
+  try {
+    const response = await fetch(
+      `${base}/sync/stream?vault=${vaultId}&ticket=${ticket}&since=0`,
+      { signal: controller.signal },
+    );
+    assert.equal(response.status, 200);
+    assert(response.body);
+
+    const accepted = await applyBatch(vaultId, {
+      nodeId: "live-stream-node",
+      batchId: "live-stream-batch",
+      hlc: "000000000001000-000000-live-stream-node",
+      shape: "live-stream-shape",
+      patches: [{ op: "add", path: "/live-subject/title", value: "arrived live" }],
+    });
+    assert.equal(accepted.accepted, true);
+
+    const reader = response.body.getReader();
+    const chunk = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("accepted patch did not reach SSE")), 2_000)),
+    ]);
+    assert.equal(chunk.done, false);
+    const text = new TextDecoder().decode(chunk.value);
+    assert.match(text, /event: patches/);
+    assert.match(text, /live-stream-batch/);
+  } finally {
+    controller.abort();
+    await deleteVault(vaultId).catch(() => undefined);
+    await close(server);
+  }
+});
 
 test("vault deletion removes both stores and disconnects SSE listeners on another replica", async (t) => {
   try {

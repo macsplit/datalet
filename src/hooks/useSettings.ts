@@ -10,7 +10,7 @@
 
 import { createContext, createElement, useContext, useEffect, type ReactNode } from "react";
 import { OrmSubscription } from "@ng-org/orm";
-import { useShape } from "@ng-org/orm/react";
+import { useShape } from "./useShape";
 import { SettingsShapeType } from "../shapes/orm/settingsShapes.shapeTypes";
 import usePrivateNuri from "../components/usePrivateNuri";
 import { applyThemeToDocument } from "../utils/themeStylesheet";

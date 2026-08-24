@@ -12,6 +12,7 @@ export function RecordCard({
   widgets,
   properties,
   onDelete,
+  onEditingChange,
   displayRecord,
   displayRevision,
 }: {
@@ -19,6 +20,7 @@ export function RecordCard({
   widgets: Widget[];
   properties: PropertyDef[];
   onDelete: () => void;
+  onEditingChange?: (editing: boolean) => void;
   displayRecord?: Record<string, unknown>;
   displayRevision?: number;
 }) {
@@ -37,6 +39,12 @@ export function RecordCard({
     if (window.confirm("Delete this record?")) onDelete();
   };
 
+  const toggleEditing = () => {
+    const next = !isEditing;
+    setIsEditing(next);
+    onEditingChange?.(next);
+  };
+
   return (
     <article className="record-card">
       {hasActions && (
@@ -49,7 +57,7 @@ export function RecordCard({
               type="button"
               className={isEditing ? "icon-btn icon-btn-success" : "icon-btn"}
               aria-label={isEditing ? "Done editing" : "Edit record"}
-              onClick={() => setIsEditing((current) => !current)}
+              onClick={toggleEditing}
             >
               {isEditing ? <CheckIcon /> : <PencilIcon />}
             </button>

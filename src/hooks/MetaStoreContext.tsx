@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { useShape } from "@ng-org/orm/react";
+import { useShape } from "./useShape";
 import {
   BlockShapeType,
   PropertyDefShapeType,

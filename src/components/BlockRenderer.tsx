@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { useShape } from "@ng-org/orm/react";
+import { useShape } from "../hooks/useShape";
 import type {
   Block,
   PropertyDef,
@@ -191,6 +191,10 @@ function ResolvedDataBlock({
 
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [editing, setEditing] = useState<{
+    keys: Set<string>;
+    order?: string[];
+  }>(() => ({ keys: new Set() }));
 
   const searchEnabled = block.searchEnabled === true && searchableFields.length > 0;
   const needle = searchEnabled ? query.trim().toLocaleLowerCase() : "";
@@ -232,7 +236,35 @@ function ResolvedDataBlock({
     });
   }, [records, filterProperty, filterNeedle, needle, searchable, sortProperty, sortIsReference, direction, privateNuri]);
 
-  const total = visibleRecords.length;
+  // Editing is live: every keystroke changes the subscribed record. If that
+  // keystroke also changes the active sort or filter, the card can otherwise
+  // move to another page (or disappear) while its form is still open. Pin only
+  // each active editor at its former result position. Every other record still
+  // follows live filtering/sorting, including records arriving during a sync
+  // recovery, and current proxies keep the pinned values live too.
+  const recordsByKey = new Map<string, DynamicRecord>(
+    [...records].map((record) => [`${record["@graph"]}|${record["@id"]}`, record] as const),
+  );
+  const orderedRecords = editing.order
+    ? (() => {
+        const next = [...visibleRecords];
+        const pinned = [...editing.keys]
+          .map((key) => ({ key, index: editing.order!.indexOf(key) }))
+          .filter(({ index }) => index >= 0)
+          .sort((left, right) => left.index - right.index);
+        for (const { key, index } of pinned) {
+          const record = recordsByKey.get(key);
+          if (!record) continue;
+          const currentIndex = next.findIndex(
+            (candidate) => `${candidate["@graph"]}|${candidate["@id"]}` === key,
+          );
+          if (currentIndex >= 0) next.splice(currentIndex, 1);
+          next.splice(Math.min(index, next.length), 0, record);
+        }
+        return next;
+      })()
+    : visibleRecords;
+  const total = orderedRecords.length;
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
 
   // Any change to what is being listed sends the reader back to the first
@@ -258,7 +290,21 @@ function ResolvedDataBlock({
   const currentPage = Math.min(page, pageCount - 1);
   const pageStart = pageSize > 0 ? currentPage * pageSize : 0;
   const pageRecords =
-    pageSize > 0 ? visibleRecords.slice(pageStart, pageStart + pageSize) : visibleRecords;
+    pageSize > 0 ? orderedRecords.slice(pageStart, pageStart + pageSize) : orderedRecords;
+
+  const editingChanged = (recordKey: string, isEditing: boolean) => {
+    setEditing((current) => {
+      const keys = new Set(current.keys);
+      if (isEditing) keys.add(recordKey);
+      else keys.delete(recordKey);
+      return {
+        keys,
+        order: keys.size > 0
+          ? current.order ?? visibleRecords.map((record) => `${record["@graph"]}|${record["@id"]}`)
+          : undefined,
+      };
+    });
+  };
 
   const heading = titleWidget?.label || block.title || schema.name;
   // Both utilities act on everything the reader is currently looking at --
@@ -385,6 +431,7 @@ function ResolvedDataBlock({
                 widgets={widgets}
                 properties={properties}
                 onDelete={() => records.delete(record)}
+                onEditingChange={(isEditing) => editingChanged(recordKey, isEditing)}
                 displayRecord={restored}
                 displayRevision={restored ? undoRevision : undefined}
               />

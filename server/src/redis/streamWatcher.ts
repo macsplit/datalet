@@ -32,13 +32,15 @@ class VaultStreamWatcher {
   constructor(
     private readonly streamKey: string,
     private readonly onIdle: () => void,
+    since: number,
   ) {
-    // Listeners always do their own historical XRANGE catch-up before (and,
-    // to close the handoff race, immediately after) attaching here, so this
-    // only needs to start tailing "from now" - see entriesSince() callers
-    // in httpServer.ts. Duplicate delivery across that handoff is harmless:
-    // the client dedupes by batchId.
-    this.lastId = "$";
+    // Never start at Redis's `$`. The blocking connection may still be
+    // establishing itself when the HTTP handler finishes its XRANGE gap
+    // closer; a patch accepted in that sliver would make `$` resolve *after*
+    // it and disappear from the live stream. Starting at the caller's known
+    // cursor deliberately overlaps historical replay. Each SSE response
+    // dedupes that overlap by sequence number.
+    this.lastId = `${since}-0`;
     void this.loop();
   }
 
@@ -88,10 +90,10 @@ class VaultStreamWatcher {
 const watchers = new Map<string, VaultStreamWatcher>();
 
 /** Attach `listener` to a vault's live stream, starting a watcher for it if none exists yet. */
-export function watchVaultStream(streamKey: string, listener: Listener): () => void {
+export function watchVaultStream(streamKey: string, listener: Listener, since = 0): () => void {
   let watcher = watchers.get(streamKey);
   if (!watcher) {
-    watcher = new VaultStreamWatcher(streamKey, () => watchers.delete(streamKey));
+    watcher = new VaultStreamWatcher(streamKey, () => watchers.delete(streamKey), since);
     watchers.set(streamKey, watcher);
   }
   return watcher.addListener(listener);

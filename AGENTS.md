@@ -2,7 +2,19 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 174/174 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline, plus a new real-scale smoke test (`pnpm test:smoke:copy-scale`). No known failing tests, no open bugs.
+**Clean.** All suites pass: 175 client Playwright tests (+1 intentionally skipped), 79/79 server (node --test, integration required), 4/4 offline, the real-scale copy smoke (`pnpm test:smoke:copy-scale`), and the real two-device user story (`pnpm test:smoke:user-story-sync`). No known failing tests, no open bugs.
+
+### User-story browser tests: J1-J3 implemented
+
+The previously noted high-level testing specification now lives in `docs/user-story-tests.md`, with two deterministic journeys in `tests/user-stories.spec.ts`. J1 imports a realistic 48-record reading log into a fresh browser, pages and searches it, edits scalar and markdown fields, adds and reloads a record, exports the searched result, takes a full backup, deletes the record and restores it. J2 builds a Projects tracker entirely through the schema/block/reader UI, enters 24 projects, adds a field after data exists, changes filtering and sorting, edits the new field, reloads, and verifies backup recovery. Both print phase progress and finish by checking the shared datalet invariants plus uncaught page errors.
+
+J2 found a real product bug: after the first page filled, typing the active sort property moved the record to another page while it was still being edited, unmounting the form and making “Done editing” disappear. `BlockRenderer` now freezes the current result order while any record editor is open, while continuing to use live record values; closing the last editor resumes normal filtering and sorting. The exact 24-record user journey fails at record 7 without this fix and passes with it.
+
+J3 is `server/test/multiDeviceUserStorySmoke.ts`: two isolated real Chromium contexts use a real one-use PAIR code, receive an online edit live, make different-field edits while one is offline, reconnect, and must converge in both DOMs and the materialized Neo4j snapshot without reloading. It starts an in-process materializer unless `SMOKE_EXTERNAL_MATERIALIZER=1`.
+
+J3 found three independent real bugs. First, `flushOutbox` acknowledged a completed request by saving its stale in-memory queue, silently erasing any edit enqueued while that HTTP request was in flight; it now removes only that batch id from the latest durable queue (`tests/sync-outbox-race.spec.ts`, bidirectionally verified). Second, the Redis SSE watcher started at `$`; if its blocking command became active after the handler's XRANGE gap closer, a patch in that sliver was skipped forever. The watcher now starts at the caller's explicit cursor and accepts duplicate overlap (`vaultLifecycleHttp.test.ts`, also bidirectionally verified). Third, a received remote patch advanced the cursor and updated localStorage but did not rerender the mounted ORM React consumer. Repo-owned `hooks/useShape.ts` bridges `localNgEngine`'s explicit external revision into React. No vendored or `node_modules` code was edited; the ORM source was only inspected to understand callback behaviour.
+
+Remaining journeys are J4 (source/copy independence after moderate sharing) and J5 (three distinct datalets through switch/archive/rejoin/recovery). The backup integrity hash remains separate follow-up work after this test tranche.
 
 ### A sixth real bug: a third-party library's id generator, occasionally corrupting the id it hands back
 

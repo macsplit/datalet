@@ -412,7 +412,14 @@ async function flushOutbox(config: VaultConfig) {
           );
         }
         rememberApplied(entry.batchId);
-        queue = queue.slice(1);
+        // A local edit can be enqueued while this request is awaiting its
+        // response. Removing the head from the stale in-memory `queue` would
+        // overwrite localStorage and silently erase that newer batch. Always
+        // acknowledge against the latest durable queue and remove only the
+        // exact batch the server just answered.
+        queue = loadOutbox(config.vaultId).filter(
+          (candidate) => candidate.batchId !== entry.batchId,
+        );
         saveOutbox(config.vaultId, queue);
         flushBackoffMs = 1_000;
         continue;

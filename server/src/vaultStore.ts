@@ -654,8 +654,12 @@ export async function sweepVaultTombstones(vaultId: string): Promise<number> {
  * close the handoff race against the shared per-process watcher - see
  * redis/streamWatcher.ts's doc comment. Returns an unsubscribe function.
  */
-export function subscribeLive(vaultId: string, listener: (entry: LogEntry) => void): () => void {
-  return watchVaultStream(streamKey(vaultId), listener);
+export function subscribeLive(
+  vaultId: string,
+  listener: (entry: LogEntry) => void,
+  since = 0,
+): () => void {
+  return watchVaultStream(streamKey(vaultId), listener, since);
 }
 
 /** Generate a single-use invite token for a code (COPY or PAIR). */
