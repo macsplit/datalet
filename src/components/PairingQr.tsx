@@ -1,8 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { encodePairingQr } from "../utils/qrCode";
+import { encodePairingQr, type QrCode } from "../utils/qrCode";
+
+/**
+ * Renders as text below, whatever happens here: a code this can't turn into
+ * a QR image is still a valid, copyable pairing code. Caught locally rather
+ * than left to throw during render - React has no other recovery short of
+ * the nearest error boundary, which for a page under /settings is the
+ * router's generic one, blanking the whole panel over a QR image that was
+ * always meant to be optional.
+ */
+function tryEncode(value: string): QrCode | undefined {
+  try {
+    return encodePairingQr(value);
+  } catch {
+    return undefined;
+  }
+}
 
 export function PairingQr({ value }: { value: string }) {
-  const qr = useMemo(() => encodePairingQr(value), [value]);
+  const qr = useMemo(() => tryEncode(value), [value]);
+  if (!qr) {
+    return <p className="helper-text">QR code unavailable for this code - use the text above instead.</p>;
+  }
   const quietZone = 4;
   const size = qr.modules.length + quietZone * 2;
   const path = qr.modules.flatMap((row, y) =>

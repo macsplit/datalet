@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 161/161 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
+**Clean.** All suites pass: 165/165 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
 
 ### Test harnesses (fuzz / stress / security)
 
@@ -63,6 +63,18 @@ New field type (`did:ng:z:markdown`), a sibling of `longText` for longer notes w
 - No image rendering - links only. User's call, weighed against the tracking-pixel and offline-breakage risk explicitly.
 - 50,000-character soft cap, client-side only, chosen by the user from 50k/100k/250k/uncapped.
 - No nested inline markup (bold inside a link, etc.) and no CommonMark-complete emphasis flanking rules beyond the underscore word-boundary fix above - "basic format effects," not a full markdown implementation.
+
+### A real, deterministic-per-vault bug reported as "iPad-only" (fixed)
+
+The "Show" button next to the LG1 pairing code (`SyncSettings.tsx`) rendered a QR code via `PairingQr` (`src/components/PairingQr.tsx`), which called `encodePairingQr` (`src/utils/qrCode.ts`) with no try/catch. That threw uncaught into TanStack Router's default `CatchBoundary` - a blank panel with a "Show Error" toggle behind which sat a raw error message, matching a user report verbatim ("blank error screen with just a show error link").
+
+Root cause: `PAIRING_CODE_CHECK_ALPHABET` (`src/utils/pairingCode.ts`) used to be `${PAIRING_CODE_DATA_ALPHABET}*~$=U` - five extra symbols giving the mod-37 checksum its own digit. `~` and `=` are valid Crockford-adjacent symbols but **not** valid QR "alphanumeric" characters (`qrCode.ts`'s own `ALPHANUMERIC` set). Any vault whose checksum happened to land on one of those two - about 2/37, ~5.4% of vaults, confirmed empirically over 20,000 random vault-id/token pairs, then again over 500 in the regression test below - could never render a QR code, on any device, forever. Not actually iPad-specific: the checksum is stable per vault, so whichever device first showed it there would always crash there and work everywhere else, which reads exactly like a platform-specific bug from one person's seat.
+
+**Fix**: `PAIRING_CODE_CHECK_ALPHABET` now uses `*%$+U` instead of `*~$=U` - `%` and `+` are both QR-alphanumeric-safe. Chosen over reusing Crockford's excluded `I`/`L`/`O` (which would reintroduce exactly the visual-ambiguity problem Crockford's alphabet exists to avoid) and over anything already used as a separator (`-`, space - both get stripped by `decodePairingCode` before comparison, so neither could ever survive as a real check symbol anyway). Also added defense in depth: `PairingQr` now catches any `encodePairingQr` failure locally and renders "QR code unavailable for this code - use the text above instead" rather than leaving a future unforeseen encoding failure to blank the whole panel again.
+
+**Backward compatibility**: an already-issued LG1 code whose check symbol was literally `~` or `=` will no longer decode after this fix (the recomputed checksum won't match). Not addressed with a dual-alphabet migration path - `nuc`'s Docker volumes were fully wiped a few sessions ago, so no vault an old code could reference still exists. Worth reconsidering if that stops being true.
+
+**Tests**: `tests/pairing-code.spec.ts` (new) - a static, exhaustive check that all 37 possible checksum characters are QR-safe (not a sample; the full space, so no unlucky case can be missed), plus 500 real vaultId/token pairs run through encode → QR-encode → decode. Verified bidirectionally: reverting the alphabet reproduced the exact failure (24/500 in one run, ~4.8%, matching the predicted ~5.4%); restoring it passed both.
 
 ### Known non-bugs (don't re-chase these)
 

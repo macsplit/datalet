@@ -9,7 +9,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 export const PAIRING_CODE_DATA_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-export const PAIRING_CODE_CHECK_ALPHABET = `${PAIRING_CODE_DATA_ALPHABET}*~$=U`;
+// Five extra symbols beyond the 32-character data alphabet give the mod-37
+// checksum its own digit (32 + 5 = 37). All five have to survive
+// `encodePairingQr`'s QR "alphanumeric" mode, which only supports
+// `0-9 A-Z $%*+-./:` (space included, but stripped by decodePairingCode
+// below along with `-`, so neither is usable here). `~` and `=` used to be
+// two of the five: valid Crockford-adjacent symbols, but not valid QR
+// alphanumeric characters, so any vault whose checksum happened to land on
+// one of them could never render as a QR code - encodePairingQr would throw
+// on every attempt, for that vault, forever, on every device.
+export const PAIRING_CODE_CHECK_ALPHABET = `${PAIRING_CODE_DATA_ALPHABET}*%$+U`;
 const PREFIX = "LG1";
 const PAYLOAD_CHARACTERS = 64;
 const BODY_CHARACTERS = PAYLOAD_CHARACTERS + 1;
