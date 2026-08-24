@@ -583,9 +583,31 @@ export async function cloneVault(
   return created;
 }
 
-export async function snapshot(vaultId: string): Promise<{ seq: number; records: Store }> {
-  const [seqStr, records] = await Promise.all([redis().get(seqKey(vaultId)), readVaultRecords(vaultId)]);
-  return { seq: Number(seqStr ?? 0), records };
+/**
+ * `materializerLag`/`materializerPending` (from the same consumer-group read
+ * `vaultStats` uses) let the client tell "fully caught up" apart from "some
+ * records visible, more still coming" - materialization is incremental, not
+ * atomic, so a large vault's records appear gradually rather than all at
+ * once. A client that stops retrying the moment `records` is non-empty
+ * would silently adopt a partially-materialized snapshot; these two fields
+ * are what let it wait for `lag === 0 && pending === 0` instead. `null`
+ * means "no consumer group yet" - not started, not "already done" - so a
+ * client should keep treating that as still-in-progress too.
+ */
+export async function snapshot(
+  vaultId: string,
+): Promise<{ seq: number; records: Store; materializerLag: number | null; materializerPending: number | null }> {
+  const [seqStr, records, backlog] = await Promise.all([
+    redis().get(seqKey(vaultId)),
+    readVaultRecords(vaultId),
+    materializerBacklog(vaultId),
+  ]);
+  return {
+    seq: Number(seqStr ?? 0),
+    records,
+    materializerLag: backlog.lag,
+    materializerPending: backlog.pending,
+  };
 }
 
 /** Shared by entriesSince and the materializer's stream consumer. */

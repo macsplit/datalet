@@ -26,6 +26,7 @@ import {
   pendingOutboxCount,
   setDataletCursor,
   type VaultConfig,
+  type VaultSnapshot,
 } from "./remoteSyncEngine";
 import {
   activeDatalet,
@@ -141,28 +142,49 @@ export function adoptionFits(graph: string, records: Store, leaving: string | un
  * vault created moments ago (a fresh clone especially) can report a nonzero
  * `seq` before the materializer has caught up, and come back with zero
  * records even though real data was genuinely accepted. `seq === 0` means a
- * genuinely empty vault and is trusted immediately; `seq > 0` with no
- * records cannot mean "nothing to show" - it means "not there yet" - so
- * that specific combination is retried briefly rather than taken at face
- * value. Reported as: a copy taken across browsers landed with an empty
- * Home screen, because this call returned before Neo4j had replayed the
- * copy that had already been accepted.
+ * genuinely empty vault and is trusted immediately.
+ *
+ * `seq > 0` used to be retried only until `records` was non-empty - correct
+ * for a small vault, wrong at scale: materialization is incremental, not
+ * atomic. A 2,000-record clone measured directly against a real
+ * materializer showed 25 records visible at 5s and the full 2,000 only at
+ * 11.5s - stopping at "non-empty" would have silently adopted a datalet
+ * missing 99% of its records, with no error and no sign anything was wrong.
+ * `materializerLag`/`materializerPending` (from the server's own consumer-
+ * group backlog, the same numbers `vaultStats` already reported) are the
+ * real "is this actually finished" signal instead: both `0` means caught
+ * up, `null` means no consumer group yet - not started, not done - and an
+ * old server that doesn't send these fields at all falls back to the
+ * previous best-effort record-presence check rather than retrying forever.
  *
  * The server discovers a newly created vault's stream on a 3-second poll
  * (`VAULT_DISCOVERY_INTERVAL_MS`), so a vault created moments after a cycle
  * fired waits nearly the full 3s before the materializer even starts on it,
- * before any replay time on top. Measured directly against a freshly
- * deployed instance: a source vault and its clone, both created seconds
- * apart, took ~6s end to end - the original budget here (5s total) was
- * short of that by a real margin, not just theoretically. The tail settles
- * to 3s steps, matching that discovery cadence, rather than continuing to
- * grow exponentially past the point where finer steps stop helping.
+ * before any replay time on top - and that offset is essentially random per
+ * clone, adding jitter on top of a record count's own replay time rather
+ * than a fixed cost. Measured directly against a freshly deployed instance:
+ * a handful of records took ~6s end to end; 2,000 records took ~11.5s of
+ * replay alone, consistent across repeated runs, but a real end-to-end
+ * clone-and-join at that same size sometimes exceeded a 15s budget - the
+ * discovery jitter, not the replay time, was what made it inconsistent.
+ * The tail settles to 3s steps, matching that discovery cadence, rather
+ * than continuing to grow exponentially past the point where finer steps
+ * stop helping; the full budget (~27s) gives real margin over 2,000
+ * records' ~11.5s replay plus up to ~3s of discovery jitter, not just
+ * enough to clear it on a lucky run.
  */
-async function fetchVaultSnapshotSettled(vault: VaultConfig): Promise<{ seq: number; records: Store }> {
-  const backoffMs = [200, 400, 800, 1600, 3000, 3000, 3000, 3000];
+function materializerCaughtUp(snapshot: VaultSnapshot): boolean {
+  if (snapshot.materializerLag === undefined || snapshot.materializerPending === undefined) {
+    return Object.keys(snapshot.records).length > 0;
+  }
+  return snapshot.materializerLag === 0 && snapshot.materializerPending === 0;
+}
+
+async function fetchVaultSnapshotSettled(vault: VaultConfig): Promise<VaultSnapshot> {
+  const backoffMs = [200, 400, 800, 1600, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000];
   let snapshot = await fetchVaultSnapshot(vault);
   for (const delay of backoffMs) {
-    if (snapshot.seq === 0 || Object.keys(snapshot.records).length > 0) break;
+    if (snapshot.seq === 0 || materializerCaughtUp(snapshot)) break;
     await new Promise((resolve) => setTimeout(resolve, delay));
     snapshot = await fetchVaultSnapshot(vault);
   }

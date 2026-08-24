@@ -79,14 +79,23 @@ export function getVaultConfig(): VaultConfig | undefined {
  * localStorage at once - the very state the one-resident rule exists to avoid,
  * and enough to trip the storage cap on a switch that would otherwise fit.
  */
-export async function fetchVaultSnapshot(
-  config: VaultConfig,
-): Promise<{ seq: number; records: Store }> {
+export type VaultSnapshot = {
+  seq: number;
+  records: Store;
+  // Present on server builds that know about materializer backlog; absent
+  // (rather than defaulted) on any that don't, so a stale server can't be
+  // silently misread as "caught up." null means "no consumer group yet" -
+  // not started, not "already done."
+  materializerLag?: number | null;
+  materializerPending?: number | null;
+};
+
+export async function fetchVaultSnapshot(config: VaultConfig): Promise<VaultSnapshot> {
   const response = await fetch(`/sync/snapshot?vault=${encodeURIComponent(config.vaultId)}`, {
     headers: { Authorization: `Bearer ${config.vaultToken}` },
   });
   if (!response.ok) throw new Error(`snapshot request failed with status ${response.status}`);
-  return (await response.json()) as { seq: number; records: Store };
+  return (await response.json()) as VaultSnapshot;
 }
 
 /** Record where a restored graph's replay should resume from. */

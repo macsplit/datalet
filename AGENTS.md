@@ -2,7 +2,21 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 170/170 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline. No known failing tests, no open bugs.
+**Clean.** All suites pass: 170/170 client (Playwright, +1 intentionally skipped), 78/78 server (node --test), 4/4 offline, plus a new real-scale smoke test (`pnpm test:smoke:copy-scale`). No known failing tests, no open bugs.
+
+### A fifth real bug: partial-copy at scale, found by building the "real" test the user asked for
+
+After the guard fix above, the user asked whether there were now real (unmocked, real materializer, real browser) tests for the join-link flow specifically at scale - a source vault with thousands of records, with timing measured. There weren't; building one (`server/test/copyLinkScaleSmoke.ts`, `pnpm test:smoke:copy-scale`) found a real bug the mocked Playwright tests structurally could not have caught.
+
+**The bug**: `fetchVaultSnapshotSettled`'s retry loop (added earlier today) stopped retrying the moment `records` was non-empty. Correct for a small vault; wrong at scale, because materialization is incremental, not atomic - measured directly against a real materializer, a 2,000-record clone showed 25 records visible at 5s and the full 2,000 only at ~11.5-17s later. A client that stops at "non-empty" would silently adopt a datalet missing 99% of its records: no error, no sign anything was wrong, just a copy that looks complete and isn't.
+
+**Fix**: `/sync/snapshot` (`server/src/vaultStore.ts`'s `snapshot()`) now also returns `materializerLag`/`materializerPending`, reusing the same consumer-group backlog read `vaultStats` already exposed for the admin API - not a new mechanism, just surfaced to the client too. The client (`materializerCaughtUp` in `dataletSwitch.ts`) retries until both are `0` (genuinely finished), not until `records` merely has something in it; `null` (no consumer group yet) still counts as "not done," and an old server that doesn't send these fields at all falls back to the previous best-effort check rather than retrying forever against fields it will never receive.
+
+**Budget widened again**, from ~15s to ~27s (`[200, 400, 800, 1600, 3000×8]`): real end-to-end runs of a 2,000-record clone-and-join measured 13-19s, with real variance from `VAULT_DISCOVERY_INTERVAL_MS`'s (3s) essentially-random per-clone jitter on top of replay time, not just the replay time itself. The interim ~15s budget from earlier today intermittently failed at this scale, caught by the same test.
+
+**A pure local-testing mistake along the way, worth remembering**: mid-investigation, the fix appeared to not be working (`materializerLag`/`materializerPending` showing `undefined`) - actually a stale local dev sync-server process from an earlier attempt that had never been successfully replaced, still serving pre-fix code the whole time despite several `kill` + restart attempts targeting the wrong or already-dead PIDs. `ps aux | grep server/src/index.ts` plus a raw `curl` of a real snapshot response (checking for the field's actual presence, not just a 200 status) is what caught it. Not a code bug - a reminder to verify a local server actually restarted, not just that *a* server answered `/sync/health`.
+
+**`pnpm test:smoke:copy-scale`**: `SMOKE_RECORD_COUNT` (default 2000), `SMOKE_TIMEOUT_MS` (default 35s), `SMOKE_BASE_URL`/`SMOKE_SYNC_URL` (default localhost, same as `fullStackSmoke.ts`). Starts its own in-process materializer via `startMaterializer()` - no separate `dev:materializer` process needed, just `pnpm dev` + `pnpm dev:server` (with `.env.local` loaded - the plain `dev:server` script doesn't load it) running first. Seeds a source vault directly via `applyBatch` (fast - ~100-150ms for 2,000 records, since Redis acceptance is instant regardless of materializer speed), issues a real invite link, drives a real headless browser through the actual `/join?token=` UI in a fresh context, and asserts the exact final record count (seeded + the client's own 2 bootstrap records), not just that something rendered. Verified bidirectionally both times (the retry-condition bug and the widened budget), each by reverting to the previous behavior and confirming the exact reported failure mode reproduces.
 
 ### Test harnesses (fuzz / stress / security)
 
