@@ -541,10 +541,20 @@ export async function cloneVault(
     for (let index = 0; index < entries.length; index += CHUNK) {
       const patches: Patch[] = [];
       for (const [subjectId, record] of entries.slice(index, index + CHUNK)) {
-        patches.push({ op: "add", path: `/${escapeSegment(subjectId)}` });
+        // Subject ids are `${graph}|${localId}` - copying one verbatim would
+        // store the clone's records under the SOURCE vault's graph, even
+        // though each record's own @graph field below is correctly rewritten
+        // to the new one. That mismatch is invisible in Neo4j/Redis (nothing
+        // there cross-checks a record's key against its @graph value) and
+        // only surfaces as an apparently empty datalet: the client looks up
+        // records by the new graph's key prefix and finds none, because
+        // every one of them was still filed under the old graph's.
+        const separator = subjectId.indexOf("|");
+        const clonedSubjectId = separator === -1 ? subjectId : `${graph}${subjectId.slice(separator)}`;
+        patches.push({ op: "add", path: `/${escapeSegment(clonedSubjectId)}` });
         for (const [property, value] of Object.entries(record)) {
           if (value === undefined) continue;
-          const path = `/${escapeSegment(subjectId)}/${escapeSegment(property)}`;
+          const path = `/${escapeSegment(clonedSubjectId)}/${escapeSegment(property)}`;
           // The clone belongs to its own graph; every other field travels as it is.
           if (property === "@graph") patches.push({ op: "add", path, value: graph });
           else if (Array.isArray(value)) patches.push({ op: "add", path, value, type: "set" });

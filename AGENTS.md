@@ -76,7 +76,19 @@ Root cause: `PAIRING_CODE_CHECK_ALPHABET` (`src/utils/pairingCode.ts`) used to b
 
 **Tests**: `tests/pairing-code.spec.ts` (new) - a static, exhaustive check that all 37 possible checksum characters are QR-safe (not a sample; the full space, so no unlucky case can be missed), plus 500 real vaultId/token pairs run through encode → QR-encode → decode. Verified bidirectionally: reverting the alphabet reproduced the exact failure (24/500 in one run, ~4.8%, matching the predicted ~5.4%); restoring it passed both.
 
-### Three real bugs in the copy/join flow, found from one user report (fixed)
+### The actual root cause of the empty-copy report: a storage-key bug (fixed)
+
+Found *after* the three fixes below, by testing the user's real, live, unused invite link directly against production (`curl`ing `/sync/invite-redeem` → `/sync/clone` → `/sync/snapshot`) once a redeploy and a Cloudflare-caching check had both been ruled out. The snapshot came back non-empty immediately - no materializer lag at all - but every record's storage key was still prefixed with the **source** vault's graph id, while each record's own `@graph` *property* correctly pointed at the new clone. `cloneVault` (`server/src/vaultStore.ts`) rewrites `@graph` but was never rewriting the subject id itself, and subject ids are `${graph}|${localId}` compound strings. Nothing in Neo4j/Redis cross-checks a record's key against its own `@graph` value, so this was invisible server-side; the client reads records by the new graph's key prefix and found none, which is exactly "the tab I added in the source did not exist, the new window just had an empty datalet."
+
+This is the real root cause the three fixes below were built around without knowing it existed - they're all real, correctly-fixed bugs in their own right, just not *this* one, which predates all of them (it's been there since clone was first built, unrelated to this session's other work).
+
+**Fix**: `cloneVault` now rewrites the subject id's graph prefix (everything before the first `|`) to the new vault's graph, in step with the `@graph` property it already rewrote.
+
+**Why the existing test never caught it**: `cloneHttp.test.ts`'s `seedVault()` fixture used a bare `"subject-1"` id with no graph prefix at all - so the mismatch had no graph segment to drift out of sync with. Fixed to use `${graph}|localId`, the compound form every real client actually uses, and the "rewritten into its own graph" test now asserts on the storage key itself (looked up by the clone's own graph prefix, and explicitly asserts nothing is left filed under the source's), not just the `@graph` property - proven bidirectionally, reverting the fix reproduces the exact assertion failure.
+
+**How this was actually diagnosed**: after a redeploy and a Cloudflare-caching theory both checked out clean (confirmed `nuc`'s git HEAD, confirmed the container rebuild timestamp, confirmed the public JS bundle hash matched a build known to contain the latest fixes, confirmed the bundle contained the fix's own literal strings via grep), the user supplied a real, live, not-yet-used invite link. Redeeming and cloning it directly against production and inspecting the raw JSON - rather than going back and forth on what a browser screen looked like - showed the key/`@graph` mismatch immediately and unambiguously.
+
+### Three more real bugs in the copy/join flow, found and fixed en route (all real, none of them the root cause above)
 
 Reported: took a copy of a datalet via an invite link, opened it in a different browser, accepted it - state never updated, landed on Settings instead of Home, Home showed nothing.
 

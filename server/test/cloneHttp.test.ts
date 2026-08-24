@@ -32,20 +32,31 @@ async function withServer<T>(run: (origin: string) => Promise<T>): Promise<T> {
   }
 }
 
-/** A vault holding one record, which is what a copy has to carry across. */
+/**
+ * A vault holding one record, which is what a copy has to carry across.
+ *
+ * The subject id is `${graph}|${localId}` - the compound form every real
+ * client uses, not a bare id - because that shape is exactly what let the
+ * clone's storage-key-vs-@graph mismatch bug (server/src/vaultStore.ts,
+ * cloneVault) go unnoticed: a bare subject id has no graph prefix to leave
+ * stale, so a fixture using one can never exercise the bug this file needs
+ * to catch.
+ */
 async function seedVault() {
   const vault = await createVault();
+  const graph = `did:ng:${vault.vaultId}`;
+  const subjectId = `${graph}|did:ng:z:HomeTab`;
   const result = await applyBatch(vault.vaultId, {
     nodeId: "seed",
     batchId: `seed-${vault.vaultId}`,
     hlc: "000000000000001-000000-seed",
     shape: "did:ng:z:Seed",
     patches: [
-      { op: "add", path: "/subject-1" },
-      { op: "add", path: "/subject-1/@id", value: "subject-1" },
-      { op: "add", path: "/subject-1/@graph", value: `did:ng:${vault.vaultId}` },
-      { op: "add", path: "/subject-1/@type", value: "did:ng:z:Tab" },
-      { op: "add", path: "/subject-1/title", value: "Reference" },
+      { op: "add", path: `/${subjectId}` },
+      { op: "add", path: `/${subjectId}/@id`, value: "did:ng:z:HomeTab" },
+      { op: "add", path: `/${subjectId}/@graph`, value: graph },
+      { op: "add", path: `/${subjectId}/@type`, value: "did:ng:z:Tab" },
+      { op: "add", path: `/${subjectId}/title`, value: "Reference" },
     ],
   });
   assert.equal(result.accepted, true);
@@ -126,11 +137,23 @@ test("the copy carries the records, rewritten into its own graph", async (t) => 
       // Read the accepted state, not the Neo4j mirror: no materializer runs in
       // this test, and a copy is complete the moment the writes are accepted.
       const copied = await readAcceptedRecords(clone.vaultId);
-      const record = copied["subject-1"];
-      assert(record, "expected the record to be copied");
+      const cloneGraph = `did:ng:${clone.vaultId}`;
+      const record = copied[`${cloneGraph}|did:ng:z:HomeTab`];
+      assert(record, "expected the record to be stored under the CLONE's graph, not the source's");
       assert.equal(record.title, "Reference");
       // Rewritten, or the clone would claim to belong to the source's graph.
-      assert.equal(record["@graph"], `did:ng:${clone.vaultId}`);
+      assert.equal(record["@graph"], cloneGraph);
+      // The bug this guards against: the key and the @graph value can drift
+      // independently, since nothing in storage cross-checks them against
+      // each other - a clone that got the property right but left the
+      // record filed under the source's graph key would still pass the
+      // assertions above and look correct, while a client reading by the
+      // new graph's key prefix would find nothing at all.
+      assert.equal(
+        copied[`did:ng:${source.vaultId}|did:ng:z:HomeTab`],
+        undefined,
+        "the clone must not leave any record filed under the source vault's graph key",
+      );
     });
   } finally {
     for (const vaultId of made) await deleteVault(vaultId).catch(() => undefined);
