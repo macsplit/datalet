@@ -13,21 +13,6 @@ work lands.
 
 ## Open
 
-### First-time COPY links should skip the confirmation step
-
-For a valid COPY invite opened in a browser/device that has genuinely never
-used the app before, proceed directly with the clone instead of showing the
-normal yes/no confirmation. Someone receiving their first Datalet link has no
-existing context for that dialog, and there is no established datalet choice
-to protect.
-
-Keep the confirmation for an existing user who has visited or initialized the
-app at any time in the past. The review therefore needs a durable “has ever
-used this app” signal, distinct from whether the current datalet is empty or
-paired; deleting records or leaving a vault must not make a returning browser
-look first-time. Invalid, expired and reused links must still stop with their
-current explicit errors rather than attempting anything automatically.
-
 ### Backup export integrity
 
 Add a top-level integrity hash so a hand-edited backup is detectable and
@@ -177,6 +162,37 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### First-time COPY links skip the confirmation step
+
+For a valid COPY invite opened in a browser that has genuinely never used the
+app before, the clone now proceeds directly instead of showing the normal
+yes/no confirmation - someone receiving their first Datalet link had no
+existing context for that dialog, and there was no established datalet choice
+for it to protect. The confirmation is unchanged for an existing user who has
+visited or initialized the app at any time in the past, and always kept for a
+PAIR code regardless, since joining a synced vault is a bigger commitment than
+a COPY's separate, disposable clone. Invalid, expired and reused links still
+stop with their existing explicit errors, unaffected.
+
+The durable "has ever used this app" signal is `hadPriorSession`
+(`src/utils/ngSession.ts`): whether this browser's local session already
+existed before the current page load, captured at the moment `init()` reads
+or creates it. Nothing in the app ever removes that key - unpairing,
+forgetting a datalet, archiving, and deleting every record all leave it
+untouched - so unlike checking whether the current datalet is empty or
+paired, it cannot be reset by ordinary use. `JoinPage.tsx` auto-confirms once,
+guarded by a ref, only when the code is COPY, `hadPriorSession` is false, and
+the existing data-loss guard (`canLeaveActiveDatalet`) already says yes; any
+failure past that point (a late server error, a guard refusal) still lands on
+the normal error screen; nothing is skipped automatically.
+
+Four new tests in `tests/join.spec.ts` cover: a first-time COPY link reaching
+the joined vault with no click; a first-time COPY link's late failure still
+surfacing without any click; a PAIR link always keeping its confirmation even
+for a first-time browser; and a browser that has merely visited before (no
+datalet ever adopted) still seeing the COPY confirmation. All four were
+confirmed to fail against the pre-fix code before the fix landed.
 
 ### Offline removal of an archived datalet no longer hangs
 

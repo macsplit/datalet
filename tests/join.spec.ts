@@ -266,10 +266,11 @@ test("a link with no token at all is refused rather than hanging", async ({ page
 });
 
 test("a late failure gets a real error, not a silent no-op", async ({ page }) => {
-  // No addInitScript at all: no local-session, no datalet registry, nothing
-  // - a completely fresh browser, which is now correctly allowed to accept
-  // a copy link at all (see graphHasOnlyKnownBootstrapRecords). The failure
-  // this test forces instead is a late one, deep inside adopt() (a
+  // A local-session is seeded (but no datalet registry) so this exercises
+  // the manual "Take a copy" click specifically - a completely fresh browser
+  // with no prior session now skips straight past this screen (see the
+  // first-time-COPY tests below), which would leave nothing here to click.
+  // The failure this test forces is a late one, deep inside adopt() (a
   // /sync/snapshot error - a quota check or a guard refusal would do the
   // same), to prove the actual thing that was reported: this exact sequence
   // used to reach its failure after the URL had already been silently
@@ -277,6 +278,11 @@ test("a late failure gets a real error, not a silent no-op", async ({ page }) =>
   // whatever error follows - see the beforeReload fix in dataletSwitch.ts.
   // Reported as: accepted a copy link, nothing changed, dropped on Settings
   // with no explanation.
+  await page.addInitScript(() => {
+    localStorage.setItem("meta-ui-builder:local-session", JSON.stringify({
+      session_id: "join-session", private_store_id: "test-private-store",
+    }));
+  });
   await page.route("**/sync/invite-redeem", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
   }));
@@ -387,4 +393,107 @@ test("a genuinely empty local placeholder does not block joining - there is noth
   await expect.poll(() => page.evaluate(({ key }) =>
     JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
     .toBe(vaultB.vaultId);
+});
+
+test("a first-time COPY link proceeds straight to the clone, with no confirmation click needed", async ({ page }) => {
+  // No addInitScript at all: a completely fresh browser, nothing in
+  // localStorage before this load. Someone receiving their first Datalet
+  // link has no context for a yes/no dialog and no established datalet to
+  // protect, so this should never need a click at all.
+  await page.route("**/sync/invite-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
+  }));
+  await page.route("**/sync/clone", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+  }));
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+
+  await page.goto("/join?token=88888888-8888-4888-8888-888888888888");
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .toBe(vaultB.vaultId);
+  await expect(page).not.toHaveURL(/\/join/);
+});
+
+test("a first-time COPY link still surfaces a late failure without anyone having clicked anything", async ({ page }) => {
+  // Same fresh browser as above, but the clone succeeds and the settle
+  // fails - proving auto-confirm reaches the same real-error handling as a
+  // manual click, rather than an unattended failure going nowhere.
+  await page.route("**/sync/invite-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
+  }));
+  await page.route("**/sync/clone", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+  }));
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => route.fulfill({
+    status: 500, contentType: "application/json", body: JSON.stringify({ reason: "down" }),
+  }));
+
+  await page.goto("/join?token=91919191-9191-4191-8191-919191919191");
+  await expect(page.getByText(/snapshot request failed/)).toBeVisible();
+  await expect(page).toHaveURL(/\/join/);
+  const registry = await page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}") as { activeId?: string },
+    { key: REGISTRY_KEY });
+  expect(registry.activeId).not.toBe(vaultB.vaultId);
+});
+
+test("a PAIR link always keeps its confirmation, even for a first-time browser", async ({ page }) => {
+  // PAIR joins the same synced vault - a bigger commitment than a COPY's
+  // separate, disposable clone - so this must never auto-skip regardless of
+  // whether the browser has been used before.
+  //
+  // redeemInviteToken always tries codeType "COPY" first, falling through to
+  // "PAIR" only on a 404 - so this has to discriminate by the request body
+  // like the other PAIR fixture does, or the COPY attempt would resolve
+  // first with a mismatched code and auto-confirm as if it were one.
+  await page.route("**/sync/invite-redeem", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as { codeType?: string };
+    if (body.codeType !== "PAIR") {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ reason: "not found" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ code: "PAIR-K3RM-9T7A-X" }) });
+  });
+  await page.route("**/sync/pair-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ vaultId: vaultB.vaultId, vaultToken: vaultB.vaultToken }),
+  }));
+  await page.route(`**/sync/snapshot?vault=${vaultB.vaultId}*`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ seq: 0, records: {} }),
+  }));
+
+  await page.goto("/join?token=92929292-9292-4292-8292-929292929292");
+  await expect(page.getByRole("heading", { name: "Join a synced vault" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Join", exact: true })).toBeEnabled();
+  // Still sitting on the confirm screen: nothing joined itself.
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .not.toBe(vaultB.vaultId);
+
+  await page.getByRole("button", { name: "Join", exact: true }).click();
+  await expect.poll(() => page.evaluate(({ key }) =>
+    JSON.parse(localStorage.getItem(key) ?? "{}").activeId, { key: REGISTRY_KEY }))
+    .toBe(vaultB.vaultId);
+});
+
+test("a browser that has merely visited before still sees the COPY confirmation", async ({ page }) => {
+  // Only the durable session marker is seeded - no datalet registry, no
+  // records - proving the signal is "has this browser ever opened the app",
+  // not "does it currently hold a datalet worth protecting".
+  await page.addInitScript(() => {
+    localStorage.setItem("meta-ui-builder:local-session", JSON.stringify({
+      session_id: "join-session", private_store_id: "test-private-store",
+    }));
+  });
+  await page.route("**/sync/invite-redeem", (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ code: "COPY-K3RM-9T7A-X" }),
+  }));
+
+  await page.goto("/join?token=93939393-9393-4393-8393-939393939393");
+  await expect(page.getByRole("heading", { name: "Take a copy of a datalet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take a copy" })).toBeEnabled();
 });

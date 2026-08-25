@@ -26,7 +26,10 @@ export type LocalSession = {
 function loadOrCreateSession(): LocalSession {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as LocalSession;
+    if (raw) {
+      hadPriorSession = true;
+      return JSON.parse(raw) as LocalSession;
+    }
   } catch {
     // Ignore corrupt storage and create a fresh session below.
   }
@@ -42,6 +45,23 @@ function loadOrCreateSession(): LocalSession {
 
 /** The current local session, or undefined until `init()` has run. */
 export let session: LocalSession | undefined;
+
+/**
+ * Whether this browser already had a session before this page load - a
+ * durable "has this browser ever opened the app before" signal, set once by
+ * `init()` and never revised afterwards.
+ *
+ * Nothing in the app ever removes `SESSION_STORAGE_KEY` (unpairing,
+ * forgetting a datalet, archiving, and deleting every record all leave it
+ * untouched), so unlike checking whether the current datalet is empty or
+ * paired, this cannot be reset by ordinary use - a returning browser stays
+ * "not first-time" no matter what it does to its data. It has to be captured
+ * here, at the moment of creation, rather than read later by a caller: by
+ * the time anything downstream can check it, `init()` has already run and
+ * the key already exists either way, whether it was just created this load
+ * or was already there from a prior one.
+ */
+export let hadPriorSession = false;
 
 let resolveSessionPromise: (value: LocalSession) => void;
 

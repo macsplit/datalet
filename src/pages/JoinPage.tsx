@@ -8,13 +8,14 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import usePrivateNuri from "../components/usePrivateNuri";
 import { canLeaveActiveDatalet } from "../utils/dataletSwitch";
 import { adoptVaultAsDatalet } from "../utils/dataletSwitch";
 import { redeemDataletCode, redeemInviteToken } from "../utils/codeRedemption";
 import { randomUuid } from "../utils/randomId";
+import { hadPriorSession } from "../utils/ngSession";
 import { Spinner } from "../components/icons";
 
 type Stage =
@@ -59,6 +60,43 @@ export function JoinPage() {
     return () => clearInterval(timer);
   }, [privateNuri]);
 
+  /**
+   * Redeems the code and adopts the resulting vault, given directly rather
+   * than read from `stage` - so this can be called from the auto-confirm
+   * effect below (which fires before the "confirm" screen would otherwise be
+   * shown) as well as from that screen's own button.
+   */
+  const confirm = async (code: string) => {
+    setStage({ step: "adding" });
+    try {
+      const { copiedAt, ...vault } = await redeemDataletCode(code);
+      // adoptVaultAsDatalet ends with window.location.reload() - matching the
+      // manual-paste path exactly. Left pointed at /join, that reload would
+      // land back on this same URL and retry redemption against a token
+      // that redeemInviteToken already consumed, turning a successful join
+      // into a false "link expired" error. Moving the address first, without
+      // a navigation of its own, means the reload lands somewhere sane - but
+      // it has to happen only once success is certain, as beforeReload here
+      // rather than inline above this call: the router's history listener
+      // reacts to replaceState the moment it runs and unmounts this page, so
+      // a failure past that point (the data-loss guard, a quota check, a
+      // network error) would throw into a component already gone, and the
+      // catch below would set state nobody was left mounted to render -
+      // silently dropping whoever hit it on Settings with nothing adopted
+      // and no explanation, which is exactly what got reported.
+      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri, {
+        copiedAt,
+        beforeReload: () => window.history.replaceState(null, "", "/settings/datalets"),
+      });
+      setStage({ step: "done" });
+    } catch (error) {
+      setStage({
+        step: "error",
+        message: error instanceof Error ? error.message : "That datalet could not be added.",
+      });
+    }
+  };
+
   useEffect(() => {
     if (!token) {
       setStage({ step: "error", message: "This link is missing its invite token." });
@@ -79,6 +117,26 @@ export function JoinPage() {
       });
     return () => { cancelled = true; };
   }, [token]);
+
+  // A COPY link, opened by a browser that has never had the app open before,
+  // proceeds straight to the clone rather than pausing on a yes/no screen
+  // someone with no prior context for it would have to make sense of cold -
+  // there is no established datalet here for the confirmation to protect.
+  // `hadPriorSession` (not "is the current datalet empty or paired") is what
+  // makes this durable: it can't be reset by leaving a vault, forgetting a
+  // datalet, or deleting every record, so a returning browser always still
+  // sees the confirmation. `leaving.ok` is re-checked here rather than
+  // trusted from an earlier render, since it settles asynchronously
+  // alongside `privateNuri`. A PAIR code always keeps the confirmation
+  // screen - it joins a synced vault, which is a bigger commitment than a
+  // COPY's separate, disposable clone.
+  const autoConfirmed = useRef(false);
+  useEffect(() => {
+    if (stage.step !== "confirm" || stage.codeType !== "COPY") return;
+    if (hadPriorSession || !leaving.ok || autoConfirmed.current) return;
+    autoConfirmed.current = true;
+    void confirm(stage.code);
+  }, [stage, leaving]);
 
   if (stage.step === "loading") {
     return (
@@ -140,37 +198,6 @@ export function JoinPage() {
 
   const { codeType, code } = stage;
 
-  const confirm = async () => {
-    setStage({ step: "adding" });
-    try {
-      const { copiedAt, ...vault } = await redeemDataletCode(code);
-      // adoptVaultAsDatalet ends with window.location.reload() - matching the
-      // manual-paste path exactly. Left pointed at /join, that reload would
-      // land back on this same URL and retry redemption against a token
-      // that redeemInviteToken already consumed, turning a successful join
-      // into a false "link expired" error. Moving the address first, without
-      // a navigation of its own, means the reload lands somewhere sane - but
-      // it has to happen only once success is certain, as beforeReload here
-      // rather than inline above this call: the router's history listener
-      // reacts to replaceState the moment it runs and unmounts this page, so
-      // a failure past that point (the data-loss guard, a quota check, a
-      // network error) would throw into a component already gone, and the
-      // catch below would set state nobody was left mounted to render -
-      // silently dropping whoever hit it on Settings with nothing adopted
-      // and no explanation, which is exactly what got reported.
-      await adoptVaultAsDatalet({ ...vault, nodeId: randomUuid() }, privateNuri, {
-        copiedAt,
-        beforeReload: () => window.history.replaceState(null, "", "/settings/datalets"),
-      });
-      setStage({ step: "done" });
-    } catch (error) {
-      setStage({
-        step: "error",
-        message: error instanceof Error ? error.message : "That datalet could not be added.",
-      });
-    }
-  };
-
   return (
     <section className="panel">
       <div className="panel-header">
@@ -190,7 +217,7 @@ export function JoinPage() {
             + "other devices holding it will converge."}
       </p>
       {!leaving.ok && <p className="danger-text" role="alert">{leaving.message}</p>}
-      <button type="button" className="primary-btn" disabled={!leaving.ok} onClick={() => void confirm()}>
+      <button type="button" className="primary-btn" disabled={!leaving.ok} onClick={() => void confirm(code)}>
         {codeType === "COPY" ? "Take a copy" : "Join"}
       </button>
       <button type="button" className="secondary-btn" onClick={() => void navigate({ to: "/settings/datalets" })}>
