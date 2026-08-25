@@ -19,8 +19,8 @@
 import {
   applyRemoteSyncPatches,
   evictGraph,
-  exportGraphBackup,
   flushLocalPersistence,
+  graphRecords,
   onLocalPatch,
   reconcileGraphSnapshot,
   snapshotPatches,
@@ -134,11 +134,11 @@ function patchesForRecords(records: Store): Patch[] {
  * fails, rather than leaving someone with neither copy.
  */
 function moveRecordsBetweenGraphs(fromGraph: string, toGraph: string): Store | undefined {
-  const backup = exportGraphBackup(fromGraph);
-  if (backup.records.length === 0) return undefined;
+  const records = graphRecords(fromGraph);
+  if (records.length === 0) return undefined;
 
   const moved: Store = {};
-  for (const { record } of backup.records) {
+  for (const { record } of records) {
     moved[`${toGraph}|${record["@id"]}`] = { ...record, "@graph": toGraph };
   }
 
@@ -149,7 +149,7 @@ function moveRecordsBetweenGraphs(fromGraph: string, toGraph: string): Store | u
     }
   } catch (error) {
     reconcileGraphSnapshot(fromGraph, Object.fromEntries(
-      backup.records.map(({ key, record }) => [key, record]),
+      records.map(({ key, record }) => [key, record]),
     ));
     flushLocalPersistence();
     throw error;

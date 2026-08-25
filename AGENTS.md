@@ -2,7 +2,19 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 182 client Playwright tests (+1 intentionally skipped), 79/79 server (node --test, integration required), 4/4 offline, the real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user story (`pnpm test:smoke:user-story-sync`), and the real source/copy story (`pnpm test:smoke:user-story-copy`). Both roadmap items from the last handoff (offline archived-vault removal hanging, and first-time COPY links needing an unnecessary confirmation click) are now fixed. No open roadmap items remain undecided; see `docs/roadmap.md` for what's deferred or out of scope on purpose.
+**Clean.** All suites pass: 187 client Playwright tests (+1 intentionally skipped), 79/79 server (node --test, integration required), 4/4 offline, the real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user story (`pnpm test:smoke:user-story-sync`), and the real source/copy story (`pnpm test:smoke:user-story-copy`). Backup export integrity, first-time COPY links, and offline archived-vault removal - the three items open at the last few handoffs - are now all fixed. The only roadmap item left open is the multi-hour endurance run, which needs a dedicated deployment session with real hours available; see `docs/roadmap.md`.
+
+### Backup export integrity: a top-level hash, plus export timestamp and source host
+
+Requested: record more than just a hash in each backup - a UTC ISO timestamp of when it was taken, and the domain it was exported from, in case a self-hosted deploy elsewhere is ever in the picture. Landed as roadmap's "Backup export integrity" item.
+
+Every export (`exportGraphBackup`, `src/utils/localNgEngine.ts`) writes two new top-level fields plus the pre-existing `exportedAt` (already `toISOString()`, already UTC): `sourceHost` (`location.host`, e.g. `datalet.app` - recorded, not enforced; a different host is an equally legitimate export) and `hash`, a `sha256:`-prefixed SHA-256 (Web Crypto `crypto.subtle.digest`) over `JSON.stringify` of everything else in the payload, in the fixed key order the exporter writes it in. `importGraphBackup` recomputes that hash and refuses the import outright - specific "may have been edited or corrupted" error - on any mismatch, and refuses a file missing `hash` entirely the same way.
+
+**No format bump, and deliberately no legacy fallback**: the format stayed `version: 1` (explicit correction mid-session - the first pass bumped to `version: 2` with a hash-less-`version: 1`-still-imports compatibility path, on the assumption real backups might already exist; told there were none in the wild, so unbumped and removed that fallback entirely). A hash-less file is now refused outright, not treated as an older-but-fine format. This meant every hand-crafted `version: 1` fixture elsewhere in the suite (`tests/security-import.spec.ts`, `tests/user-stories.spec.ts`) needed a correctly-computed hash added, or it would be rejected before ever reaching the behaviour those tests actually exercise.
+
+Both export and import functions had to become `async` for the digest call. The one non-file internal caller (`moveRecordsBetweenGraphs` in `remoteSyncEngine.ts`, used when pairing moves records between graphs) was switched to a new synchronous `graphRecords(graph)` split out of the export function, so that path doesn't pay for a hash nobody reads there.
+
+**Tests**, five in `tests/backup-integrity.spec.ts`, all against the real export/import UI: an export's hash/timestamp/sourceHost are well-formed; a genuine untouched export re-imports cleanly; a hand-edited export is rejected with the original record surviving; an export missing its hash is refused; a hand-crafted backup claiming the old hash-less shape is refused. All confirmed to fail against the pre-fix code; the last was *also* confirmed to fail against an intermediate version that kept a hash-less-still-imports fallback (verified by temporarily reintroducing that branch, rerunning, then reverting), proving it pins "no legacy format," not just "hashes get checked."
 
 ### First-time COPY links skip the confirmation step
 

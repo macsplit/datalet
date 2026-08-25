@@ -306,8 +306,8 @@ test("app title edits survive reload and propagate across tabs", async ({ contex
   expect(
     await page.evaluate(async (graph) => {
       const engine = await import("/src/utils/localNgEngine.ts");
-      return engine
-        .exportGraphBackup(graph)
+      const backup = await engine.exportGraphBackup(graph);
+      return backup
         .records.find(({ record }) => record["@id"] === "did:ng:z:SettingsSingleton")?.record
         .appTitle;
     }, GRAPH),

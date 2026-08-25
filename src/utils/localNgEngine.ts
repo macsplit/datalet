@@ -80,10 +80,18 @@ type ShapeType = { schema: Schema; shape: string };
 export type OrmRecord = Record<string, unknown> & { "@id": string; "@graph": string };
 export type Store = Record<string, OrmRecord>;
 
+/**
+ * The shape every export produces. `sourceHost` and `hash` are always
+ * present - see `exportGraphBackup`/`importGraphBackup` for what they mean
+ * and how the hash is computed and checked. There is no pre-hash format to
+ * stay compatible with, so a file missing either is refused outright.
+ */
 export type LocalGraphBackup = {
   format: "localgraph-backup";
   version: 1;
   exportedAt: string;
+  sourceHost: string;
+  hash: string;
   graph: string;
   records: Array<{ key: string; record: OrmRecord }>;
 };
@@ -1357,17 +1365,49 @@ export function projectedGraphFootprint(graph: string, records: Store): number {
   return total;
 }
 
-/** Create a portable backup of one graph, including builder metadata. */
-export function exportGraphBackup(graph: string): LocalGraphBackup {
-  return {
-    format: "localgraph-backup",
-    version: 1,
+/** The records belonging to one graph, keyed exactly as stored - the read
+ * side both `exportGraphBackup` and internal graph-to-graph moves share, so
+ * only the file-export path pays for computing a hash nobody else needs. */
+export function graphRecords(graph: string): Array<{ key: string; record: OrmRecord }> {
+  return Object.entries(store)
+    .filter(([, record]) => record["@graph"] === graph)
+    .map(([key, record]) => ({ key, record: JSON.parse(JSON.stringify(record)) as OrmRecord }));
+}
+
+/**
+ * SHA-256 of a backup's content, everything except `hash` itself, in the
+ * exact field order `exportGraphBackup` writes it in - `JSON.stringify`
+ * follows a plain object's insertion order for string keys, and both the
+ * writer and the reader below build that order the same way, so this is
+ * deterministic without needing a canonicalization step of its own.
+ */
+async function hashBackupPayload(payload: Omit<LocalGraphBackup, "hash">): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
+}
+
+/**
+ * Create a portable backup of one graph, including builder metadata, with an
+ * integrity hash over its own content so a hand-edited file is detectable on
+ * import rather than silently accepted as a genuine export - see
+ * `importGraphBackup`. `sourceHost` records where this came from
+ * (`location.host`, e.g. `datalet.app`) for the same reason a paper document
+ * carries a letterhead: nothing here trusts it, since a self-hosted deploy at
+ * a different origin is exactly as legitimate, but it is useful context if a
+ * backup ever needs tracing back to where it was made.
+ */
+export async function exportGraphBackup(graph: string): Promise<LocalGraphBackup> {
+  const unhashed = {
+    format: "localgraph-backup" as const,
+    version: 1 as const,
     exportedAt: new Date().toISOString(),
+    sourceHost: typeof location === "undefined" ? "" : location.host,
     graph,
-    records: Object.entries(store)
-      .filter(([, record]) => record["@graph"] === graph)
-      .map(([key, record]) => ({ key, record: JSON.parse(JSON.stringify(record)) as OrmRecord })),
+    records: graphRecords(graph),
   };
+  return { ...unhashed, hash: await hashBackupPayload(unhashed) };
 }
 
 /**
@@ -1375,8 +1415,14 @@ export function exportGraphBackup(graph: string): LocalGraphBackup {
  * graph. Graph-qualified subject keys are remapped along with each record's
  * `@graph`, so a backup remains usable in a fresh browser profile whose local
  * session id differs from the exporter.
+ *
+ * The hash is checked before anything else is trusted about the file: a
+ * mismatch, or a missing hash entirely, means this is not the file that was
+ * exported - whether from hand-editing or transit corruption - so it is
+ * refused outright rather than repaired or partially accepted. There is no
+ * older, hash-less format to stay compatible with.
  */
-export function importGraphBackup(targetGraph: string, value: unknown): void {
+export async function importGraphBackup(targetGraph: string, value: unknown): Promise<void> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("The selected file is not a Datalet backup.");
   }
@@ -1388,6 +1434,16 @@ export function importGraphBackup(targetGraph: string, value: unknown): void {
     !Array.isArray(candidate.records)
   ) {
     throw new Error("The selected file uses an unsupported backup format or version.");
+  }
+  if (typeof candidate.hash !== "string") {
+    throw new Error("The backup is missing its integrity hash.");
+  }
+  const { hash, ...unhashed } = candidate as LocalGraphBackup;
+  if (await hashBackupPayload(unhashed) !== hash) {
+    throw new Error(
+      "This backup's contents don't match its recorded integrity hash, so it may have been "
+      + "edited or corrupted since it was exported. Importing a modified backup isn't supported.",
+    );
   }
   if (candidate.records.length > RUNTIME_LIMITS.graphNodes) {
     throw new Error(

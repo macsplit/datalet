@@ -13,12 +13,6 @@ work lands.
 
 ## Open
 
-### Backup export integrity
-
-Add a top-level integrity hash so a hand-edited backup is detectable and
-explicitly unsupported rather than silently accepted as a genuine export. The
-format and compatibility policy still need designing.
-
 ### Multi-hour endurance run — resource behaviour only
 
 Re-scoped. This item used to carry two unrelated questions: does anything break
@@ -162,6 +156,50 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### Backup export integrity
+
+Every export now carries a top-level SHA-256 hash over its own content, so a
+hand-edited backup is detectable on import and explicitly refused rather than
+silently accepted as a genuine export. Two more metadata fields ride alongside
+it: `exportedAt` (already existed, always UTC ISO 8601 via `toISOString()`)
+and a new `sourceHost` (`location.host`, e.g. `datalet.app`) recording where
+the export was made - useful context if a self-hosted deploy at a different
+origin is ever in the picture, though nothing trusts or enforces it; a
+different host is exactly as legitimate an export as the canonical one.
+
+The format stayed at version 1 (`format: "localgraph-backup", version: 1`) -
+no bump, and deliberately no backward compatibility for a pre-hash shape:
+there were no real backups in the wild predating this, so a hash-less file is
+refused outright rather than accepted as an unverified legacy format. The
+hash is computed with the Web Crypto API (`crypto.subtle.digest`) over
+`JSON.stringify` of the payload minus the `hash` field itself, in the exact
+key order the exporter writes it in; a mismatch on import is refused outright
+with a specific "may have been edited or corrupted" error, and a file missing
+`hash` entirely is refused the same way rather than treated as
+unverified-but-fine.
+
+Both `exportGraphBackup` and `importGraphBackup` (`src/utils/localNgEngine.ts`)
+became async to allow the digest call. A new synchronous `graphRecords(graph)`
+was split out for the one internal, non-file caller
+(`moveRecordsBetweenGraphs` in `remoteSyncEngine.ts`, used when pairing moves
+records between graphs) so that path isn't paying for a hash nobody reads.
+
+Five new tests in `tests/backup-integrity.spec.ts`, exercising the real
+export/import UI rather than the functions directly: an export's hash,
+timestamp and source host are well-formed; a genuine untouched export
+re-imports cleanly; a hand-edited export is rejected and the original record
+survives; an export missing its hash is refused; and a hand-crafted backup
+claiming the old hash-less shape is refused rather than trusted unverified.
+All were confirmed to fail against the pre-fix code, and the last was also
+confirmed to fail against an intermediate version that *did* keep a hash-less
+fallback, proving the test actually pins the "no legacy format" decision and
+not just "hashes get checked."
+
+Every hand-crafted `version: 1` fixture elsewhere in the suite
+(`tests/security-import.spec.ts`, `tests/user-stories.spec.ts`) had to gain a
+correctly-computed hash to keep exercising what it was actually testing,
+rather than being rejected before it ever reached that code path.
 
 ### First-time COPY links skip the confirmation step
 

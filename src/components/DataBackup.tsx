@@ -6,9 +6,9 @@ export function DataBackup() {
   const { privateNuri } = useMetaStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
-  const exportData = () => {
+  const exportData = async () => {
     if (!privateNuri) return;
-    const backup = exportGraphBackup(privateNuri);
+    const backup = await exportGraphBackup(privateNuri);
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -28,7 +28,7 @@ export function DataBackup() {
     try {
       const parsed: unknown = JSON.parse(await file.text());
       setError("");
-      importGraphBackup(privateNuri, parsed);
+      await importGraphBackup(privateNuri, parsed);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The backup could not be imported.");
     }
@@ -42,7 +42,7 @@ export function DataBackup() {
           <h2 className="title">Export or import data</h2>
         </div>
         <div className="builder-actions">
-          <button type="button" className="secondary-btn" onClick={exportData} disabled={!privateNuri}>
+          <button type="button" className="secondary-btn" onClick={() => void exportData()} disabled={!privateNuri}>
             Export backup
           </button>
           <button type="button" className="primary-btn" onClick={() => inputRef.current?.click()} disabled={!privateNuri}>

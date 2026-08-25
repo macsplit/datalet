@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,10 +44,21 @@ async function importFile(page: Page, contents: unknown): Promise<void> {
   await page.getByLabel("Choose backup file").setInputFiles(path);
 }
 
-const backup = (records: Array<{ key: string; record: unknown }>) => ({
-  format: "localgraph-backup", version: 1, exportedAt: new Date().toISOString(),
-  graph: GRAPH, records,
-});
+/**
+ * A backup with a real, correctly-computed hash - the import path checks
+ * that first, so a malicious payload has to arrive inside an otherwise
+ * genuine backup to reach the checks each test below actually exercises.
+ * Matches `hashBackupPayload` in `localNgEngine.ts` exactly: SHA-256 over
+ * `JSON.stringify` of these same fields, in this same order, minus `hash`.
+ */
+function backup(records: Array<{ key: string; record: unknown }>) {
+  const unhashed = {
+    format: "localgraph-backup", version: 1, exportedAt: new Date().toISOString(),
+    sourceHost: "test-host", graph: GRAPH, records,
+  };
+  const hash = `sha256:${createHash("sha256").update(JSON.stringify(unhashed)).digest("hex")}`;
+  return { ...unhashed, hash };
+}
 
 test("a backup cannot poison Object.prototype", async ({ page }) => {
   await seed(page);

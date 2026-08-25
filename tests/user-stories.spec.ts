@@ -1,4 +1,5 @@
 import { expect, test, type Download, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,13 +77,19 @@ function readingLogBackup() {
     })),
   ];
 
-  return {
+  // Matches hashBackupPayload in localNgEngine.ts: SHA-256 over
+  // JSON.stringify of these same fields, in this same order, minus hash -
+  // import checks the hash before anything else about the file.
+  const unhashed = {
     format: "localgraph-backup",
     version: 1,
     exportedAt: "2026-08-24T12:00:00.000Z",
+    sourceHost: "user-story-fixture",
     graph: SOURCE_GRAPH,
     records: records.map((record) => ({ key: `${SOURCE_GRAPH}|${record["@id"]}`, record })),
   };
+  const hash = `sha256:${createHash("sha256").update(JSON.stringify(unhashed)).digest("hex")}`;
+  return { ...unhashed, hash };
 }
 
 async function importBackup(page: Page, path: string) {
