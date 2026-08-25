@@ -28,7 +28,8 @@
     "start:materializer": "ROLE=materializer node server-dist/index.js",
     "screenshots": "playwright test --config playwright.screenshots.config.ts",
     "fuzz": "playwright test --config playwright.fuzz.config.ts",
-    "stress": "tsx --env-file-if-exists=.env.local server/test/stress.ts"
+    "stress": "tsx --env-file-if-exists=.env.local server/test/stress.ts",
+    "endurance": "./endurance-run.sh"
   },
   "dependencies": {
     "@ng-org/orm": "0.1.2-alpha.14",

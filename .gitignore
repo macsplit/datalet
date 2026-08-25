@@ -44,3 +44,6 @@ secrets.md
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# endurance-run.sh output - logs and metrics from real runs, not source
+/endurance-runs/

@@ -38,6 +38,29 @@ ruled out from a run that short.
 This needs a deployment-focused session with real hours available. It gates
 nothing else.
 
+**Tooling is ready; the run itself hasn't happened yet.** `./endurance-run.sh`
+(repo root) builds the real client and server, starts a real sync-server and
+materializer as separate OS processes against real Redis and Neo4j (not the
+docker deploy stack, not in-process fakes), and drives
+`server/test/browserEndurance.ts` for the configured duration (6h default).
+That harness is not a synthetic HTTP load generator: every simulated tenant
+is a real headless Chromium browser context running the real client app -
+real localStorage, real debounced outbox, real SSE - a fraction of them
+paired two-devices-to-one-vault for sustained multi-device convergence, with
+periodic tenant churn (retiring and replacing a slice of tenants) to also
+exercise long-run context lifecycle. Tenant count auto-sizes to the host's
+detected RAM and CPU count. Every genuine invariant breach - an uncaught
+client error, a write refused for a reason other than throttling, a
+local/server record-count divergence surviving its grace period - aborts
+immediately with full context to a `crash.json`, never a bare message;
+RSS, open-fd counts (both processes), and Redis memory are sampled and
+trended throughout, written incrementally to `metrics.json` so a mid-run
+look or a crash still leaves something to read. Validated end to end at
+small scale (a few tenants, ~1-2 minutes) while building it, including
+deliberately forcing both its failure paths to confirm `crash.json` is
+actually written either way - not yet run at real multi-hour, real-hardware
+scale.
+
 ---
 
 ## Under consideration, not decided
