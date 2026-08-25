@@ -21,6 +21,11 @@ import { forgetDatalet, type Datalet } from "./datalets";
 
 export type RemovalOutcome = { serverErased: boolean };
 
+// Matches SYNC_DOWN_WARNING_DELAY_MS (remoteSyncEngine.ts) - this app's own
+// established judgment for "long enough that something is genuinely wrong,"
+// not a new number invented for this one call.
+const DELETE_TIMEOUT_MS = 15_000;
+
 /**
  * Erase a datalet's vault, then forget it locally.
  *
@@ -30,18 +35,65 @@ export type RemovalOutcome = { serverErased: boolean };
  * authenticate against, and therefore nobody can ever delete - the opposite of
  * what someone asking to be forgotten wants. A failed delete keeps the entry
  * so it can be retried.
+ *
+ * `externalSignal` lets a caller offer a genuine "Cancel" while offline: the
+ * DELETE fetch had no timeout at all before this, so on a connection that
+ * looked present but couldn't actually reach the server (unlike true
+ * airplane-mode, which fails a fetch immediately), it could hang for as long
+ * as the browser's own TCP timeout - reported live as "left a contentless
+ * screen pending indefinitely... could not be reached again until
+ * connectivity returned." Both the timeout below and an external cancel abort
+ * the same in-flight request; neither ever calls `forgetDatalet` - the entry
+ * and its credentials are untouched either way, so the attempt is always
+ * retryable once back online.
  */
-export async function removeDataletPermanently(entry: Datalet): Promise<RemovalOutcome> {
+export async function removeDataletPermanently(
+  entry: Datalet,
+  externalSignal?: AbortSignal,
+): Promise<RemovalOutcome> {
   if (!entry.vault) {
     // Never paired, so there is nothing on any server to erase.
     forgetDatalet(entry.id);
     return { serverErased: false };
   }
 
-  const response = await fetch(
-    `/sync/vaults?vault=${encodeURIComponent(entry.vault.vaultId)}`,
-    { method: "DELETE", headers: { Authorization: `Bearer ${entry.vault.vaultToken}` } },
-  );
+  const controller = new AbortController();
+  const forwardExternalAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) forwardExternalAbort();
+  externalSignal?.addEventListener("abort", forwardExternalAbort);
+  const timedOut = { current: false };
+  const timeout = setTimeout(() => {
+    timedOut.current = true;
+    controller.abort();
+  }, DELETE_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `/sync/vaults?vault=${encodeURIComponent(entry.vault.vaultId)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${entry.vault.vaultToken}` }, signal: controller.signal },
+    );
+  } catch {
+    if (externalSignal?.aborted) {
+      throw new Error("Cancelled. Nothing has been removed, so you can try again.");
+    }
+    if (timedOut.current) {
+      throw new Error(
+        "The sync server did not answer in time. Nothing has been removed, so it's still "
+        + "safe here - try again once your connection is back.",
+      );
+    }
+    // A genuine connection failure (not a timeout, not a cancel) - the fetch
+    // itself rejected, typically with a browser-worded TypeError that is not
+    // something to show as-is.
+    throw new Error(
+      "This browser could not reach the sync server. Nothing has been removed, so it's still "
+      + "safe here - try again once your connection is back.",
+    );
+  } finally {
+    clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", forwardExternalAbort);
+  }
 
   // A vault the server no longer has is already erased; treat it as done
   // rather than stranding the entry forever on a 404.

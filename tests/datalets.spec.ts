@@ -497,6 +497,74 @@ test("a refused erase keeps the datalet, so it can be retried", async ({ page })
   })).toBe(vaultB.vaultToken);
 });
 
+test("an unreachable delete times out, preserves the entry, and can be retried", async ({ page }) => {
+  // Longer than DELETE_TIMEOUT_MS (15s in dataletRemoval.ts) plus normal
+  // Playwright overhead, or this test would race its own assertion.
+  test.setTimeout(45_000);
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  // Never fulfilled: a connection that looks present but cannot reach the
+  // server - the "contentless screen pending indefinitely" this guards
+  // against, not true offline, which fails a fetch immediately.
+  await page.route("**/sync/vaults?vault=*", async (route) => {
+    if (route.request().method() !== "DELETE") await route.fallback();
+    // Otherwise: never call fulfill/abort/continue, so the request just hangs.
+  });
+
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketches");
+  await page.getByRole("button", { name: "Remove permanently", exact: true }).click();
+
+  // Not getByRole("alert"): the persistent sync-status banner is also one,
+  // and this datalet's own error paragraph is the one under test.
+  await expect(page.locator("p.danger-text[role=alert]"))
+    .toContainText("did not answer in time", { timeout: 20_000 });
+  // The entry holds the only copy of the vault token, so it must survive a
+  // timeout exactly as it survives a refusal: untouched, ready to retry.
+  expect(await page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}");
+    return registry.entries.find((e: { id: string }) => e.id === "b")?.vault?.vaultToken;
+  })).toBe(vaultB.vaultToken);
+  await expect(page.getByRole("button", { name: "Remove permanently", exact: true })).toBeEnabled();
+});
+
+test("cancelling a pending erase returns control immediately, without waiting for the server", async ({ page }) => {
+  await seedDatalets(page, {
+    activeId: "a",
+    entries: [
+      { id: "a", vault: vaultA },
+      { id: "b", title: "Old sketches", vault: vaultB, archivedAt: 1_770_000_000_000 },
+    ],
+  });
+  await page.route("**/sync/vaults?vault=*", async (route) => {
+    if (route.request().method() !== "DELETE") await route.fallback();
+    // Never resolve - only Cancel, not a server answer, is allowed to end this.
+  });
+
+  await page.goto("/settings/datalets");
+  await page.getByText("Archived (1)").click();
+  await page.getByRole("button", { name: "Remove permanently…" }).click();
+  await page.getByLabel("Type Old sketches to confirm").fill("Old sketches");
+  await page.getByRole("button", { name: "Remove permanently", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Cancel erase" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel erase" }).click();
+
+  // Well inside DELETE_TIMEOUT_MS (15s): if this needed the timeout to fire,
+  // the offline app would still be stuck, which is the bug being fixed.
+  await expect(page.locator("p.danger-text[role=alert]"))
+    .toContainText("Cancelled", { timeout: 5_000 });
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}").entries.length)).toBe(2);
+});
+
 test("the confirmation shows the name exactly as it must be typed", async ({ page }) => {
   await seedDatalets(page, {
     activeId: "a",

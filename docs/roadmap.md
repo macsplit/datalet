@@ -13,18 +13,6 @@ work lands.
 
 ## Open
 
-### Offline removal of an archived datalet
-
-Reported from real use: while the app was offline, attempting to remove an
-archived vault permanently left a contentless screen pending indefinitely.
-The offline app could not be reached again until connectivity returned.
-
-Reproduce and review this as a separate lifecycle task. Expected behaviour:
-an unavailable delete must time out or fail promptly, preserve the archived
-entry and its credentials, show a retryable error, and return control to the
-otherwise-working offline app. Do not treat a local forget as success: the
-server-first deletion order remains necessary to avoid orphaning a vault.
-
 ### First-time COPY links should skip the confirmation step
 
 For a valid COPY invite opened in a browser/device that has genuinely never
@@ -189,6 +177,22 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### Offline removal of an archived datalet no longer hangs
+
+Reported from real use: while the app was offline, attempting to remove an
+archived vault permanently left a contentless screen pending indefinitely,
+because the `DELETE /sync/vaults` request had no timeout at all. Fixed:
+`removeDataletPermanently` now times out at 15s (matching the app's existing
+`SYNC_DOWN_WARNING_DELAY_MS` judgment) and accepts an external `AbortSignal`;
+`DataletSettings`'s "Cancel" button aborts a pending erase immediately instead
+of being disabled while one is in flight. Every failure path — timeout,
+cancel, or a genuine connection error — shows a retryable message and never
+calls `forgetDatalet`, so the archived entry and its vault credentials are
+untouched and the app remains fully usable throughout. Two new tests in
+`tests/datalets.spec.ts` cover the hang-then-timeout case and the
+cancel-returns-control-immediately case; both were confirmed to fail against
+the pre-fix code before the fix landed.
 
 ### User-story browser journeys J1–J5
 

@@ -8,7 +8,7 @@
 // according to those terms.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import usePrivateNuri from "./usePrivateNuri";
 import { ensureLocalDatalet, listDatalets, setDataletArchived, type Datalet } from "../utils/datalets";
@@ -75,6 +75,9 @@ export function DataletSettings() {
   }, [privateNuri]);
   const [adding, setAdding] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  // A ref, not state: this is read only from an event handler (Cancel's
+  // onClick), never rendered, so nothing needs to re-render when it changes.
+  const eraseController = useRef<AbortController | null>(null);
 
   const adopt = async (
     work: () => Promise<{ vaultId: string; vaultToken: string; copiedAt?: number }>,
@@ -130,8 +133,10 @@ export function DataletSettings() {
   const erase = async (entry: Datalet) => {
     setErasing(true);
     setError("");
+    const controller = new AbortController();
+    eraseController.current = controller;
     try {
-      await removeDataletPermanently(entry);
+      await removeDataletPermanently(entry, controller.signal);
       setRemoving("");
       setConfirmText("");
       forceRender((tick) => tick + 1);
@@ -139,6 +144,19 @@ export function DataletSettings() {
       setError(caught instanceof Error ? caught.message : "That datalet could not be erased.");
     } finally {
       setErasing(false);
+      eraseController.current = null;
+    }
+  };
+
+  // While a delete is in flight, Cancel aborts it instead of doing nothing:
+  // offline, the request can otherwise sit for the full DELETE_TIMEOUT_MS
+  // before the panel is usable again, which is the "contentless screen
+  // pending indefinitely" this was reported as.
+  const cancelRemoval = () => {
+    eraseController.current?.abort();
+    if (!erasing) {
+      setRemoving("");
+      setConfirmText("");
     }
   };
 
@@ -196,10 +214,9 @@ export function DataletSettings() {
           <button
             type="button"
             className="secondary-btn"
-            disabled={erasing}
-            onClick={() => { setRemoving(""); setConfirmText(""); }}
+            onClick={cancelRemoval}
           >
-            Cancel
+            {erasing ? "Cancel erase" : "Cancel"}
           </button>
           <button
             type="button"
@@ -207,7 +224,9 @@ export function DataletSettings() {
             disabled={erasing || confirmText.trim() !== name}
             onClick={() => void erase(entry)}
           >
-            {erasing ? "Erasing…" : "Remove permanently"}
+            {erasing
+              ? <span className="btn-spinner"><Spinner label="Erasing" />Erasing…</span>
+              : "Remove permanently"}
           </button>
         </div>
       </div>
