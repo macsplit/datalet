@@ -1,6 +1,6 @@
 # User-story browser tests
 
-**Status: active.** This is the specification for deterministic, realistic
+**Status: implemented.** This is the specification for deterministic, realistic
 Playwright journeys. These tests complement the focused regression suites and
 the random datalet fuzzer: they exercise ordinary sequences long enough for
 features to interact, using enough data for paging, searching, storage and
@@ -59,22 +59,30 @@ a received patch updated localStorage without invalidating the mounted React
 shape consumer. Focused regressions now cover the first two, while this real
 journey covers their composition and the reactive client boundary.
 
-### J4 — Share a copy without sharing the original
+### J4 — Share a copy without sharing the original — implemented
 
-An established moderate-size datalet publishes a link. A fresh browser accepts
-it, waits for complete materialization, changes the copy, and proves the source
-is unchanged. The existing 2,000-record copy-scale smoke supplies much of this
-mechanism; the remaining work is a narrative source-versus-copy independence
-journey with ordinary subsequent edits.
+`server/test/copyIndependenceUserStorySmoke.ts` seeds an established 64-record
+datalet through the real sync stack, opens it in its owner's browser, publishes
+a copy link through the UI, and accepts it in a fresh Chromium context. The
+copy and source then make separate ordinary edits. Both UIs and both
+materialized snapshots must show their own edit and retain the other side's
+original value. Run it with `pnpm test:smoke:user-story-copy`.
 
-### J5 — Maintain several areas of life separately
+### J5 — Maintain several areas of life separately — implemented
 
-A paired browser creates three recognisably different datalets, works in each,
-switches among them repeatedly, archives and rejoins one, and verifies that
-titles, themes and records never bleed between them. Include a backup before a
-destructive lifecycle action and recovery afterwards.
+A paired browser creates Garden, Reading and Travel datalets through the UI,
+each with its own title, theme, schema and record. It switches repeatedly,
+checks that none of those identities bleed, archives/restores Reading, exports
+a backup, deletes its record, restores the backup, then switches away and back
+to prove the recovery reached durable sync state.
 
-## Priority
+The final reopen found a real defect: backup import replaced local storage but
+did not emit outbound patches, so the server's older snapshot silently undid
+the apparent recovery on the next switch. Backup restore now emits the minimal
+graph diff through the durable sync outbox before reloading, chunked below the
+existing patch-count and request-size limits.
 
-Implement J4 next against the real sync stack. J5 follows with the
-multi-datalet lifecycle and recovery journey.
+## Result
+
+J1–J5 are implemented. Focused regression suites remain responsible for narrow
+faults; these journeys remain the composed, user-facing acceptance layer.

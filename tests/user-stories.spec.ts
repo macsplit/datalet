@@ -3,6 +3,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkInvariants } from "./support/dataletInvariants";
+import { installFakeSyncServer } from "./support/fakeSyncServer";
 
 /**
  * Deterministic, plausible journeys through the product rather than isolated
@@ -98,6 +99,86 @@ async function readDownload(download: Download) {
   const path = await download.path();
   if (!path) throw new Error("Playwright did not retain the downloaded file");
   return JSON.parse(await readFile(path, "utf8")) as unknown;
+}
+
+type DataletIdentity = {
+  title: string;
+  schema: string;
+  record: string;
+  colour: string;
+  rgb: string;
+};
+
+const J5_DATALETS: DataletIdentity[] = [
+  { title: "Garden planner", schema: "Plantings", record: "Courtyard lavender", colour: "#f3ead7", rgb: "rgb(243, 234, 215)" },
+  { title: "Reading room", schema: "Essays", record: "Ways of Seeing notes", colour: "#e2edf7", rgb: "rgb(226, 237, 247)" },
+  { title: "Travel desk", schema: "Journeys", record: "Night train to Vienna", colour: "#e5f1e4", rgb: "rgb(229, 241, 228)" },
+];
+
+async function waitForActiveOutbox(page: Page) {
+  await expect.poll(() => page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}") as {
+      activeId?: string;
+      entries?: Array<{ id: string; vault?: { vaultId: string } }>;
+    };
+    const vaultId = registry.entries?.find((entry) => entry.id === registry.activeId)?.vault?.vaultId;
+    if (!vaultId) return -1;
+    return JSON.parse(localStorage.getItem(`meta-ui-builder:sync-outbox:${vaultId}`) ?? "[]").length;
+  })).toBe(0);
+}
+
+async function buildDistinctDatalet(page: Page, identity: DataletIdentity) {
+  await page.goto("/settings");
+  await page.getByLabel("Shown in the nav bar and browser tab").fill(identity.title);
+
+  await page.goto("/settings/theme");
+  const background = page.getByLabel("Light", { exact: true }).first();
+  await expect(async () => {
+    await background.fill(identity.colour);
+    await expect(background).toHaveValue(identity.colour);
+  }).toPass();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+    .toBe(identity.rgb);
+
+  await page.goto("/settings/schemas");
+  await page.getByRole("button", { name: "+ New schema" }).click();
+  await page.getByLabel("Schema name").fill(identity.schema);
+  await page.getByLabel("Schema name").press("Enter");
+  await page.getByRole("button", { name: "+ Add property" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Title");
+  await page.getByLabel("Name", { exact: true }).press("Enter");
+
+  await page.goto("/settings/tabs/did:ng:z:HomeTab/blocks");
+  await page.getByLabel("Data block schema").selectOption({ label: identity.schema });
+  await page.getByRole("button", { name: "+ Add data block" }).click();
+  await page.goto("/");
+  await page.getByRole("button", { name: `+ Add ${identity.schema}` }).click();
+  const card = page.locator(".record-card").first();
+  await card.getByRole("button", { name: "Edit record" }).click();
+  await card.getByLabel("Title").fill(identity.record);
+  await card.getByRole("button", { name: "Done editing" }).click();
+  await expect(card).toContainText(identity.record);
+  await waitForActiveOutbox(page);
+}
+
+async function assertDistinctDatalet(page: Page, identity: DataletIdentity) {
+  await expect(page.locator(".app-nav-brand")).toHaveText(identity.title);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+    .toBe(identity.rgb);
+  await page.goto("/");
+  await expect(page.getByText(identity.record, { exact: true })).toBeVisible();
+  for (const other of J5_DATALETS.filter((candidate) => candidate !== identity)) {
+    await expect(page.getByText(other.record, { exact: true })).toHaveCount(0);
+  }
+}
+
+async function openDatalet(page: Page, title: string) {
+  await page.goto("/settings/datalets");
+  const row = page.locator("#switch-datalet .layout-row").filter({ hasText: title });
+  await expect(row).toHaveCount(1);
+  await row.getByRole("button", { name: "Open" }).click();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.locator(".app-nav-brand")).toHaveText(title, { timeout: 15_000 });
 }
 
 test("a reader adopts and maintains an established reading log", async ({ page }) => {
@@ -313,4 +394,86 @@ test("a project tracker is built, used at moderate size, and evolved", async ({ 
   expect(await checkInvariants(page)).toEqual([]);
   expect(pageErrors).toEqual([]);
   console.log("[user-story J2] Complete: build, moderate use, schema evolution and recovery all agree");
+});
+
+test("three distinct datalets survive switching, archiving and recovery", async ({ page }) => {
+  test.setTimeout(120_000);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const server = await installFakeSyncServer(page);
+
+  console.log("[user-story J5] Creating the first synced datalet and making it recognisable");
+  await page.goto("/settings/datalets");
+  await page.getByRole("button", { name: "Create sync vault" }).click();
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await buildDistinctDatalet(page, J5_DATALETS[0]);
+
+  for (let index = 1; index < J5_DATALETS.length; index += 1) {
+    const identity = J5_DATALETS[index];
+    console.log(`[user-story J5] Creating and distinguishing datalet ${index + 1}/3: ${identity.title}`);
+    await page.goto("/settings/datalets");
+    const previousActive = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}").activeId as string);
+    const reloaded = page.waitForEvent("framenavigated", {
+      predicate: (frame) => frame === page.mainFrame(),
+    });
+    await page.getByRole("button", { name: "Start an empty one" }).click();
+    await reloaded;
+    await page.waitForLoadState("domcontentloaded");
+    await expect.poll(() => page.evaluate(() =>
+      JSON.parse(localStorage.getItem("meta-ui-builder:datalets") ?? "{}").activeId as string))
+      .not.toBe(previousActive);
+    await buildDistinctDatalet(page, identity);
+  }
+  expect(server.vaultCount()).toBe(3);
+
+  console.log("[user-story J5] Switching repeatedly and checking titles, themes and records never bleed");
+  for (const identity of [J5_DATALETS[0], J5_DATALETS[1], J5_DATALETS[2], J5_DATALETS[0]]) {
+    const currentTitle = await page.locator(".app-nav-brand").textContent();
+    if (currentTitle !== identity.title) await openDatalet(page, identity.title);
+    await assertDistinctDatalet(page, identity);
+    expect(await checkInvariants(page)).toEqual([]);
+  }
+
+  console.log("[user-story J5] Archiving the reading datalet, restoring it, and opening it again");
+  await page.goto("/settings/datalets");
+  const readingRow = page.locator("#switch-datalet .layout-row").filter({ hasText: J5_DATALETS[1].title });
+  await readingRow.getByRole("button", { name: "Archive" }).click();
+  await expect(page.getByText("Archived (1)")).toBeVisible();
+  await page.getByText("Archived (1)").click();
+  const archivedReadingRow = page.locator(".datalet-archive .layout-row").filter({ hasText: J5_DATALETS[1].title });
+  await archivedReadingRow.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("Archived (")).toHaveCount(0);
+  await openDatalet(page, J5_DATALETS[1].title);
+  await assertDistinctDatalet(page, J5_DATALETS[1]);
+
+  console.log("[user-story J5] Taking a backup before deletion, then recovering the reading datalet");
+  await page.goto("/settings/datalets");
+  const backupDownload = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export backup" }).click(),
+  ]).then(([download]) => download);
+  const backupPath = await backupDownload.path();
+  expect(backupPath).not.toBeNull();
+
+  await page.goto("/");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.locator(".record-card").getByRole("button", { name: "Delete record" }).click();
+  await expect(page.getByText(J5_DATALETS[1].record, { exact: true })).toHaveCount(0);
+  await waitForActiveOutbox(page);
+
+  await page.goto("/settings/datalets");
+  await importBackup(page, backupPath!);
+  await assertDistinctDatalet(page, J5_DATALETS[1]);
+  await waitForActiveOutbox(page);
+
+  console.log("[user-story J5] Reopening after recovery to prove the restored data is durable");
+  await openDatalet(page, J5_DATALETS[2].title);
+  await openDatalet(page, J5_DATALETS[1].title);
+  await assertDistinctDatalet(page, J5_DATALETS[1]);
+
+  expect(server.violations).toEqual([]);
+  expect(await checkInvariants(page)).toEqual([]);
+  expect(pageErrors).toEqual([]);
+  console.log("[user-story J5] Complete: three identities, archive/rejoin and backup recovery all agree");
 });

@@ -605,6 +605,65 @@ export function snapshotPatches(key: string, record: OrmRecord): Patch[] {
   return patches;
 }
 
+/** The smallest patch set that turns one complete graph snapshot into another. */
+function snapshotDiffPatches(previous: Store, next: Store): Patch[] {
+  const patches: Patch[] = [];
+  for (const key of Object.keys(previous)) {
+    if (!(key in next)) {
+      patches.push({ op: "remove", path: `/${encodePathSegment(key)}` });
+    }
+  }
+  for (const [key, record] of Object.entries(next)) {
+    const before = previous[key];
+    if (!before) {
+      patches.push(...snapshotPatches(key, record));
+      continue;
+    }
+    const root = `/${encodePathSegment(key)}`;
+    for (const property of new Set([...Object.keys(before), ...Object.keys(record)])) {
+      const path = `${root}/${encodePathSegment(property)}`;
+      if (!Object.prototype.hasOwnProperty.call(record, property)) {
+        patches.push({ op: "remove", path });
+        continue;
+      }
+      const value = record[property];
+      if (JSON.stringify(before[property]) === JSON.stringify(value)) continue;
+      if (Array.isArray(value)) {
+        patches.push({ op: "add", path, value, type: "set", valType: "set" });
+      } else {
+        patches.push({ op: "add", path, value });
+      }
+    }
+  }
+  return patches;
+}
+
+/**
+ * Send a wholesale local operation through the same listeners as ordinary ORM
+ * edits. Chunks stay below both the client/server patch-count limit and the
+ * HTTP request ceiling; every listener persists its outbox entry synchronously,
+ * so an immediate reload cannot lose the restore.
+ */
+function emitLocalSnapshotDiff(patches: Patch[], shape: string) {
+  const batches: Patch[][] = [];
+  let batch: Patch[] = [];
+  let bytes = 0;
+  for (const patch of patches) {
+    const patchBytes = JSON.stringify(patch).length + 1;
+    if (batch.length > 0 && (batch.length >= 4_000 || bytes + patchBytes > 1_500_000)) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(patch);
+    bytes += patchBytes;
+  }
+  if (batch.length > 0) batches.push(batch);
+  for (const patches of batches) {
+    for (const listener of localPatchListeners) listener(patches, shape);
+  }
+}
+
 function inversePatchesFor(patches: Patch[]): Patch[] {
   const byKey = new Map<string, Patch[]>();
   for (const patch of patches) {
@@ -1201,7 +1260,11 @@ export function flushLocalPersistence() {
  * data but not shape identity — after reload, each subscription's normal
  * startup path recomputes its own matching records from the updated store.
  */
-export function replaceGraphAndReload(graph: string, records: Store) {
+export function replaceGraphAndReload(graph: string, records: Store, localShape?: string) {
+  const previous = Object.fromEntries(
+    Object.entries(store).filter(([, record]) => record["@graph"] === graph),
+  ) as Store;
+  const outbound = localShape ? snapshotDiffPatches(previous, records) : [];
   // Mutates `store` directly rather than via applyPatchesToStore, so it
   // must mark its own touched ids dirty - persistNow() only flushes what's
   // in dirtyIds, and this function calls it directly right below.
@@ -1218,6 +1281,7 @@ export function replaceGraphAndReload(graph: string, records: Store) {
     dirtyIds.add(key);
   }
   persistNow();
+  if (localShape && outbound.length > 0) emitLocalSnapshotDiff(outbound, localShape);
   window.location.reload();
 }
 
@@ -1376,7 +1440,7 @@ export function importGraphBackup(targetGraph: string, value: unknown): void {
       `The restored browser data needs ${projectedBytes.toLocaleString()} bytes; the safety limit is ${RUNTIME_LIMITS.storedBytes.toLocaleString()} bytes.`,
     );
   }
-  replaceGraphAndReload(targetGraph, restored);
+  replaceGraphAndReload(targetGraph, restored, "did:ng:z:BackupRestore");
 }
 
 channel?.addEventListener("message", onChannelMessage);

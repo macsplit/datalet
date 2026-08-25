@@ -16,6 +16,7 @@
     "test:server": "tsx --env-file-if-exists=.env.local --test --test-force-exit --test-concurrency=1 server/test/**/*.test.ts",
     "test:smoke:sync": "tsx --env-file-if-exists=.env.local server/test/fullStackSmoke.ts",
     "test:smoke:user-story-sync": "tsx --env-file-if-exists=.env.local server/test/multiDeviceUserStorySmoke.ts",
+    "test:smoke:user-story-copy": "tsx --env-file-if-exists=.env.local server/test/copyIndependenceUserStorySmoke.ts",
     "test:smoke:copy-scale": "tsx --env-file-if-exists=.env.local server/test/copyLinkScaleSmoke.ts",
     "test:multi-tenant": "tsx --env-file-if-exists=.env.local server/test/multiTenant.ts",
     "cleanup:neo4j-labels": "tsx --env-file-if-exists=.env.local server/src/cleanupNeo4jLabels.ts",

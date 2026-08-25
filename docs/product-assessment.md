@@ -160,7 +160,7 @@ Materialization runs at about 130 records/s, so the Neo4j copy trails the live
 Redis copy by seconds under load.
 
 **Long-term maintenance is still early.** Coverage is real but uneven: the
-current full run exercises 176 browser tests (175 passing and one intentionally
+current full run exercises 177 browser tests (176 passing and one intentionally
 skipped), 4 built-app offline/PWA tests, and 79 server tests, all in CI.
 The browser suites cover persistence and bootstrap, reader data blocks, schema
 and property editing, tab management, nested blocks, widget management, cleanup
@@ -170,9 +170,11 @@ algebra, the Redis conflict path, snapshot recovery, tombstone purging, stream
 multiplexing and sharding, label bounding, quota atomicity, pairing codes and
 operator statistics, against live Redis and Neo4j. Standalone harnesses outside
 the deterministic suites cover the full browser-to-Neo4j-to-browser path, a
-real two-device live/offline/reconnect journey, a 200-vault multi-tenant
-measurement, randomized composed datalet flows, and concurrent stress against
-durable state.
+real two-device live/offline/reconnect journey, a real source/copy independence
+journey, a 200-vault multi-tenant measurement, randomized composed datalet
+flows, and concurrent stress against durable state. The browser journeys also
+cycle three distinct datalets through archive/restore and a backup recovery
+that is verified after reopening from the synced snapshot.
 
 That is meaningful workflow coverage, not a comprehensive unit or visual test
 matrix — there is no component-level or visual-regression testing at all, and

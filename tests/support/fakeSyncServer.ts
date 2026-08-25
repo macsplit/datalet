@@ -37,19 +37,23 @@ function decodeSegment(segment: string): string {
 
 export async function installFakeSyncServer(page: Page): Promise<FakeSyncServer> {
   const vaults = new Map<string, Record<string, Record<string, unknown>>>();
+  const sequences = new Map<string, number>();
   const violations: SnapshotViolation[] = [];
   let created = 0;
 
   await page.route("**/sync/vaults*", async (route) => {
     const request = route.request();
     if (request.method() === "DELETE") {
-      vaults.delete(new URL(request.url()).searchParams.get("vault") ?? "");
+      const vaultId = new URL(request.url()).searchParams.get("vault") ?? "";
+      vaults.delete(vaultId);
+      sequences.delete(vaultId);
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ deleted: true }) });
     }
     if (request.method() !== "POST") return route.fallback();
     created += 1;
     const vaultId = `${created.toString().padStart(8, "0")}-0000-4000-8000-000000000000`;
     vaults.set(vaultId, {});
+    sequences.set(vaultId, 0);
     await route.fulfill({
       status: 200, contentType: "application/json",
       body: JSON.stringify({ vaultId, vaultToken: `TOKEN${created}`.padEnd(32, "x") }),
@@ -74,9 +78,11 @@ export async function installFakeSyncServer(page: Page): Promise<FakeSyncServer>
       else store[subject][property] = patch.value;
     }
     vaults.set(vaultId, store);
+    const seq = (sequences.get(vaultId) ?? 0) + 1;
+    sequences.set(vaultId, seq);
     await route.fulfill({
       status: 200, contentType: "application/json",
-      body: JSON.stringify({ accepted: true, seq: 1, acceptedCount: 1, submittedCount: 1 }),
+      body: JSON.stringify({ accepted: true, seq, acceptedCount: 1, submittedCount: 1 }),
     });
   });
 
@@ -87,7 +93,7 @@ export async function installFakeSyncServer(page: Page): Promise<FakeSyncServer>
     if (problem) violations.push({ vaultId, reason: problem });
     await route.fulfill({
       status: 200, contentType: "application/json",
-      body: JSON.stringify({ seq: 1, records }),
+      body: JSON.stringify({ seq: sequences.get(vaultId) ?? 0, records }),
     });
   });
 

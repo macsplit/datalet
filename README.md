@@ -75,6 +75,12 @@ converge. It starts its own materializer by default. If `./run.sh` is already
 running one, use `SMOKE_EXTERNAL_MATERIALIZER=1 pnpm
 test:smoke:user-story-sync`.
 
+`pnpm test:smoke:user-story-copy` runs J4 against the same real stack: it seeds
+a 64-record source, publishes and accepts a copy link in two isolated browser
+contexts, then proves source and copy edits remain independent in both the UI
+and materialized storage. It also starts its own materializer by default; set
+`SMOKE_EXTERNAL_MATERIALIZER=1` when one is already running.
+
 With Redis and Neo4j available, `pnpm test:multi-tenant` runs the standalone
 200-vault materializer harness. It reports blocking-connection growth, Redis
 memory, per-vault correctness, and materialization lag percentiles, then cleans

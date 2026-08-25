@@ -13,37 +13,38 @@ work lands.
 
 ## Open
 
-### User-story browser journeys
+### Offline removal of an archived datalet
 
-The deterministic journey specification is now
-[`user-story-tests.md`](user-story-tests.md). J1 through J3 are implemented: a
-48-record reading log is imported, used, exported, deleted from and restored;
-and a project tracker is built through the UI, populated with 24 records, then
-evolved through schema, renderer, filtering, sorting and backup recovery; then
-two real browser contexts pair, edit live and offline, reconnect, and converge
-with the Neo4j-backed snapshot.
+Reported from real use: while the app was offline, attempting to remove an
+archived vault permanently left a contentless screen pending indefinitely.
+The offline app could not be reached again until connectivity returned.
 
-J2 found a real interaction that focused tests had missed: editing the active
-sort field could move a card to another page and unmount its form before the
-person could finish. Result order is now frozen only while an editor is open.
+Reproduce and review this as a separate lifecycle task. Expected behaviour:
+an unavailable delete must time out or fail promptly, preserve the archived
+entry and its credentials, show a retryable error, and return control to the
+otherwise-working offline app. Do not treat a local forget as success: the
+server-first deletion order remains necessary to avoid orphaning a vault.
 
-J3 found three more composed sync defects: a stale in-memory acknowledgement
-could erase a newer durable outbox entry; a Redis `$` watcher could skip the
-patch between historical replay and live SSE; and a received patch could reach
-localStorage without invalidating the mounted React shape consumer. The
-outbox now acknowledges against the latest queue, the watcher starts at the
-caller's explicit cursor, and the app-owned shape wrapper bridges external
-engine revisions into React. No vendored dependency code was changed.
+### First-time COPY links should skip the confirmation step
 
-What remains is source-versus-copy independence after sharing a moderate
-datalet (J4), then a multi-datalet lifecycle journey (J5).
+For a valid COPY invite opened in a browser/device that has genuinely never
+used the app before, proceed directly with the clone instead of showing the
+normal yes/no confirmation. Someone receiving their first Datalet link has no
+existing context for that dialog, and there is no established datalet choice
+to protect.
+
+Keep the confirmation for an existing user who has visited or initialized the
+app at any time in the past. The review therefore needs a durable “has ever
+used this app” signal, distinct from whether the current datalet is empty or
+paired; deleting records or leaving a vault must not make a returning browser
+look first-time. Invalid, expired and reused links must still stop with their
+current explicit errors rather than attempting anything automatically.
 
 ### Backup export integrity
 
 Add a top-level integrity hash so a hand-edited backup is detectable and
 explicitly unsupported rather than silently accepted as a genuine export. The
-format and compatibility policy still need designing; implementation follows
-the user-story tranche above.
+format and compatibility policy still need designing.
 
 ### Multi-hour endurance run — resource behaviour only
 
@@ -188,6 +189,22 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### User-story browser journeys J1–J5
+
+[`user-story-tests.md`](user-story-tests.md) is fully implemented. The journeys
+cover adopting and maintaining an established tracker; building and evolving a
+moderate tracker; two-device live/offline convergence against the real stack;
+source/copy independence after sharing; and three distinct datalets through
+repeated switches, archive/restore and durable backup recovery.
+
+The composed journeys found five product defects that focused tests had missed:
+an editor unmounted when its sort value moved pages; an in-flight sync
+acknowledgement erased a newer queued edit; the Redis historical-to-live SSE
+handoff could skip a patch; remote patches did not invalidate mounted React
+consumers; and backup import into a synced datalet was only local, so reopening
+silently undid the apparent recovery. Each is fixed in repo-owned code. No
+vendored dependency code was changed.
 
 ### The server suite ran itself into the ground
 
