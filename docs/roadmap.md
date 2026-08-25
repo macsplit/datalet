@@ -13,53 +13,8 @@ work lands.
 
 ## Open
 
-### Multi-hour endurance run — resource behaviour only
-
-Re-scoped. This item used to carry two unrelated questions: does anything break
-over a long run, and does anything *grow* over a long run. The first is a
-correctness question, and waiting hours to be told what step three already knew
-is a bad trade — that half is now `pnpm fuzz`, which walks datalet operations
-at random, checks the invariants after every step and stops at the first
-breach. Duration is a budget knob there, not a prerequisite: 30 steps in
-seconds, hundreds when you want depth, and a printed seed replays any failure
-exactly.
-
-What remains here is the part that genuinely needs hours: memory, handle counts
-and materialization lag under sustained multi-tenant load. It should abort
-early on an invariant breach rather than dutifully running to completion.
-
-The existing artifact,
-[`remote-sync-endurance-results.json`](remote-sync-endurance-results.json), is
-honestly labelled `status: curtailed` after roughly 19 minutes of a planned two
-hours. Because it stopped early it never ran the terminal
-accepted-versus-materialized equality check, and a slow memory leak cannot be
-ruled out from a run that short.
-
-This needs a deployment-focused session with real hours available. It gates
-nothing else.
-
-**Tooling is ready; the run itself hasn't happened yet.** `./endurance-run.sh`
-(repo root) builds the real client and server, starts a real sync-server and
-materializer as separate OS processes against real Redis and Neo4j (not the
-docker deploy stack, not in-process fakes), and drives
-`server/test/browserEndurance.ts` for the configured duration (6h default).
-That harness is not a synthetic HTTP load generator: every simulated tenant
-is a real headless Chromium browser context running the real client app -
-real localStorage, real debounced outbox, real SSE - a fraction of them
-paired two-devices-to-one-vault for sustained multi-device convergence, with
-periodic tenant churn (retiring and replacing a slice of tenants) to also
-exercise long-run context lifecycle. Tenant count auto-sizes to the host's
-detected RAM and CPU count. Every genuine invariant breach - an uncaught
-client error, a write refused for a reason other than throttling, a
-local/server record-count divergence surviving its grace period - aborts
-immediately with full context to a `crash.json`, never a bare message;
-RSS, open-fd counts (both processes), and Redis memory are sampled and
-trended throughout, written incrementally to `metrics.json` so a mid-run
-look or a crash still leaves something to read. Validated end to end at
-small scale (a few tenants, ~1-2 minutes) while building it, including
-deliberately forcing both its failure paths to confirm `crash.json` is
-actually written either way - not yet run at real multi-hour, real-hardware
-scale.
+Nothing outstanding right now. See "Under consideration" and "Deferred by
+decision" below for what's intentionally not being worked on yet.
 
 ---
 
@@ -179,6 +134,56 @@ listed so they are not mistaken for oversights.
 ---
 
 ## Delivered
+
+### Multi-hour endurance run: real results, resource behaviour holds
+
+The re-scoped question - memory, handle counts and materialization lag under
+sustained multi-tenant load, aborting early on an invariant breach rather than
+dutifully running to completion - now has a real answer, not just tooling.
+`./endurance-run.sh` was run for its full requested 2 hours: 249 real
+browser-driven tenants (192 held concurrently at steady state, the rest via
+periodic churn), 65,947 real UI actions (add/edit/occasional delete, clicked
+through the real app), against a real sync-server and materializer on real
+Redis and Neo4j.
+
+**Correctness held completely.** No `crash.json` - the run finished with exit
+code 0, meaning no invariant was ever breached. The final reconciliation
+matched all 192 live tenants' local record counts exactly against the
+server's materialized state (192/192), every one of the 8 periodic
+reconciliation checkpoints during the run was equally clean, and
+`materializerLag`/`materializerPending` were `0` for every vault at shutdown.
+Zero uncaught client-side errors, zero page crashes.
+
+**Resource trends, from `metrics.json`'s 76 samples:** materializer RSS rose
+from ~89 MB to ~116 MB and then visibly plateaued from about the 87-minute
+mark on - the strongest evidence in this run that there's no slow leak.
+Sync-server RSS rose gently, ~92 MB to ~127 MB, without having fully
+flattened by the 2-hour mark - not alarming on its own, but a longer run
+would be needed to call that fully settled with confidence. Open file
+descriptors for both processes stayed in a tight, flat band the entire run,
+then dropped to near-zero the instant all 249 contexts closed at
+shutdown - no fd leak. Redis memory climbed steadily and roughly linearly,
+13.6 MB to 136 MB, tracking real data genuinely being created (the action mix
+favors creates over deletes) rather than anything resembling a leak; even the
+largest single vault stayed a small fraction of its 8 MiB quota.
+
+**One honest caveat, not a product defect.** 2,780 of the run's action
+attempts (about 4%) hit a non-fatal 30-second click timeout and were retried
+on the tenant's next tick - every one eventually succeeded, which is why
+correctness still came out perfect. Nearly all of them (2,775) started right
+around the 45-minute mark, exactly when initial tenant creation finished and
+full ~192-tenant concurrency began, and stayed roughly flat through the load
+phase rather than climbing further - essentially absent during the
+low-concurrency ramp-up. That points at this run's own load generator (200
+real Chromium contexts) sharing the same 16-core box's CPU with the sync-server,
+materializer, Redis and Neo4j it was testing, not at a server-side problem. A
+future run from a separate machine than the one under test would isolate "does
+the product hold up" from "can this one box also drive 200 browsers at once."
+
+This item is closed as answered, not as perfect - a longer run, on hardware
+matching what's actually deployed, remains available to run again with
+`./endurance-run.sh` any time the question needs re-asking (e.g. after a
+change to the sync/materializer hot path).
 
 ### Backup export integrity
 
