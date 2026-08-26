@@ -135,6 +135,58 @@ listed so they are not mistaken for oversights.
 
 ## Delivered
 
+### Pairing/copy/invite QR codes: link-based, not a bare secret
+
+Reported from real use: the permanent pairing code's QR - full, unrevoked
+read/write access to the vault, forever - decodes to plain text, not a link.
+Scanned with a phone's own camera app (not this app's in-app scanner), at
+least some Android camera apps paste that straight into a Google search box:
+a dead end for the person trying to add a device, and a genuinely bad place
+for that specific secret to sit even briefly.
+
+**Decision: never QR the permanent pairing code.** It stays copy/paste-only,
+for the "both devices already in front of me" case. The temporary PAIR code
+and the COPY code - both already revocable/expiring/single-use in ways the
+permanent code isn't - are the intended scan-to-add-device path instead, and
+their QR now encodes the same `https://.../join?token=...` invite link
+"Copy as Link" already produced (`createInviteLink`, moved from `CloneCodes`
+into `codeRedemption.ts` so `SyncSettings`'s temporary code could reuse it
+rather than duplicate it). Every phone's own camera app already knows what
+to do with a link QR - open it - which lands directly on the existing,
+already-tested `JoinPage.tsx` flow. No new redemption path was built.
+
+`src/utils/qrCode.ts`'s hand-rolled encoder only supported QR "alphanumeric"
+mode (this app's own codes fit it, but lowercase, `?`, `=`, `/` don't), so it
+gained "byte" mode (`encodeLinkQr`) alongside the existing one
+(`encodePairingQr`, unchanged, still used only for the permanent code's own
+manual-entry round trip - not rendered as a QR by anything anymore). Both
+share the existing Reed-Solomon/matrix/masking machinery; only the header
+and payload-bit construction differ. Verified against a real, independent
+QR decoder (`jsqr`, installed only for this one-off check, not a project
+dependency) rather than merely confirmed not to throw - the existing test
+suite had never actually decoded a rendered QR's pixels before. A
+too-long-to-fit URL throws cleanly rather than truncating into a link that
+would silently resolve to the wrong place; callers already treat a QR as
+optional and fall back to the plain link.
+
+New `LinkQr` component (`src/components/LinkQr.tsx`) renders an invite-link
+QR; the SVG-drawing logic it shares with the existing `PairingQr` was
+factored into `QrImage` (`src/components/QrImage.tsx`). `CloneCodes.tsx`
+gained a per-code "Show QR" toggle next to its existing Copy/Copy as
+Link/Revoke buttons; `SyncSettings.tsx`'s temporary-code section gained
+both "Copy as Link" and "Show QR" (previously text-and-Copy only), sharing
+one lazily-minted link between the two rather than minting a fresh one per
+click. `PairingScanner` (in-app camera-based code entry) is untouched and
+still available on the joining side for manual paste/scan.
+
+One existing test asserted the old behaviour (a QR appearing after "Show"
+on the permanent code) and was updated to assert its absence instead. A new
+regression test (`tests/no-overflow.spec.ts`) covers both newly-widened
+rows - CloneCodes' row grew a fifth button, the temporary code's row grew
+from two to four - at both viewport widths, and was confirmed to actually
+fail if `.layout-row`'s `flex-wrap` were ever removed again (the same class
+of bug that prompted this file's existing tests).
+
 ### Multi-hour endurance run: real results, resource behaviour holds
 
 The re-scoped question - memory, handle counts and materialization lag under

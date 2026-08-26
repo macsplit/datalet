@@ -20,19 +20,17 @@ function appendBits(target: number[], value: number, length: number) {
   for (let bit = length - 1; bit >= 0; bit -= 1) target.push(((value >>> bit) & 1) !== 0 ? 1 : 0);
 }
 
-function dataCodewords(text: string): number[] {
-  if (text.length > 114 || [...text].some((character) => !ALPHANUMERIC.includes(character))) {
-    throw new Error("Pairing QR payload must be at most 114 QR-alphanumeric characters.");
-  }
-  const bits: number[] = [];
-  appendBits(bits, 0b0010, 4); // Alphanumeric mode.
-  appendBits(bits, text.length, 9); // Version 1-9 character count width.
-  for (let index = 0; index + 1 < text.length; index += 2) {
-    appendBits(bits, ALPHANUMERIC.indexOf(text[index]) * 45 + ALPHANUMERIC.indexOf(text[index + 1]), 11);
-  }
-  if (text.length % 2 === 1) appendBits(bits, ALPHANUMERIC.indexOf(text.at(-1)!), 6);
-
+/**
+ * Pad a mode+payload bit sequence out to `DATA_CODEWORDS` bytes: a
+ * terminator (up to 4 zero bits), padding to a byte boundary, then
+ * alternating fill bytes. Shared by both QR modes below - this part of the
+ * spec doesn't care what produced the bits, only how many there are.
+ */
+function finishBits(bits: number[]): number[] {
   const capacity = DATA_CODEWORDS * 8;
+  if (bits.length > capacity) {
+    throw new Error(`QR payload needs ${bits.length} bits; this QR version holds ${capacity}.`);
+  }
   appendBits(bits, 0, Math.min(4, capacity - bits.length));
   while (bits.length % 8 !== 0) bits.push(0);
   const bytes: number[] = [];
@@ -41,6 +39,37 @@ function dataCodewords(text: string): number[] {
   }
   for (let pad = 0; bytes.length < DATA_CODEWORDS; pad += 1) bytes.push(pad % 2 === 0 ? 0xec : 0x11);
   return bytes;
+}
+
+/** QR "alphanumeric" mode: this app's own pairing/pair/copy codes fit entirely
+ * within its restricted character set, so this mode packs them at roughly
+ * 5.5 bits/character rather than byte mode's 8. */
+function alphanumericBits(text: string): number[] {
+  if (text.length > 114 || [...text].some((character) => !ALPHANUMERIC.includes(character))) {
+    throw new Error("QR payload must be at most 114 QR-alphanumeric characters.");
+  }
+  const bits: number[] = [];
+  appendBits(bits, 0b0010, 4); // Alphanumeric mode.
+  appendBits(bits, text.length, 9); // Version 1-9 character count width.
+  for (let index = 0; index + 1 < text.length; index += 2) {
+    appendBits(bits, ALPHANUMERIC.indexOf(text[index]) * 45 + ALPHANUMERIC.indexOf(text[index + 1]), 11);
+  }
+  if (text.length % 2 === 1) appendBits(bits, ALPHANUMERIC.indexOf(text.at(-1)!), 6);
+  return bits;
+}
+
+/** QR "byte" mode: the only mode that can hold a URL - lowercase letters,
+ * `?`, `=`, `/` and `.` are all outside alphanumeric mode's character set. */
+function byteBits(text: string): number[] {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length > 255) {
+    throw new Error("QR payload must be at most 255 bytes (this QR version holds far fewer than that anyway).");
+  }
+  const bits: number[] = [];
+  appendBits(bits, 0b0100, 4); // Byte mode.
+  appendBits(bits, bytes.length, 8); // Version 1-9 byte-count width.
+  for (const byte of bytes) appendBits(bits, byte, 8);
+  return bits;
 }
 
 function gfMultiply(left: number, right: number): number {
@@ -213,9 +242,8 @@ function penalty(modules: boolean[][]): number {
   return score;
 }
 
-/** Encode an LG1 pairing string as a standards-compliant Version 4-L QR matrix. */
-export function encodePairingQr(text: string): QrCode {
-  const codewords = addErrorCorrection(dataCodewords(text));
+function buildQr(payloadBits: number[]): QrCode {
+  const codewords = addErrorCorrection(finishBits(payloadBits));
   const { modules: base, functions } = blankMatrix();
   drawFunctionPatterns(base, functions);
   let best: QrCode | undefined;
@@ -229,4 +257,22 @@ export function encodePairingQr(text: string): QrCode {
     }
   }
   return best!;
+}
+
+/** Encode an LG1 pairing string as a standards-compliant Version 4-L QR matrix. */
+export function encodePairingQr(text: string): QrCode {
+  return buildQr(alphanumericBits(text));
+}
+
+/**
+ * Encode an https:// invite link (COPY or PAIR) as a Version 4-L QR matrix.
+ * Byte mode's overhead means less room than `encodePairingQr` gets from the
+ * same 80 data codewords - about 78 bytes here, comfortably above a typical
+ * `https://<host>/join?token=<uuid>` (a bare UUID token is 36 characters),
+ * but not unbounded for an unusually long self-hosted domain. Throws rather
+ * than truncating a link into one that silently resolves to something else;
+ * callers already treat a QR as optional and fall back to the copyable link.
+ */
+export function encodeLinkQr(url: string): QrCode {
+  return buildQr(byteBits(url));
 }

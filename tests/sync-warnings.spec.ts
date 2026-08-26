@@ -202,9 +202,10 @@ test("vault creation works when crypto.randomUUID is unavailable", async ({ page
   await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Create sync vault" }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await expect(page.getByRole("img", { name: "Pairing QR code" })).toHaveCount(0);
   await page.getByRole("button", { name: "Show" }).click();
-  await expect(page.getByRole("img", { name: "Pairing QR code" })).toBeVisible();
+  // No QR of this code, deliberately: it's forever, unrevoked full access,
+  // and the wrong candidate for whatever camera app someone points at it.
+  await expect(page.getByRole("img", { name: "Pairing QR code" })).toHaveCount(0);
   await expect(page.getByLabel("Pairing code", { exact: true })).toHaveValue(/^LG1-/);
   await expect.poll(() => submitted).toBeTruthy();
 

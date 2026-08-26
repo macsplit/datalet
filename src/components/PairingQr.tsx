@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { encodePairingQr, type QrCode } from "../utils/qrCode";
+import { QrImage } from "./QrImage";
 
 /**
  * Renders as text below, whatever happens here: a code this can't turn into
@@ -19,27 +20,7 @@ function tryEncode(value: string): QrCode | undefined {
 
 export function PairingQr({ value }: { value: string }) {
   const qr = useMemo(() => tryEncode(value), [value]);
-  if (!qr) {
-    return <p className="helper-text">QR code unavailable for this code - use the text above instead.</p>;
-  }
-  const quietZone = 4;
-  const size = qr.modules.length + quietZone * 2;
-  const path = qr.modules.flatMap((row, y) =>
-    row.flatMap((dark, x) => dark ? [`M${x + quietZone} ${y + quietZone}h1v1h-1z`] : []),
-  ).join("");
-  return (
-    <svg
-      className="pairing-qr"
-      viewBox={`0 0 ${size} ${size}`}
-      role="img"
-      aria-label="Pairing QR code"
-      shapeRendering="crispEdges"
-    >
-      <title>Pairing QR code</title>
-      <rect width={size} height={size} fill="#fff" />
-      <path d={path} fill="#000" />
-    </svg>
-  );
+  return <QrImage qr={qr} label="Pairing QR code" className="pairing-qr" />;
 }
 
 type DetectedBarcode = { rawValue?: string };

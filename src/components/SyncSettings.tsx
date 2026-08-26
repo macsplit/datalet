@@ -11,7 +11,9 @@
 import { useState } from "react";
 import { clearVaultConfig, getVaultConfig, rotateVaultToken, setVaultConfig } from "../utils/remoteSyncEngine";
 import { decodePairingCode, encodePairingCode } from "../utils/pairingCode";
-import { PairingQr, PairingScanner } from "./PairingQr";
+import { createInviteLink } from "../utils/codeRedemption";
+import { PairingScanner } from "./PairingQr";
+import { LinkQr } from "./LinkQr";
 import usePrivateNuri from "./usePrivateNuri";
 import { copyText } from "../utils/clipboard";
 
@@ -43,13 +45,20 @@ export function SyncSettings() {
   // buttons meant copying the temporary code also reported success under the
   // pairing code - and replaced its "anyone with this code can read and write
   // this vault" warning with "Copied." for two seconds.
-  const [copied, setCopied] = useState<"" | "pairing" | "temporary">("");
+  const [copied, setCopied] = useState<"" | "pairing" | "temporary" | "temporary-link">("");
   const [copyFailed, setCopyFailed] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [rotateError, setRotateError] = useState<string | undefined>();
   const [generatingTemporary, setGeneratingTemporary] = useState(false);
   const [temporaryCode, setTemporaryCode] = useState<string>();
   const [temporaryExpiresAt, setTemporaryExpiresAt] = useState<string>();
+  // The temporary code wrapped as a one-time invite link, minted lazily and
+  // shared by "Copy as Link" and "Show QR" - two different actions on the
+  // same underlying share, not two different links to keep straight.
+  const [temporaryLink, setTemporaryLink] = useState<string>();
+  const [linkingTemporary, setLinkingTemporary] = useState(false);
+  const [showTemporaryQr, setShowTemporaryQr] = useState(false);
+  const [qrLoadingTemporary, setQrLoadingTemporary] = useState(false);
 
   async function handleCreate() {
     setCreating(true);
@@ -150,10 +159,58 @@ export function SyncSettings() {
       }
       setTemporaryCode(body.code);
       setTemporaryExpiresAt(body.expiresAt);
+      // A fresh code needs its own link - the previous one, if any, still
+      // points at a now-superseded code.
+      setTemporaryLink(undefined);
+      setShowTemporaryQr(false);
     } catch (err) {
       setRotateError(err instanceof Error ? err.message : "Could not create a temporary pair code.");
     } finally {
       setGeneratingTemporary(false);
+    }
+  }
+
+  /** Mints the temporary code's invite link on first need, then reuses it. */
+  async function ensureTemporaryLink(): Promise<string> {
+    if (temporaryLink) return temporaryLink;
+    if (!temporaryCode) throw new Error("Create a temporary code first.");
+    const link = await createInviteLink("PAIR", temporaryCode);
+    setTemporaryLink(link);
+    return link;
+  }
+
+  async function handleCopyTemporaryLink() {
+    setLinkingTemporary(true);
+    setRotateError(undefined);
+    try {
+      const link = await ensureTemporaryLink();
+      if (await copyText(link)) {
+        setCopied("temporary-link");
+        setTimeout(() => setCopied(""), 2000);
+      } else {
+        setRotateError("This browser would not let the page copy for you. The link was created but not copied.");
+      }
+    } catch (err) {
+      setRotateError(err instanceof Error ? err.message : "That link could not be created.");
+    } finally {
+      setLinkingTemporary(false);
+    }
+  }
+
+  async function handleToggleTemporaryQr() {
+    if (showTemporaryQr) {
+      setShowTemporaryQr(false);
+      return;
+    }
+    setQrLoadingTemporary(true);
+    setRotateError(undefined);
+    try {
+      await ensureTemporaryLink();
+      setShowTemporaryQr(true);
+    } catch (err) {
+      setRotateError(err instanceof Error ? err.message : "That QR code could not be created.");
+    } finally {
+      setQrLoadingTemporary(false);
     }
   }
 
@@ -272,7 +329,16 @@ export function SyncSettings() {
             {pairingCodeError} You can still leave this vault or rotate its token.
           </p>
         )}
-        {showPairingCode && pairingCode !== "" && <PairingQr value={pairingCode} />}
+        {/* No QR for the code above, deliberately: it's forever, unrevoked
+            full read/write access, and a QR is scanned by whatever camera
+            app someone reaches for - usually the phone's own, not this
+            app's. That app has no idea what a "pairing code" is, so on at
+            least some Android camera apps a non-link QR lands straight in a
+            search box: the worst possible place for this specific secret to
+            sit, even briefly. The temporary code below is the intended
+            scan-to-add-device path instead - it's short-lived, single-use,
+            and its QR is a real https:// link, which every camera app
+            already knows what to do with. */}
         <div className="field-group">
           <button
             type="button"
@@ -284,19 +350,43 @@ export function SyncSettings() {
           </button>
           <p className="helper-text">
             For a device elsewhere: this short code expires after 10 minutes and works once.
+            Scanning the QR (or opening the link) on that device does the same thing.
           </p>
           {temporaryCode && (
-            <div className="layout-row">
-              <input className="input" aria-label="Temporary pair code" readOnly value={temporaryCode} />
-              <button
-                type="button"
-                className="secondary-btn"
-                aria-label="Copy temporary pair code"
-                onClick={() => void handleCopy(temporaryCode, "temporary")}
-              >
-                {copied === "temporary" ? "Copied" : "Copy"}
-              </button>
-            </div>
+            <>
+              <div className="layout-row">
+                <input className="input" aria-label="Temporary pair code" readOnly value={temporaryCode} />
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  aria-label="Copy temporary pair code"
+                  onClick={() => void handleCopy(temporaryCode, "temporary")}
+                >
+                  {copied === "temporary" ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  aria-label="Copy a link for the temporary pair code"
+                  disabled={linkingTemporary}
+                  onClick={() => void handleCopyTemporaryLink()}
+                >
+                  {linkingTemporary ? "Working…" : copied === "temporary-link" ? "Copied" : "Copy as Link"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  aria-label={showTemporaryQr ? "Hide QR code for the temporary pair code" : "Show QR code for the temporary pair code"}
+                  disabled={qrLoadingTemporary}
+                  onClick={() => void handleToggleTemporaryQr()}
+                >
+                  {qrLoadingTemporary ? "Working…" : showTemporaryQr ? "Hide QR" : "Show QR"}
+                </button>
+              </div>
+              {showTemporaryQr && temporaryLink && (
+                <LinkQr url={temporaryLink} label="Invite QR code for the temporary pair code" />
+              )}
+            </>
           )}
           {temporaryExpiresAt && (
             <p className="helper-text">

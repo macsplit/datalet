@@ -11,29 +11,10 @@
 import { useEffect, useState } from "react";
 import { getVaultConfig } from "../utils/remoteSyncEngine";
 import { copyText } from "../utils/clipboard";
+import { createInviteLink } from "../utils/codeRedemption";
+import { LinkQr } from "./LinkQr";
 
 type CloneCode = { code: string; createdAt: number };
-
-/**
- * Mint a single-use, 7-day link wrapping a code, and return the full URL to
- * share. A raw `?code=COPY-...` link was the alternative rejected earlier:
- * the code itself would then sit in browser history, referrer headers and
- * server logs anywhere the link passed through. A wrapping token carries
- * none of that - it is worthless to anyone but the one-time exchange.
- */
-async function inviteLinkFor(codeType: "COPY" | "PAIR", code: string): Promise<string> {
-  const response = await fetch("/sync/invite-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ codeType, code }),
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => undefined) as { reason?: string } | undefined;
-    throw new Error(body?.reason ?? `Could not create a link (status ${response.status}).`);
-  }
-  const { inviteToken } = await response.json() as { inviteToken: string };
-  return `${window.location.origin}/join?token=${inviteToken}`;
-}
 
 /**
  * Publishing a copy of this datalet.
@@ -49,6 +30,12 @@ export function CloneCodes() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [linking, setLinking] = useState("");
+  // Which code's QR panel is open, and the invite link minted for it - kept
+  // separately from `linking`'s Copy-as-Link flow so opening the QR doesn't
+  // mint a second, different one-time link nobody asked for.
+  const [qrFor, setQrFor] = useState("");
+  const [qrLinks, setQrLinks] = useState<Record<string, string>>({});
+  const [qrLoading, setQrLoading] = useState("");
 
   useEffect(() => {
     if (!config) return;
@@ -133,7 +120,7 @@ export function CloneCodes() {
     setLinking(code);
     setError("");
     try {
-      const link = await inviteLinkFor("COPY", code);
+      const link = await createInviteLink("COPY", code);
       if (await copyText(link)) {
         setCopied(`link:${code}`);
         setTimeout(() => setCopied(""), 2000);
@@ -145,6 +132,27 @@ export function CloneCodes() {
     } finally {
       setLinking("");
     }
+  };
+
+  const toggleQr = async (code: string) => {
+    if (qrFor === code) {
+      setQrFor("");
+      return;
+    }
+    setError("");
+    if (!qrLinks[code]) {
+      setQrLoading(code);
+      try {
+        const link = await createInviteLink("COPY", code);
+        setQrLinks((current) => ({ ...current, [code]: link }));
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "That QR code could not be created.");
+        setQrLoading("");
+        return;
+      }
+      setQrLoading("");
+    }
+    setQrFor(code);
   };
 
   return (
@@ -169,7 +177,8 @@ export function CloneCodes() {
         : (
           <div className="section-stack">
             {codes.map((entry) => (
-              <div className="layout-row" key={entry.code}>
+              <div key={entry.code}>
+              <div className="layout-row">
                 <input className="input" readOnly aria-label={`Copy code ${entry.code}`} value={entry.code} />
                 <button
                   type="button"
@@ -192,12 +201,25 @@ export function CloneCodes() {
                 </button>
                 <button
                   type="button"
+                  className="secondary-btn"
+                  aria-label={qrFor === entry.code ? `Hide QR code for ${entry.code}` : `Show QR code for ${entry.code}`}
+                  disabled={qrLoading === entry.code}
+                  onClick={() => void toggleQr(entry.code)}
+                >
+                  {qrLoading === entry.code ? "Working…" : qrFor === entry.code ? "Hide QR" : "Show QR"}
+                </button>
+                <button
+                  type="button"
                   className="secondary-btn danger-text"
                   disabled={busy}
                   onClick={() => void revoke(entry.code)}
                 >
                   Revoke
                 </button>
+              </div>
+              {qrFor === entry.code && qrLinks[entry.code] && (
+                <LinkQr url={qrLinks[entry.code]} label={`Invite QR code for copy code ${entry.code}`} />
+              )}
               </div>
             ))}
           </div>

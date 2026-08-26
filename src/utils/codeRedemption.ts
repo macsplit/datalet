@@ -81,6 +81,28 @@ export function extractInviteToken(pasted: string): string | undefined {
 }
 
 /**
+ * Mint a single-use, 7-day link wrapping a COPY or PAIR code, and return the
+ * full URL to share. A raw `?code=COPY-...` link was the alternative
+ * rejected earlier: the code itself would then sit in browser history,
+ * referrer headers and server logs anywhere the link passed through. A
+ * wrapping token carries none of that - it is worthless to anyone but the
+ * one-time exchange.
+ */
+export async function createInviteLink(codeType: "COPY" | "PAIR", code: string): Promise<string> {
+  const response = await fetch("/sync/invite-token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ codeType, code }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => undefined) as { reason?: string } | undefined;
+    throw new Error(body?.reason ?? `Could not create a link (status ${response.status}).`);
+  }
+  const { inviteToken } = await response.json() as { inviteToken: string };
+  return `${window.location.origin}/join?token=${inviteToken}`;
+}
+
+/**
  * Redeem an invite token (from /join or a pasted link) into the code it
  * wraps. Tries COPY then PAIR, since the pasted token alone doesn't say
  * which kind it is - only the server, which minted it, knows.

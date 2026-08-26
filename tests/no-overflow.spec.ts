@@ -147,6 +147,40 @@ test("the datalet switcher's archived section, expanded, still doesn't overflow"
   await assertNoHorizontalOverflow(page, "/settings/datalets with archived section expanded");
 });
 
+for (const viewport of VIEWPORTS) {
+  test(`the copy-code and temporary-code QR panels, expanded, still don't overflow at ${viewport.width}px`, async ({ page }) => {
+    // The exact same class of risk the two tests above guard against, for
+    // the two newest not-default-visible rows: CloneCodes' row grew a fifth
+    // button (Show QR) alongside its existing four, and the temporary pair
+    // code's row grew from two buttons to four. Checked at both widths, not
+    // just the laptop one: a wider row is more likely to overflow at the
+    // narrower breakpoint, not less.
+    await page.setViewportSize({ width: viewport.width, height: 900 });
+    await seedBusySettings(page);
+    await page.route("**/sync/invite-token", (route) => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        inviteToken: "11111111-1111-4111-8111-111111111111",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    }));
+    await page.route("**/sync/pair-code*", (route) => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ code: "PAIR-ABCD1234", expiresAt: new Date(Date.now() + 600_000).toISOString() }),
+    }));
+    await page.goto("/settings/datalets");
+
+    await page.getByRole("button", { name: /Show QR code for COPY-/ }).first().click();
+    await expect(page.getByRole("img", { name: /Invite QR code for copy code/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Create temporary code" }).click();
+    await page.getByRole("button", { name: "Show QR code for the temporary pair code" }).click();
+    await expect(page.getByRole("img", { name: "Invite QR code for the temporary pair code" })).toBeVisible();
+
+    await assertNoHorizontalOverflow(page, `/settings/datalets with both QR panels expanded at ${viewport.width}px`);
+  });
+}
+
 test.skip("regression: layout-row without flex-wrap overflows a four-button row", async ({ page }) => {
   // Not run - a permanent record of what this suite is guarding against and
   // how to prove it still would. To actually exercise this failure again,
