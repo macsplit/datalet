@@ -44,6 +44,11 @@ what caught most of the defects below — several were invisible from the UI.
 | 20 | Theme follow-ups: the colour controls moved onto their own page, the picker and preview merged into one swatch, a per-colour reset, and a minimum-contrast floor whose sweep tests found two real defects in it. |
 | 21 | Persistent storage requested and its answer reported honestly, plus a theme-color that follows the stored palette per scheme. |
 | 22 | Datalets: whole-origin storage accounting, per-datalet pairing, a switcher that restores before evicting, adding one, and copy codes that hand over a copy rather than access. |
+| 23 | Invite-token links: disposable single-use links wrapping a COPY or PAIR code, so a code never has to be shared as human-typable text. |
+| 24 | Six real, user-reported defects found and fixed in the copy/join flow: a materializer-lag race, a silent client-side failure that swallowed errors, a storage-key mismatch (the actual root cause behind an "empty copy" report), an over-eager first-time-visitor guard, a partial-copy-at-scale retry bug, and a third-party ORM id-generation defect. |
+| 25 | User-story browser tests J1-J5: full, realistic, multi-step journeys through the app (not isolated scenarios), which found five more real defects the existing suite had missed. |
+| 26 | The `markdown` field type: a hand-rolled, dependency-free renderer, safe by construction. |
+| 27 | Product-quality fixes from real use: offline archived-vault removal timing out cleanly, first-time COPY links skipping an unnecessary confirmation, a backup export integrity hash, a real multi-hour multi-tenant endurance run, link-based pairing/copy QR codes, and honest mobile storage-persistence messaging. |
 
 ---
 
@@ -271,3 +276,386 @@ pre-existing by stashing the local changes. Fixed with an inert-batch guard in
 the live store — the first attempt compared against the live store, where ORM
 signals had already applied the mutation, and so treated every genuine edit as
 inert.
+
+---
+
+## Invite-token links
+
+A COPY or PAIR code can be wrapped in a disposable, single-use link instead of
+sharing the human-typable code directly — the pattern Zoom uses for meeting
+invites.
+
+- **`server/src/pairCode.ts`**: code entropy doubled from 40 to 80 bits
+  (`randomBytes(10)`, 16-character payload). COPY codes also gained a 30-day
+  TTL (`COPY_CODE_TTL_SECONDS`) — previously durable/forever, too weak for a
+  persistent secret at the old entropy.
+- **`server/src/vaultStore.ts`**: `createInviteToken(codeType, code)` mints a
+  single-use UUID token wrapping a code, 7-day TTL
+  (`INVITE_TOKEN_TTL_SECONDS`). `redeemInviteToken(codeType, token)` redeems it
+  via `GETDEL` (atomic, single-use by construction).
+- **HTTP**: `POST /sync/invite-token` (mint) and `POST /sync/invite-redeem`
+  (redeem) in `server/src/httpServer.ts`, rate-limited the same as pair/clone
+  redemption.
+- **Client**: `src/pages/JoinPage.tsx` at `/join?token=<uuid>` redeems the
+  token (tries COPY then PAIR), shows a confirmation step, then genuinely
+  completes the join/copy — the same `redeemDataletCode` + `adoptVaultAsDatalet`
+  path the manual-paste field uses, not a copy-to-clipboard-and-redirect.
+  `src/utils/codeRedemption.ts` holds the shared code-type-branching logic
+  (`redeemDataletCode`), `extractInviteToken` (recognizes a pasted invite link
+  or bare token), and `redeemInviteToken`, so the manual field and `/join`
+  never judge a code or link differently. `CloneCodes.tsx` gained "Copy as
+  Link" alongside "Copy" for each COPY code.
+- Deliberately **not** wired up at first for PAIR's 10-minute temporary code —
+  wrapping a 10-minute code in a 7-day link would look like a week-long invite
+  that silently stops working after 10 minutes. Revisited later (see "Recent
+  product-quality fixes" below): the temporary code's link is now minted
+  lazily and shared between "Copy as Link" and "Show QR" rather than treated
+  as a mismatch to avoid.
+- **Design decisions**: token in a query param (`?token=`), not a URL fragment
+  — a plain query param was judged acceptable given the token is single-use +
+  7-day TTL, so a leaked link is worthless after one redemption or one week.
+  7-day TTL chosen over 24h (too tight) or 30 days (too loose for a single
+  link, even though the underlying code lives that long). Token type (COPY vs
+  PAIR) is explicit in the API, not inferred, so a token can't be redeemed as
+  the wrong kind.
+- **Tests**: `server/test/inviteTokenHttp.test.ts` (full round trip against a
+  real HTTP server + Redis — mint, redeem once, refuse a second redemption,
+  refuse cross-type redemption, refuse a never-issued token, refuse a
+  malformed code at mint time); `tests/join.spec.ts` and
+  `tests/clone-codes.spec.ts` (COPY and PAIR links complete the join without a
+  second manual paste, an expired/reused token shows a clear message, the same
+  data-loss guard the manual field uses also blocks joining via a link).
+
+A follow-up pass on this same feature found two real bugs: `JoinPage.tsx`'s
+confirm screen computed `canLeaveActiveDatalet()` once at render instead of
+polling it the way `DataletSettings.tsx` already did — the commonest refusal
+(a queued outbox) clears itself moments later as changes sync, and a
+one-shot check never noticed, leaving the confirm button disabled forever.
+Fixed by polling the same way. Separately, a blind text-replace in an earlier
+session (`"durable copy"` → `"valid for 30 days"`, meant only for the
+COPY-code description) had also matched an unrelated sentence in the
+permanent-erasure warning, leaving a broken sentence fragment shipped
+silently for two sessions since no test asserted that exact text. Restored
+via `git log -p`.
+
+---
+
+## Six real bugs in the copy/join flow
+
+Found across several rounds of testing a real, live invite link end to end —
+not through isolated Playwright scenarios, which structurally could not have
+caught most of these. Reported starting point: taking a copy of a datalet via
+an invite link, opening it in a different browser, accepting it — state never
+updated, landed on Settings instead of Home, Home showed nothing.
+
+**1. A materializer-lag race, server-side.** `/sync/snapshot` reads Neo4j, fed
+asynchronously by `materializer.ts` from the same accepted writes that bump
+Redis's `seq` immediately. A vault cloned moments ago can report `seq > 0`
+before Neo4j has replayed it, and come back with zero records even though the
+copy was genuinely accepted. Fixed: `dataletSwitch.ts`'s `fetchVaultSnapshotSettled`
+retries with backoff specifically when `seq > 0` and `records` is empty — that
+combination can't mean "genuinely empty," only "not there yet." `seq === 0` is
+trusted immediately, since a real empty vault must not be delayed.
+
+**2. A silent-failure bug in `JoinPage.tsx`**, worse than the race above and
+probably what the user actually hit. `confirm()` moved the address bar to
+`/settings/datalets` via `window.history.replaceState` before
+`adoptVaultAsDatalet` had succeeded, to stop a reload from retrying an
+already-consumed invite token. But `replaceState` is exactly what TanStack
+Router's history listener reacts to — it unmounted `JoinPage` immediately, so
+if adoption then threw for any reason, the error landed on an already-gone
+component and `setStage({step:"error", ...})` was a silent no-op: no error, a
+drop on Settings, nothing adopted. Fixed: `adopt()` now takes an optional
+`beforeReload` callback, invoked only once every check has already passed,
+immediately before its own `window.location.reload()` — the one point moving
+the address bar is actually safe.
+
+**3. `cloneVault` cleanup hardening.** Only cleaned up (`deleteVault`) on an
+explicit `{accepted: false}` rejection from a chunk, not on the chunk loop
+throwing for any other reason (a Redis error mid-clone). Not client-visible —
+credentials are only returned after the whole loop succeeds — but a half-built
+vault would sit orphaned in Redis forever. Now wrapped so any failure in the
+loop triggers cleanup before rethrowing.
+
+**4. The actual root cause of the "empty copy" report — a storage-key bug.**
+Found *after* the three fixes above, by redeeming the user's real, live,
+unused invite link directly against production and inspecting the raw JSON.
+The snapshot came back non-empty immediately, no materializer lag at all —
+but every record's storage key was still prefixed with the **source** vault's
+graph id, while each record's own `@graph` *property* correctly pointed at
+the new clone. `cloneVault` rewrites `@graph` but was never rewriting the
+subject id itself, and subject ids are `${graph}|${localId}` compound
+strings. Nothing cross-checks a record's key against its own `@graph` value,
+so this was invisible server-side; the client reads records by the new
+graph's key prefix and found none. This predates all three fixes above and is
+unrelated to them — they are all real, correctly-fixed bugs in their own
+right, just not this one. Fixed: `cloneVault` now rewrites the subject id's
+graph prefix in step with `@graph`. The existing test's `seedVault()` fixture
+used a bare id with no graph prefix at all, so the mismatch had no graph
+segment to drift out of sync with — fixed to use the compound form every real
+client actually uses.
+
+Re-verifying against a freshly-wiped deployment surfaced one more real gap: a
+source vault and its clone, created seconds apart, took ~6s for the clone's
+records to appear — close to a full `VAULT_DISCOVERY_INTERVAL_MS` (3s) plus
+replay time, past the original retry budget (5 tries, ~5s total). Widened to
+`[200, 400, 800, 1600, 3000, 3000, 3000, 3000]` (~15s, 9 calls max) — fast
+early retries for the common near-instant case, settling to 3s steps matching
+the server's actual discovery cadence.
+
+**5. Partial-copy at scale.** After the fixes above shipped, the user asked
+whether there were now real (unmocked, real materializer, real browser) tests
+for the join-link flow at scale — thousands of records, timing measured.
+Building one (`server/test/copyLinkScaleSmoke.ts`, `pnpm test:smoke:copy-scale`)
+found a bug the mocked tests structurally could not have caught:
+`fetchVaultSnapshotSettled`'s retry loop stopped the moment `records` was
+non-empty — correct for a small vault, wrong at scale, since materialization
+is incremental, not atomic. A 2,000-record clone showed 25 records visible at
+5s and the full 2,000 only ~11.5-17s later; a client that stops at
+"non-empty" would silently adopt a datalet missing 99% of its records, with no
+sign anything was wrong. Fixed: `/sync/snapshot` also returns
+`materializerLag`/`materializerPending` (reusing the same consumer-group
+backlog read the admin API already exposed); the client retries until both
+are `0`, not until `records` merely has something in it. The retry budget
+widened again, to ~27s (`[200, 400, 800, 1600, 3000×8]`) — real end-to-end
+runs of a 2,000-record clone-and-join measured 13-19s, with real variance from
+`VAULT_DISCOVERY_INTERVAL_MS`'s per-clone jitter on top of replay time.
+
+**6. A third-party library's id generator, occasionally corrupting the id it
+hands back.** Found via a live report ("Remote sync snapshot safety circuit
+opened... records failed local validation") on a small (13-record) schema.
+One `PropertyDef` record's `@id` had the vault's own graph embedded in it
+**twice**, joined by a literal `|` (`did:ng:V|did:ng:V:q:R` instead of
+`did:ng:V:q:R`) — already sitting in the source vault's own storage, not
+introduced by cloning. Root cause, in `@ng-org/orm`
+(`ormSubscriptionHandler.js`, `signalObjectPropGenerator`): when `.add()` is
+called with `"@id": ""` (asking the library to auto-generate one), the
+generator computes `subjectIri = (path[0] ?? graphIri).substring(0, 53) +
+":q:" + random`, preferring an internal deep-signal watcher `path[0]` over the
+`@graph` the caller explicitly passed — under a condition not fully pinned
+down, that `path[0]` held a stale `graph|id`-shaped composite instead of being
+empty. Third-party code, not something to patch here.
+
+Fix, per explicit instruction ("bad records should be impossible" — prevent,
+not tolerate; downstream leniency was proposed and rejected): stop ever
+calling `.add()` with `"@id": ""`. New `generateSubjectId(graph)`
+(`src/utils/randomId.ts`) generates the id in application code
+(`${graph}:q:${randomUuid()}`, the same shape the ORM's own correct path
+produces) and passes it explicitly, which takes the direct-use branch in the
+library and never consults the buggy `path[0]`-based branch at all. Applied
+to the two sites that relied on the auto-id path
+(`usePropertyDefs.ts`, `BlockRenderer.tsx`'s `createRecord`).
+
+Deliberately **not** fixed, per the same instruction: `validGraphSnapshot`'s
+all-or-nothing rejection (one bad record fails the whole snapshot) stays as
+is. A skip-the-bad-record-and-warn policy was proposed and explicitly turned
+down in favor of prevention — an already-corrupted record permanently blocks
+copying/joining its vault until manually deleted and recreated, and no
+automatic repair path was wanted.
+
+**A related, over-eager guard bug, found by testing the user's actual live
+link twice more.** The user still couldn't accept a copy link on a fresh
+Firefox private window — correctly, per the guard, but the guard itself had a
+real gap. `ensureLocalDatalet()` creates a vault-less "this device" placeholder
+the instant adoption is attempted at all, and `canLeaveActiveDatalet` then
+refused because that placeholder has no vault. But `SettingsProvider` and
+`MetaStoreContext.tsx` both write a default record into any active graph
+within moments of rendering, unprompted (a Settings singleton and a Home tab)
+— so a placeholder that looks "protected" almost always holds nothing a
+person actually put there. The old check (`graphFootprint(graph) === 0`) lost
+this race virtually every time: refuse forever, on every device, including
+ones that never held a single real record. Fixed: `localNgEngine.ts`'s
+`graphHasOnlyKnownBootstrapRecords(graph, knownIds)` looks past exactly those
+two known, unprompted writes rather than at whether the graph is literally
+empty.
+
+**A QR-code bug in the same neighborhood, reported as "iPad-only."** The
+"Show" button next to the permanent pairing code rendered a QR via
+`encodePairingQr` with no try/catch, throwing uncaught into the router's
+default error boundary. Root cause: `PAIRING_CODE_CHECK_ALPHABET` used five
+extra checksum symbols including `~` and `=`, which are valid Crockford-adjacent
+symbols but not valid QR "alphanumeric" characters — about 2/37 (~5.4%) of
+vaults, confirmed empirically over 20,000 random vault-id/token pairs, could
+never render a QR, on any device, forever. Not actually iPad-specific: the
+checksum is stable per vault, so whichever device first showed it there would
+always crash there. Fixed: the alphabet now uses `*%$+U` instead of `*~$=U`,
+both QR-alphanumeric-safe, plus defense in depth (`PairingQr` now catches any
+encoding failure locally). An already-issued code whose check symbol was
+literally `~` or `=` no longer decodes after this fix — not addressed with a
+migration path, since no vault an old code could reference still existed at
+the time.
+
+Every fix above was verified bidirectionally where the bug allowed it —
+reverting the fix and confirming the exact reported symptom reproduces,
+restoring it and confirming it's gone — and where it didn't (the ORM id bug's
+underlying race can't be reliably re-triggered by reverting alone),
+verification instead temporarily made the replacement function itself emit
+the corrupted shape, to prove the new regression tests would actually catch a
+recurrence.
+
+---
+
+## User-story browser tests (J1-J5)
+
+A high-level testing specification (`docs/user-story-tests.md`), driven by a
+direct request after this project's other bugs kept surfacing from real,
+chained, multi-step usage that no isolated test scenario resembled: "a high
+level test specification that is not driven by anti-regression edge cases
+propping up the code, but is instead about creating real plausible user
+stories of how they will use this datalets app." Five deterministic journeys,
+three in `tests/user-stories.spec.ts` and two as real-stack smoke tests.
+
+- **J1** imports a realistic 48-record reading log into a fresh browser,
+  pages and searches it, edits scalar and markdown fields, adds and reloads a
+  record, exports the searched result, takes a full backup, deletes the
+  record and restores it.
+- **J2** builds a Projects tracker entirely through the schema/block/reader
+  UI, enters 24 projects, adds a field after data exists, changes filtering
+  and sorting, edits the new field, reloads, and verifies backup recovery.
+  Found a real bug: after the first page filled, typing the active sort
+  property moved the record being edited to another page, unmounting the form
+  mid-edit. Fixed by freezing the current result order while any record
+  editor is open.
+- **J3** (`server/test/multiDeviceUserStorySmoke.ts`) uses two isolated real
+  Chromium contexts and a real one-use PAIR code: an online edit arrives live,
+  different-field edits are made while one side is offline, both reconnect
+  and must converge without reloading. Found three independent real bugs:
+  `flushOutbox` acknowledged a completed request by saving its stale
+  in-memory queue, silently erasing any edit enqueued while that request was
+  in flight; the Redis SSE watcher's blocking command starting at `$` could
+  skip a patch in a narrow race with its own gap-closer; a received remote
+  patch updated localStorage but did not rerender the mounted ORM React
+  consumer (bridged via a new `hooks/useShape.ts`).
+- **J4** (`server/test/copyIndependenceUserStorySmoke.ts`) publishes a copy
+  link from a real 64-record source and verifies edits on each side stay
+  isolated in both UIs and both materialized Neo4j snapshots.
+- **J5** builds three distinct datalets through the UI, switches between
+  them repeatedly, archives/restores, backs up, damages and recovers one.
+  Found a real bug: `importGraphBackup` replaced local storage but emitted no
+  outbound patches, so the server snapshot silently undid the apparent
+  recovery. Fixed: `replaceGraphAndReload` now emits the minimal graph diff
+  through the durable outbox before reload.
+
+No vendored dependency code was changed for any of these fixes.
+
+---
+
+## The markdown field type
+
+A sibling of `longText` for longer notes with basic formatting — headings,
+bold/italic, inline code, fenced code blocks, lists, blockquotes, links.
+
+- **`src/utils/markdown.ts`**: `renderMarkdownToSafeHtml(source)`, hand-rolled
+  rather than a dependency (`marked`/`markdown-it` etc. were considered and
+  skipped — the app has near-zero runtime deps, and "safe by construction"
+  was easier to verify in ~150 lines fully controlled here than to audit in
+  someone else's parser config). Every tag in the output comes from this
+  file's own template strings; the only interpolated values are text run
+  through `escapeHtml` or a URL run through `safeWebUrl`
+  (`src/utils/urlSafety.ts`, http(s)-only, everything else degrades to
+  visible literal text).
+- **No image support**, deliberately: an `<img>` fetches its `src` the
+  instant the record renders, no click required — a tracking-pixel vector
+  for a field that can hold someone else's synced or COPY-code data, and a
+  broken icon offline. `![alt](url)` degrades to an ordinary link.
+- **Length cap**: 50,000 characters, client-side only — a UX guard, not a
+  security boundary; the real backstops (2MB per request, 8MB per vault,
+  both server-side and pre-existing) already made an oversized paste
+  impossible to lose data over.
+- **A real bug the XSS test caught**: the bold/italic inline tokenizer
+  originally matched `__[^_]+__` greedily with no word-boundary guard, so two
+  unrelated `__dunder_identifiers__` anywhere in the same note would pair up
+  as one bold span stretching between them — not an actual security hole
+  (everything inside stays HTML-escaped either way), but wrong, and exactly
+  the kind of content (logs, code, identifiers) this field will hold
+  constantly. Fixed with `(?<!\w)`/`(?!\w)` boundary guards, matching
+  CommonMark's real intraword-underscore rule.
+- **Print view was a separate bug found right after landing this**:
+  `BlockRenderer.tsx`'s print sheet has its own independent stringifier that
+  never went through the new renderer, so a markdown field printed as literal
+  `# Title` / `**bold**` source. Fixed by special-casing the markdown type at
+  the print `<td>` render site.
+- **Design decisions**: hand-rolled renderer over a dependency; no image
+  rendering, links only (weighed explicitly against the tracking-pixel and
+  offline-breakage risk); 50,000-character cap chosen from three options; no
+  nested inline markup or full CommonMark-complete emphasis flanking — "basic
+  format effects," not a full implementation.
+
+---
+
+## Recent product-quality fixes
+
+Five real issues reported from actual use of the deployed app, each
+independent of the others.
+
+**Offline removal of an archived datalet.** Erasing an archived vault while
+offline left a contentless screen pending indefinitely — the `DELETE
+/sync/vaults` fetch had no timeout at all, so on a connection that looked
+present but couldn't reach the server, it could hang for as long as the
+browser's own TCP timeout, with no way back into the app. Fixed:
+`removeDataletPermanently` (`src/utils/dataletRemoval.ts`) now races the
+DELETE against a 15s timeout and an optional caller-supplied `AbortSignal`
+(the first use of `AbortController` anywhere in `src/`); `DataletSettings`'s
+"Cancel" button aborts a pending erase immediately instead of being disabled
+while one is in flight. Every failure path leaves the archived entry and its
+credentials untouched.
+
+**First-time COPY links skip the confirmation step.** A COPY invite opened by
+a browser that has never used the app before had no context for the yes/no
+confirmation and nothing established for it to protect. Fixed:
+`JoinPage.tsx` auto-confirms once when the code is COPY, the browser has
+never had a session before (`hadPriorSession` in `src/utils/ngSession.ts` —
+captured at session-creation time, never reset by unpairing, archiving, or
+deleting records, unlike checking whether the current datalet is empty), and
+the existing data-loss guard already says yes. A PAIR code never auto-skips,
+since joining a synced vault is a bigger commitment than a COPY's disposable
+clone.
+
+**Backup export integrity.** Every export now carries a top-level SHA-256
+hash over its own content (`crypto.subtle.digest` over the payload minus the
+hash field, in the exporter's own key order), plus `sourceHost` recording
+where it was made. `importGraphBackup` refuses a mismatch or a missing hash
+outright — "may have been edited or corrupted" — with no legacy hash-less
+format accepted, since there were no real backups predating this in the
+wild. Verified against a real, independent QR-adjacent style check: the
+tamper and missing-hash tests were confirmed to fail against the pre-fix
+code, and one was also confirmed to fail against an intermediate version that
+briefly kept a hash-less-still-imports fallback, proving the tests actually
+pin "no legacy format."
+
+**A real multi-hour, multi-tenant endurance run.** `./endurance-run.sh`
+builds and starts a real sync-server and materializer as separate OS
+processes against real Redis and Neo4j, then drives
+`server/test/browserEndurance.ts` — real headless-Chromium tenants (not
+synthetic HTTP), a fraction paired two-devices-to-one-vault, periodic tenant
+churn — for a configured duration. Run for its full requested 2 hours: 249
+real tenants, 65,947 real actions, zero invariant breaches, final
+reconciliation matched all 192 live tenants' local record counts against the
+server exactly. Materializer RSS plateaued partway through the run; a burst
+of retried click timeouts starting exactly when full tenant concurrency began
+traced to the load generator sharing CPU with the system under test on that
+one box, not a server defect.
+
+**Pairing/copy/invite QR codes: link-based, not a bare secret.** The
+permanent pairing code's QR decoded to plain text — full, unrevoked,
+forever access to the vault — and at least some Android camera apps paste
+that straight into a Google search box. Decision: never QR the permanent
+code (copy/paste-only); the temporary PAIR code and the COPY code, both
+already revocable/expiring, become the scan-to-add-device path instead, QR'd
+as the same invite link "Copy as Link" already produces. `src/utils/qrCode.ts`
+gained QR "byte" mode (`encodeLinkQr`) for URLs alongside the existing
+"alphanumeric" mode, verified against a real, independent decoder (`jsqr`,
+a one-off dev-time install) — the existing test suite had only ever confirmed
+the encoder didn't throw, never that a rendered QR actually decoded correctly.
+
+**Storage-persistence decline reads as a real answer.** "Ask to keep data"
+worked as designed on desktop Firefox but appeared to do nothing on iPadOS
+and Android. Not a request-logic bug: unlike Firefox's explicit prompt,
+Chrome/Safari on mobile commonly grant or decline `navigator.storage.persist()`
+silently from engagement heuristics, and a decline left the UI in exactly the
+state it was already in before anyone clicked, so a real refusal read as the
+click doing nothing. Fixed with a `justDeclined` flag, set only by an
+explicit ask, giving a decline its own message and relabeling the button to
+"Ask again." The first version of that message named "Firefox" by name —
+flagged immediately as developer-speak nobody using the app would recognise
+— and was reworded to describe only what happened and what to do.

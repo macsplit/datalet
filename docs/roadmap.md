@@ -135,251 +135,68 @@ listed so they are not mistaken for oversights.
 
 ## Delivered
 
-### "Ask to keep data" reads as a real answer on mobile, not as doing nothing
+### "Ask to keep data" reads as a real answer on mobile
 
-Reported from real use: on desktop Firefox, asking the browser to keep this
-origin's storage worked as designed - the button disappeared and a message
-confirmed the grant. On iPadOS and Android, the button appeared to do
-nothing: no visible change at all.
-
-Not a bug in the request itself. Unlike Firefox, which raises an explicit
-prompt, Chrome and Safari (especially on mobile) grant or decline
-`navigator.storage.persist()` silently from engagement/installed-state
-heuristics - a genuine, spec-compliant refusal, most likely on a site with
-low engagement, which a first real-world report on mobile is. The gap was in
-the UI: a decline left `persistence` at `"not-persisted"`, exactly the state
-it was already in before anyone clicked anything, so the same button and the
-same sentence redrew - a real answer with nowhere to be seen.
-
-Fixed with a new `justDeclined` flag, set only by an explicit ask (never by
-the read-only check on mount), distinguishing "never asked" from "asked and
-refused just now": a specific message explaining that some browsers decline
-this quietly and suggesting trying again after more use, and the button
-relabels to "Ask again." The existing, deliberate decision to say nothing at
-all when the API is unsupported (`tests/storage-persistence.spec.ts`,
-"a browser without the API is not nagged about it" - showing a warning
-nobody can act on would be worse than silence) is untouched.
-
-The first version of that message named "Firefox" by name, comparing browser
-prompt behaviours - reported immediately as developer-speak nobody using the
-app would recognise ("Firefox is my web browser, it might mean nothing to
-the end user"). Reworded to describe only what happened and what to do -
-"This browser was just asked, and said no for now... try again later, or
-rely on backups and pairing instead" - with the cross-browser explanation
-staying in the code comment, where it belongs.
-
-One new test (`tests/storage-persistence.spec.ts`) confirms a decline now
-reads as a real answer; confirmed to fail against the pre-fix component and
-pass against the fix.
+Worked as designed on desktop Firefox, appeared to do nothing on iPadOS and
+Android. Not a request-logic bug - a decline (common on mobile, where the
+browser grants or refuses silently rather than prompting) left the UI in
+exactly the state it was already in, so a real answer looked like no
+answer. Fixed with a `justDeclined` flag that gives a decline its own
+message and relabels the button to "Ask again." Full write-up, including the
+copy-wording correction: [`build-history.md`](build-history.md#recent-product-quality-fixes).
 
 ### Pairing/copy/invite QR codes: link-based, not a bare secret
 
-Reported from real use: the permanent pairing code's QR - full, unrevoked
-read/write access to the vault, forever - decodes to plain text, not a link.
-Scanned with a phone's own camera app (not this app's in-app scanner), at
-least some Android camera apps paste that straight into a Google search box:
-a dead end for the person trying to add a device, and a genuinely bad place
-for that specific secret to sit even briefly.
-
-**Decision: never QR the permanent pairing code.** It stays copy/paste-only,
-for the "both devices already in front of me" case. The temporary PAIR code
-and the COPY code - both already revocable/expiring/single-use in ways the
-permanent code isn't - are the intended scan-to-add-device path instead, and
-their QR now encodes the same `https://.../join?token=...` invite link
-"Copy as Link" already produced (`createInviteLink`, moved from `CloneCodes`
-into `codeRedemption.ts` so `SyncSettings`'s temporary code could reuse it
-rather than duplicate it). Every phone's own camera app already knows what
-to do with a link QR - open it - which lands directly on the existing,
-already-tested `JoinPage.tsx` flow. No new redemption path was built.
-
-`src/utils/qrCode.ts`'s hand-rolled encoder only supported QR "alphanumeric"
-mode (this app's own codes fit it, but lowercase, `?`, `=`, `/` don't), so it
-gained "byte" mode (`encodeLinkQr`) alongside the existing one
-(`encodePairingQr`, unchanged, still used only for the permanent code's own
-manual-entry round trip - not rendered as a QR by anything anymore). Both
-share the existing Reed-Solomon/matrix/masking machinery; only the header
-and payload-bit construction differ. Verified against a real, independent
-QR decoder (`jsqr`, installed only for this one-off check, not a project
-dependency) rather than merely confirmed not to throw - the existing test
-suite had never actually decoded a rendered QR's pixels before. A
-too-long-to-fit URL throws cleanly rather than truncating into a link that
-would silently resolve to the wrong place; callers already treat a QR as
-optional and fall back to the plain link.
-
-New `LinkQr` component (`src/components/LinkQr.tsx`) renders an invite-link
-QR; the SVG-drawing logic it shares with the existing `PairingQr` was
-factored into `QrImage` (`src/components/QrImage.tsx`). `CloneCodes.tsx`
-gained a per-code "Show QR" toggle next to its existing Copy/Copy as
-Link/Revoke buttons; `SyncSettings.tsx`'s temporary-code section gained
-both "Copy as Link" and "Show QR" (previously text-and-Copy only), sharing
-one lazily-minted link between the two rather than minting a fresh one per
-click. `PairingScanner` (in-app camera-based code entry) is untouched and
-still available on the joining side for manual paste/scan.
-
-One existing test asserted the old behaviour (a QR appearing after "Show"
-on the permanent code) and was updated to assert its absence instead. A new
-regression test (`tests/no-overflow.spec.ts`) covers both newly-widened
-rows - CloneCodes' row grew a fifth button, the temporary code's row grew
-from two to four - at both viewport widths, and was confirmed to actually
-fail if `.layout-row`'s `flex-wrap` were ever removed again (the same class
-of bug that prompted this file's existing tests).
+The permanent pairing code's QR decoded to plain text - full, forever
+access to the vault - which at least some Android camera apps paste
+straight into a search box. Decision: never QR the permanent code
+(copy/paste-only); the temporary PAIR and COPY codes, both already
+revocable, become the scan-to-add-device path instead, QR'd as the same
+invite link "Copy as Link" already produces. Full write-up:
+[`build-history.md`](build-history.md#recent-product-quality-fixes).
 
 ### Multi-hour endurance run: real results, resource behaviour holds
 
-The re-scoped question - memory, handle counts and materialization lag under
-sustained multi-tenant load, aborting early on an invariant breach rather than
-dutifully running to completion - now has a real answer, not just tooling.
-`./endurance-run.sh` was run for its full requested 2 hours: 249 real
-browser-driven tenants (192 held concurrently at steady state, the rest via
-periodic churn), 65,947 real UI actions (add/edit/occasional delete, clicked
-through the real app), against a real sync-server and materializer on real
-Redis and Neo4j.
-
-**Correctness held completely.** No `crash.json` - the run finished with exit
-code 0, meaning no invariant was ever breached. The final reconciliation
-matched all 192 live tenants' local record counts exactly against the
-server's materialized state (192/192), every one of the 8 periodic
-reconciliation checkpoints during the run was equally clean, and
-`materializerLag`/`materializerPending` were `0` for every vault at shutdown.
-Zero uncaught client-side errors, zero page crashes.
-
-**Resource trends, from `metrics.json`'s 76 samples:** materializer RSS rose
-from ~89 MB to ~116 MB and then visibly plateaued from about the 87-minute
-mark on - the strongest evidence in this run that there's no slow leak.
-Sync-server RSS rose gently, ~92 MB to ~127 MB, without having fully
-flattened by the 2-hour mark - not alarming on its own, but a longer run
-would be needed to call that fully settled with confidence. Open file
-descriptors for both processes stayed in a tight, flat band the entire run,
-then dropped to near-zero the instant all 249 contexts closed at
-shutdown - no fd leak. Redis memory climbed steadily and roughly linearly,
-13.6 MB to 136 MB, tracking real data genuinely being created (the action mix
-favors creates over deletes) rather than anything resembling a leak; even the
-largest single vault stayed a small fraction of its 8 MiB quota.
-
-**One honest caveat, not a product defect.** 2,780 of the run's action
-attempts (about 4%) hit a non-fatal 30-second click timeout and were retried
-on the tenant's next tick - every one eventually succeeded, which is why
-correctness still came out perfect. Nearly all of them (2,775) started right
-around the 45-minute mark, exactly when initial tenant creation finished and
-full ~192-tenant concurrency began, and stayed roughly flat through the load
-phase rather than climbing further - essentially absent during the
-low-concurrency ramp-up. That points at this run's own load generator (200
-real Chromium contexts) sharing the same 16-core box's CPU with the sync-server,
-materializer, Redis and Neo4j it was testing, not at a server-side problem. A
-future run from a separate machine than the one under test would isolate "does
-the product hold up" from "can this one box also drive 200 browsers at once."
-
-This item is closed as answered, not as perfect - a longer run, on hardware
-matching what's actually deployed, remains available to run again with
-`./endurance-run.sh` any time the question needs re-asking (e.g. after a
-change to the sync/materializer hot path).
+The re-scoped question - memory, handle counts and materialization lag
+under sustained multi-tenant load - now has a real answer. `./endurance-run.sh`
+ran for its full requested 2 hours: 249 real browser-driven tenants, 65,947
+real actions, zero invariant breaches, final reconciliation matched all live
+tenants against the server exactly. One honest caveat (a burst of retried
+click timeouts traced to the load generator sharing CPU with the system
+under test on that one box, not a server defect) is in the full write-up:
+[`build-history.md`](build-history.md#recent-product-quality-fixes). Closed
+as answered, not as perfect - a longer run on hardware matching what's
+actually deployed remains available any time the question needs re-asking.
 
 ### Backup export integrity
 
-Every export now carries a top-level SHA-256 hash over its own content, so a
-hand-edited backup is detectable on import and explicitly refused rather than
-silently accepted as a genuine export. Two more metadata fields ride alongside
-it: `exportedAt` (already existed, always UTC ISO 8601 via `toISOString()`)
-and a new `sourceHost` (`location.host`, e.g. `datalet.app`) recording where
-the export was made - useful context if a self-hosted deploy at a different
-origin is ever in the picture, though nothing trusts or enforces it; a
-different host is exactly as legitimate an export as the canonical one.
-
-The format stayed at version 1 (`format: "localgraph-backup", version: 1`) -
-no bump, and deliberately no backward compatibility for a pre-hash shape:
-there were no real backups in the wild predating this, so a hash-less file is
-refused outright rather than accepted as an unverified legacy format. The
-hash is computed with the Web Crypto API (`crypto.subtle.digest`) over
-`JSON.stringify` of the payload minus the `hash` field itself, in the exact
-key order the exporter writes it in; a mismatch on import is refused outright
-with a specific "may have been edited or corrupted" error, and a file missing
-`hash` entirely is refused the same way rather than treated as
-unverified-but-fine.
-
-Both `exportGraphBackup` and `importGraphBackup` (`src/utils/localNgEngine.ts`)
-became async to allow the digest call. A new synchronous `graphRecords(graph)`
-was split out for the one internal, non-file caller
-(`moveRecordsBetweenGraphs` in `remoteSyncEngine.ts`, used when pairing moves
-records between graphs) so that path isn't paying for a hash nobody reads.
-
-Five new tests in `tests/backup-integrity.spec.ts`, exercising the real
-export/import UI rather than the functions directly: an export's hash,
-timestamp and source host are well-formed; a genuine untouched export
-re-imports cleanly; a hand-edited export is rejected and the original record
-survives; an export missing its hash is refused; and a hand-crafted backup
-claiming the old hash-less shape is refused rather than trusted unverified.
-All were confirmed to fail against the pre-fix code, and the last was also
-confirmed to fail against an intermediate version that *did* keep a hash-less
-fallback, proving the test actually pins the "no legacy format" decision and
-not just "hashes get checked."
-
-Every hand-crafted `version: 1` fixture elsewhere in the suite
-(`tests/security-import.spec.ts`, `tests/user-stories.spec.ts`) had to gain a
-correctly-computed hash to keep exercising what it was actually testing,
-rather than being rejected before it ever reached that code path.
+Every export now carries a top-level SHA-256 hash over its own content, an
+export timestamp, and the source host it was made from. A hand-edited or
+hash-less file is refused outright on import, with no legacy format
+accepted. Full write-up: [`build-history.md`](build-history.md#recent-product-quality-fixes).
 
 ### First-time COPY links skip the confirmation step
 
-For a valid COPY invite opened in a browser that has genuinely never used the
-app before, the clone now proceeds directly instead of showing the normal
-yes/no confirmation - someone receiving their first Datalet link had no
-existing context for that dialog, and there was no established datalet choice
-for it to protect. The confirmation is unchanged for an existing user who has
-visited or initialized the app at any time in the past, and always kept for a
-PAIR code regardless, since joining a synced vault is a bigger commitment than
-a COPY's separate, disposable clone. Invalid, expired and reused links still
-stop with their existing explicit errors, unaffected.
-
-The durable "has ever used this app" signal is `hadPriorSession`
-(`src/utils/ngSession.ts`): whether this browser's local session already
-existed before the current page load, captured at the moment `init()` reads
-or creates it. Nothing in the app ever removes that key - unpairing,
-forgetting a datalet, archiving, and deleting every record all leave it
-untouched - so unlike checking whether the current datalet is empty or
-paired, it cannot be reset by ordinary use. `JoinPage.tsx` auto-confirms once,
-guarded by a ref, only when the code is COPY, `hadPriorSession` is false, and
-the existing data-loss guard (`canLeaveActiveDatalet`) already says yes; any
-failure past that point (a late server error, a guard refusal) still lands on
-the normal error screen; nothing is skipped automatically.
-
-Four new tests in `tests/join.spec.ts` cover: a first-time COPY link reaching
-the joined vault with no click; a first-time COPY link's late failure still
-surfacing without any click; a PAIR link always keeping its confirmation even
-for a first-time browser; and a browser that has merely visited before (no
-datalet ever adopted) still seeing the COPY confirmation. All four were
-confirmed to fail against the pre-fix code before the fix landed.
+A COPY invite opened by a browser that has never used the app before now
+proceeds directly to the clone - no context for the confirmation, nothing
+established for it to protect. A PAIR code always keeps its confirmation,
+since joining a synced vault is a bigger commitment. Full write-up:
+[`build-history.md`](build-history.md#recent-product-quality-fixes).
 
 ### Offline removal of an archived datalet no longer hangs
 
-Reported from real use: while the app was offline, attempting to remove an
-archived vault permanently left a contentless screen pending indefinitely,
-because the `DELETE /sync/vaults` request had no timeout at all. Fixed:
-`removeDataletPermanently` now times out at 15s (matching the app's existing
-`SYNC_DOWN_WARNING_DELAY_MS` judgment) and accepts an external `AbortSignal`;
-`DataletSettings`'s "Cancel" button aborts a pending erase immediately instead
-of being disabled while one is in flight. Every failure path — timeout,
-cancel, or a genuine connection error — shows a retryable message and never
-calls `forgetDatalet`, so the archived entry and its vault credentials are
-untouched and the app remains fully usable throughout. Two new tests in
-`tests/datalets.spec.ts` cover the hang-then-timeout case and the
-cancel-returns-control-immediately case; both were confirmed to fail against
-the pre-fix code before the fix landed.
+The `DELETE /sync/vaults` request had no timeout, so an unreachable-but-not-quite-offline
+connection could hang indefinitely with the archived entry stuck mid-erase.
+Now times out at 15s and accepts a real cancel. Full write-up:
+[`build-history.md`](build-history.md#recent-product-quality-fixes).
 
 ### User-story browser journeys J1–J5
 
-[`user-story-tests.md`](user-story-tests.md) is fully implemented. The journeys
-cover adopting and maintaining an established tracker; building and evolving a
-moderate tracker; two-device live/offline convergence against the real stack;
-source/copy independence after sharing; and three distinct datalets through
-repeated switches, archive/restore and durable backup recovery.
-
-The composed journeys found five product defects that focused tests had missed:
-an editor unmounted when its sort value moved pages; an in-flight sync
-acknowledgement erased a newer queued edit; the Redis historical-to-live SSE
-handoff could skip a patch; remote patches did not invalidate mounted React
-consumers; and backup import into a synced datalet was only local, so reopening
-silently undid the apparent recovery. Each is fixed in repo-owned code. No
-vendored dependency code was changed.
+[`user-story-tests.md`](user-story-tests.md) is fully implemented - five
+deterministic journeys covering adopting/evolving a tracker, two-device
+live/offline convergence, source/copy independence, and a three-datalet
+lifecycle. Found five real product defects along the way. Full write-up:
+[`build-history.md`](build-history.md#user-story-browser-tests-j1-j5).
 
 ### The server suite ran itself into the ground
 
