@@ -160,6 +160,14 @@ all when the API is unsupported (`tests/storage-persistence.spec.ts`,
 "a browser without the API is not nagged about it" - showing a warning
 nobody can act on would be worse than silence) is untouched.
 
+The first version of that message named "Firefox" by name, comparing browser
+prompt behaviours - reported immediately as developer-speak nobody using the
+app would recognise ("Firefox is my web browser, it might mean nothing to
+the end user"). Reworded to describe only what happened and what to do -
+"This browser was just asked, and said no for now... try again later, or
+rely on backups and pairing instead" - with the cross-browser explanation
+staying in the code comment, where it belongs.
+
 One new test (`tests/storage-persistence.spec.ts`) confirms a decline now
 reads as a real answer; confirmed to fail against the pre-fix component and
 pass against the fix.

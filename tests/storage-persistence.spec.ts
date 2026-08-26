@@ -52,7 +52,7 @@ test("a refused request is reported as refused, not as success", async ({ page }
   await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Ask to keep data" }).click();
 
-  await expect(page.getByText("just asked, and declined")).toBeVisible();
+  await expect(page.getByText("just asked, and said no")).toBeVisible();
   await expect(page.getByText("This browser has agreed to keep your data")).toHaveCount(0);
 });
 
@@ -64,10 +64,10 @@ test("a declined request reads as a real answer, not as the button doing nothing
   // refusal read as the click having done nothing at all.
   await stubStorage(page, { persisted: false, grantOnRequest: false });
   await page.goto("/settings/datalets");
-  await expect(page.getByText("just asked, and declined")).toHaveCount(0);
+  await expect(page.getByText("just asked, and said no")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Ask to keep data" }).click();
-  await expect(page.getByText("just asked, and declined")).toBeVisible();
+  await expect(page.getByText("just asked, and said no")).toBeVisible();
   await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 

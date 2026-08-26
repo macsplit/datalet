@@ -118,11 +118,9 @@ export function StorageUsage() {
         <div className="layout-row">
           <p className="helper-text">
             {justDeclined
-              ? "This browser was just asked, and declined to keep your data. Unlike Firefox's "
-                + "own prompt, some browsers (especially on mobile) grant this quietly from how "
-                + "much you've used the site rather than asking outright, and just as often "
-                + "decline the same way — try again after using the app more, or rely on "
-                + "backups and pairing instead."
+              ? "This browser was just asked, and said no for now. Some browsers only agree "
+                + "after you've used a site more — try again later, or rely on backups and "
+                + "pairing to protect your data instead."
               : "This browser has not agreed to keep your data, so clearing site data deletes "
                 + "it. There is no copy anywhere else unless you have paired or exported one."}
           </p>
