@@ -30,6 +30,14 @@ export function StorageUsage() {
   const [usage, setUsage] = useState(() => readStorageUsage());
   const [persistence, setPersistence] = useState<StoragePersistence>("unsupported");
   const [asking, setAsking] = useState(false);
+  // Distinct from `persistence === "not-persisted"` on its own, which is also
+  // true before anyone has ever asked. Without this, a real, silent refusal
+  // (reported live: the button "has no discernible result" on mobile Chrome
+  // and Safari, which - unlike Firefox's own explicit prompt - typically
+  // grant this from engagement/installed-state heuristics and just as often
+  // decline without ever surfacing a prompt) redraws the exact same button
+  // and the exact same sentence, so a real answer reads as no answer at all.
+  const [justDeclined, setJustDeclined] = useState(false);
 
   useEffect(() => {
     const refresh = () => setUsage(readStorageUsage());
@@ -48,8 +56,11 @@ export function StorageUsage() {
 
   const askToKeep = async () => {
     setAsking(true);
+    setJustDeclined(false);
     try {
-      setPersistence(await requestStoragePersistence());
+      const result = await requestStoragePersistence();
+      setPersistence(result);
+      setJustDeclined(result === "not-persisted");
     } finally {
       setAsking(false);
     }
@@ -106,11 +117,17 @@ export function StorageUsage() {
       {persistence === "not-persisted" && (
         <div className="layout-row">
           <p className="helper-text">
-            This browser has not agreed to keep your data, so clearing site data deletes
-            it. There is no copy anywhere else unless you have paired or exported one.
+            {justDeclined
+              ? "This browser was just asked, and declined to keep your data. Unlike Firefox's "
+                + "own prompt, some browsers (especially on mobile) grant this quietly from how "
+                + "much you've used the site rather than asking outright, and just as often "
+                + "decline the same way — try again after using the app more, or rely on "
+                + "backups and pairing instead."
+              : "This browser has not agreed to keep your data, so clearing site data deletes "
+                + "it. There is no copy anywhere else unless you have paired or exported one."}
           </p>
           <button type="button" className="secondary-btn" onClick={() => void askToKeep()} disabled={asking}>
-            {asking ? "Asking…" : "Ask to keep data"}
+            {asking ? "Asking…" : justDeclined ? "Ask again" : "Ask to keep data"}
           </button>
         </div>
       )}

@@ -2,7 +2,17 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 189 client Playwright tests (+1 intentionally skipped), 79/79 server (node --test, integration required), 4/4 offline, the real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user story (`pnpm test:smoke:user-story-sync`), and the real source/copy story (`pnpm test:smoke:user-story-copy`). Backup export integrity, first-time COPY links, offline archived-vault removal, a real 2-hour multi-tenant endurance run, and now the pairing/copy QR redesign - the roadmap items open across the last several handoffs - are all fixed or answered. Nothing is currently open on the roadmap; see `docs/roadmap.md`'s "Under consideration" and "Deferred by decision" sections for what's deliberately not being worked on.
+**Clean.** All suites pass: 190 client Playwright tests (+1 intentionally skipped), 79/79 server (node --test, integration required), 4/4 offline, the real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user story (`pnpm test:smoke:user-story-sync`), and the real source/copy story (`pnpm test:smoke:user-story-copy`). Backup export integrity, first-time COPY links, offline archived-vault removal, a real 2-hour multi-tenant endurance run, the pairing/copy QR redesign, and now the mobile "Ask to keep data" fix - the roadmap items open across the last several handoffs - are all fixed or answered. Nothing is currently open on the roadmap; see `docs/roadmap.md`'s "Under consideration" and "Deferred by decision" sections for what's deliberately not being worked on.
+
+### "Ask to keep data" reads as a real answer on mobile
+
+Reported live: worked as designed on desktop Firefox (button disappears, confirmation shown), but appeared to do nothing on iPadOS and Android - click the button, no visible change.
+
+Not a request-logic bug. Unlike Firefox's explicit prompt, Chrome/Safari (especially mobile) grant or decline `navigator.storage.persist()` silently from engagement/installed-state heuristics - a spec-compliant refusal, plausible for a first real-world visit on mobile. The actual gap: a decline leaves `persistence` at `"not-persisted"`, identical to the pre-click state, so the UI redrew the exact same button and sentence - a real answer with no visible sign it happened.
+
+Fixed with a `justDeclined` flag, set only by an explicit ask (never by the passive mount-time check), so a refusal gets its own message ("some browsers decline this quietly... try again after using the app more") and the button relabels to "Ask again." Deliberately left untouched: the existing, tested decision to show nothing at all when the API is unsupported (`tests/storage-persistence.spec.ts` already covers this - "showing a warning nobody can act on would be worse than saying nothing" - and stays exactly as it was).
+
+**Test**: one new case in `tests/storage-persistence.spec.ts`, confirmed to fail against the pre-fix component (stashed via `git stash`, not hand-reverted) and pass against the fix.
 
 ### Pairing/copy/invite QR codes: link-based, not a bare secret
 

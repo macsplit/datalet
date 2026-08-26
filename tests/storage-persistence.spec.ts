@@ -52,8 +52,23 @@ test("a refused request is reported as refused, not as success", async ({ page }
   await page.goto("/settings/datalets");
   await page.getByRole("button", { name: "Ask to keep data" }).click();
 
-  await expect(page.getByText("This browser has not agreed to keep your data")).toBeVisible();
+  await expect(page.getByText("just asked, and declined")).toBeVisible();
   await expect(page.getByText("This browser has agreed to keep your data")).toHaveCount(0);
+});
+
+test("a declined request reads as a real answer, not as the button doing nothing", async ({ page }) => {
+  // Reported live: on mobile Chrome and Safari, which - unlike Firefox's own
+  // explicit prompt - typically grant or decline this silently from
+  // engagement heuristics, a decline redrew the exact same button and the
+  // exact same sentence as before anyone had ever clicked it, so a real
+  // refusal read as the click having done nothing at all.
+  await stubStorage(page, { persisted: false, grantOnRequest: false });
+  await page.goto("/settings/datalets");
+  await expect(page.getByText("just asked, and declined")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Ask to keep data" }).click();
+  await expect(page.getByText("just asked, and declined")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
 });
 
 test("a browser without the API is not nagged about it", async ({ page }) => {

@@ -135,6 +135,35 @@ listed so they are not mistaken for oversights.
 
 ## Delivered
 
+### "Ask to keep data" reads as a real answer on mobile, not as doing nothing
+
+Reported from real use: on desktop Firefox, asking the browser to keep this
+origin's storage worked as designed - the button disappeared and a message
+confirmed the grant. On iPadOS and Android, the button appeared to do
+nothing: no visible change at all.
+
+Not a bug in the request itself. Unlike Firefox, which raises an explicit
+prompt, Chrome and Safari (especially on mobile) grant or decline
+`navigator.storage.persist()` silently from engagement/installed-state
+heuristics - a genuine, spec-compliant refusal, most likely on a site with
+low engagement, which a first real-world report on mobile is. The gap was in
+the UI: a decline left `persistence` at `"not-persisted"`, exactly the state
+it was already in before anyone clicked anything, so the same button and the
+same sentence redrew - a real answer with nowhere to be seen.
+
+Fixed with a new `justDeclined` flag, set only by an explicit ask (never by
+the read-only check on mount), distinguishing "never asked" from "asked and
+refused just now": a specific message explaining that some browsers decline
+this quietly and suggesting trying again after more use, and the button
+relabels to "Ask again." The existing, deliberate decision to say nothing at
+all when the API is unsupported (`tests/storage-persistence.spec.ts`,
+"a browser without the API is not nagged about it" - showing a warning
+nobody can act on would be worse than silence) is untouched.
+
+One new test (`tests/storage-persistence.spec.ts`) confirms a decline now
+reads as a real answer; confirmed to fail against the pre-fix component and
+pass against the fix.
+
 ### Pairing/copy/invite QR codes: link-based, not a bare secret
 
 Reported from real use: the permanent pairing code's QR - full, unrevoked
