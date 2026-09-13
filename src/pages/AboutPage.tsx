@@ -42,10 +42,9 @@ export function AboutPage() {
           <h2 className="title">The app definition is data too</h2>
         </div>
         <p className="description">
-          The schema, the screen and the records are all stored the same way, in the
-          same graph. A tab you build syncs like any record, because it is one; a
-          backup is the app and its contents in one file, because there is nothing
-          else to export.
+          The schema, the screen and the records are all stored the same way, as part
+          of the same datalet. A tab you build syncs like any record, because it is one; a
+          backup holds the app and its contents in one file.
         </p>
       </section>
 
