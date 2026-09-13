@@ -309,7 +309,10 @@ export function SchemaEditorPage() {
   const schema = schemas.find((candidate) => candidate["@id"] === schemaId);
   const [schemaNameDraft, setSchemaNameDraft] = useState("");
   const labelProperties = properties.filter(
-    (property) => property.dataType === "did:ng:z:text" || property.dataType === "did:ng:z:enum",
+    (property) =>
+      property.dataType === "did:ng:z:text" ||
+      property.dataType === "did:ng:z:enum" ||
+      property.dataType === "did:ng:z:date",
   );
 
   useEffect(() => {
@@ -417,7 +420,7 @@ export function SchemaEditorPage() {
               else delete schema.labelPropertyId;
             }}
           >
-            <option value="">Automatic (first text or enum property)</option>
+            <option value="">Automatic (first text, enum, or date property)</option>
             {labelProperties.map((property) => (
               <option value={property["@id"]} key={property["@id"]}>
                 {property.name}

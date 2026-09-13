@@ -88,7 +88,7 @@ function ReferenceField({
   );
   const targets = useShape(shapeType, target ? privateNuri : undefined);
   const eligibleLabelProperty = (item: PropertyDef) =>
-    item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum";
+    item.dataType === "did:ng:z:text" || item.dataType === "did:ng:z:enum" || item.dataType === "did:ng:z:date";
   const configuredLabelProperty = target?.labelPropertyId
     ? properties.find((item) => item["@id"] === target.labelPropertyId && eligibleLabelProperty(item))
     : undefined;
@@ -108,7 +108,10 @@ function ReferenceField({
   const display = (id: string) => {
     const match = options.find((candidate) => candidate["@id"] === id);
     if (!match) return id || "Not set";
-    const primary = labelProperty ? String(match[labelProperty.name] ?? "").trim() : "";
+    const rawValue = labelProperty ? match[labelProperty.name] : undefined;
+    const primary = labelProperty?.dataType === "did:ng:z:date"
+      ? (typeof rawValue === "string" && rawValue ? displayDate(rawValue, false) : "")
+      : String(rawValue ?? "").trim();
     return primary || match["@id"];
   };
 

@@ -14,6 +14,8 @@
     "test:client": "playwright test && pnpm test:offline",
     "test:offline": "pnpm build && playwright test --config playwright.offline.config.ts",
     "test:server": "tsx --env-file-if-exists=.env.local --test --test-force-exit --test-concurrency=1 server/test/**/*.test.ts",
+    "test:json-import": "tsx --test tools/json-import/*.test.ts",
+    "import:json": "tsx tools/json-import/cli.ts",
     "test:smoke:sync": "tsx --env-file-if-exists=.env.local server/test/fullStackSmoke.ts",
     "test:smoke:user-story-sync": "tsx --env-file-if-exists=.env.local server/test/multiDeviceUserStorySmoke.ts",
     "test:smoke:user-story-copy": "tsx --env-file-if-exists=.env.local server/test/copyIndependenceUserStorySmoke.ts",

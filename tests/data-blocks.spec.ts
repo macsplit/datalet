@@ -110,6 +110,28 @@ function referencedBooksFixture() {
   ];
 }
 
+/** A schema whose only usable label is a date property, referenced from
+ * another schema - covers `labelPropertyId`/automatic selection accepting
+ * `did:ng:z:date`, and the display-only formatting that goes with it. */
+function dateLabeledFixture() {
+  const daySchemaId = "did:ng:z:meta:schema:days";
+  const entrySchemaId = "did:ng:z:meta:schema:entries";
+  const blockId = "block-entries";
+  return [
+    { "@graph": GRAPH, "@id": "did:ng:z:HomeTab", "@type": "did:ng:z:Tab", title: "Home", order: 0 },
+    { "@graph": GRAPH, "@id": daySchemaId, "@type": "did:ng:z:SchemaDef", name: "Days" },
+    { "@graph": GRAPH, "@id": "property-day-date", "@type": "did:ng:z:PropertyDef", schemaId: daySchemaId, name: "Date", order: 0, dataType: "did:ng:z:date", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "day-0", "@type": `did:ng:z:user:${daySchemaId}`, Date: "2026-09-13" },
+    { "@graph": GRAPH, "@id": entrySchemaId, "@type": "did:ng:z:SchemaDef", name: "Entries" },
+    { "@graph": GRAPH, "@id": "property-entry-title", "@type": "did:ng:z:PropertyDef", schemaId: entrySchemaId, name: "Title", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:one", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "property-entry-day", "@type": "did:ng:z:PropertyDef", schemaId: entrySchemaId, name: "Day", order: 1, dataType: "did:ng:z:reference", cardinality: "did:ng:z:one", enumOptions: [], referenceSchemaId: daySchemaId },
+    { "@graph": GRAPH, "@id": blockId, "@type": "did:ng:z:Block", blockType: "did:ng:z:data", order: 0, schemaId: entrySchemaId, parentTabId: "did:ng:z:HomeTab" },
+    { "@graph": GRAPH, "@id": "widget-entry-title", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 0, widgetType: "did:ng:z:field", propertyName: "Title", label: "Title", fieldType: "did:ng:z:text" },
+    { "@graph": GRAPH, "@id": "widget-entry-day", "@type": "did:ng:z:Widget", parentBlockId: blockId, order: 1, widgetType: "did:ng:z:field", propertyName: "Day", label: "Day", fieldType: "did:ng:z:reference" },
+    { "@graph": GRAPH, "@id": "entry-0", "@type": `did:ng:z:user:${entrySchemaId}`, Title: "Standup notes", Day: "day-0" },
+  ];
+}
+
 function eventsFixture(
   entries: Array<{ name: string; when: string }>,
   fieldType: "did:ng:z:date" | "did:ng:z:dateTime" = "did:ng:z:date",
@@ -972,6 +994,28 @@ test("reference labels drive live display, sorting, and reader search", async ({
     ];
   }, { graph: GRAPH });
   expect(fallbacks).toEqual(["did:ng:z:missing", "numeric-record"]);
+});
+
+test("a date property can label referenced records, automatically", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, dateLabeledFixture());
+  await page.goto("/");
+
+  const cards = page.locator(".record-card");
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText("Standup notes");
+  // The Day reference shows the formatted date, not the day record's raw id.
+  await expect(cards.first()).toContainText("2026");
+  await expect(cards.first()).not.toContainText("day-0");
+
+  // The non-reactive resolver (sort/search/export/print) accepts a date
+  // property too, though it returns the raw stored value rather than a
+  // display-formatted one - that formatting is display-only, in FieldWidget.
+  const label = await page.evaluate(async ({ graph }) => {
+    const engine = await import("/src/utils/localNgEngine.ts");
+    return engine.lookupRecordLabel(graph, "day-0");
+  }, { graph: GRAPH });
+  expect(label).toBe("2026-09-13");
 });
 
 test("reference exports and printouts include readable labels", async ({ page }) => {

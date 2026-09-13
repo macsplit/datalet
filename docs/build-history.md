@@ -49,6 +49,8 @@ what caught most of the defects below — several were invisible from the UI.
 | 25 | User-story browser tests J1-J5: full, realistic, multi-step journeys through the app (not isolated scenarios), which found five more real defects the existing suite had missed. |
 | 26 | The `markdown` field type: a hand-rolled, dependency-free renderer, safe by construction. |
 | 27 | Product-quality fixes from real use: offline archived-vault removal timing out cleanly, first-time COPY links skipping an unnecessary confirmation, a backup export integrity hash, a real multi-hour multi-tenant endurance run, link-based pairing/copy QR codes, and honest mobile storage-persistence messaging. |
+| 28 | SEO/discoverability pass: OpenGraph/Twitter meta tags, an expanded About page, GitHub topics. |
+| 29 | `tools/json-import`: a standalone CLI that infers a schema from a generic multi-entity JSON document and produces a backup file for the existing, unmodified "Start an empty one" + "Import backup" flow - no new app UI, no dependency on the app's own source. Found and fixed along the way: a schema's `labelPropertyId` could not be a date property, so a schema whose only descriptive field was a date (a dated log, say) had every reference to its records display as an opaque id. |
 
 ---
 

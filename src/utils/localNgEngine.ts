@@ -268,7 +268,9 @@ function automaticLabelPropertyName(graph: string, schemaId: string): string | u
         record["@graph"] === graph &&
         record["@type"] === "did:ng:z:PropertyDef" &&
         record.schemaId === schemaId &&
-        (record.dataType === "did:ng:z:text" || record.dataType === "did:ng:z:enum"),
+        (record.dataType === "did:ng:z:text" ||
+          record.dataType === "did:ng:z:enum" ||
+          record.dataType === "did:ng:z:date"),
     )
     .sort(
       (left, right) =>
@@ -283,7 +285,8 @@ function automaticLabelPropertyName(graph: string, schemaId: string): string | u
  * Resolve a stored record id to the schema-configured display label without
  * opening an ORM subscription. The target record, schema, and explicitly
  * selected PropertyDef are direct store lookups. Legacy schemas without a
- * selection use a cached scan for their first ordered text-or-enum property.
+ * selection use a cached scan for their first ordered text, enum, or date
+ * property.
  * A label edited elsewhere becomes visible when its consumer next renders;
  * this intentionally is not a reactive subscription.
  */
@@ -303,7 +306,9 @@ export function lookupRecordLabel(graph: string, id: string): string {
     if (
       property?.["@type"] === "did:ng:z:PropertyDef" &&
       property.schemaId === schemaId &&
-      (property.dataType === "did:ng:z:text" || property.dataType === "did:ng:z:enum") &&
+      (property.dataType === "did:ng:z:text" ||
+        property.dataType === "did:ng:z:enum" ||
+        property.dataType === "did:ng:z:date") &&
       typeof property.name === "string"
     ) {
       propertyName = property.name;

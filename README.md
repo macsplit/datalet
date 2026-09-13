@@ -182,9 +182,9 @@ Enum fields can define an editable list of allowed values. Changes to a schema
 produce a revised runtime shape while retaining the stable record type, so
 existing records continue to load after fields or enum options change.
 
-Each schema also chooses **how its records are named**: a text or enum field
-becomes the label other screens use when they refer to one of its records.
-Leaving it unset picks the schema's first text or enum field. Wherever a
+Each schema also chooses **how its records are named**: a text, enum, or date
+field becomes the label other screens use when they refer to one of its
+records. Leaving it unset picks the schema's first eligible field. Wherever a
 reference is shown, sorted, searched, exported or printed, that label appears
 instead of the internal record id; a record with no usable label falls back to
 its id rather than showing nothing.

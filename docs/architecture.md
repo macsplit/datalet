@@ -337,7 +337,7 @@ include the schema subject, so two schemas with an identically named field
 never share a predicate. Cardinality maps to min/max counts; enum options
 become literal-constrained data types.
 
-**Record labels.** A schema can select one text or enum property as its
+**Record labels.** A schema can select one text, enum, or date property as its
 `labelPropertyId`. When omitted, the first eligible property by schema order is
 used, preserving existing schemas without migration. `lookupRecordLabel()`
 resolves the target record, schema, and selected property directly from the
