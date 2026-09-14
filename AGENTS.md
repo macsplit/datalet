@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 191 client Playwright tests (+1 intentionally
+**Clean.** All suites pass: 192 client Playwright tests (+1 intentionally
 skipped), 79/79 server (node --test, integration required), 4/4 offline, the
 real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user
 story (`pnpm test:smoke:user-story-sync`), and the real source/copy story

@@ -96,6 +96,47 @@ test("creates and edits a schema while preserving property order across reload",
   await expect(page.getByText("2 properties", { exact: true })).toBeVisible();
 });
 
+test("renaming a property migrates existing record data instead of orphaning it", async ({ page }) => {
+  // Reported live: renaming a PropertyDef only updated widgets/blocks, never
+  // the records themselves - every record's value stayed under the old key
+  // and appeared as "Not set" once the schema expected the new one.
+  await seedSession(page);
+  const schemaId = "schema-notes";
+  const dataId = "did:ng:z:note-1";
+  await seedRecords(page, [
+    ...singletonRecords,
+    { "@graph": GRAPH, "@id": schemaId, "@type": "did:ng:z:SchemaDef", name: "Notes" },
+    { "@graph": GRAPH, "@id": "property-section", "@type": "did:ng:z:PropertyDef", schemaId, name: "sectionName", order: 0, dataType: "did:ng:z:text", cardinality: "did:ng:z:optional", enumOptions: [] },
+    { "@graph": GRAPH, "@id": "block-notes", "@type": "did:ng:z:Block", parentTabId: HOME_ID, blockType: "did:ng:z:data", schemaId, order: 0 },
+    { "@graph": GRAPH, "@id": "widget-section", "@type": "did:ng:z:Widget", parentBlockId: "block-notes", widgetType: "did:ng:z:field", propertyName: "sectionName", fieldType: "did:ng:z:text", order: 0 },
+    { "@graph": GRAPH, "@id": dataId, "@type": `did:ng:z:user:${schemaId}`, sectionName: "Incident response" },
+  ]);
+  await page.goto(`/settings/schemas/${schemaId}`);
+
+  await page.getByLabel("Name", { exact: true }).fill("category");
+  await page.getByLabel("Name", { exact: true }).press("Enter");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("category");
+
+  // The rewrite waits for the shape rebuilt from the new property name to
+  // become writable (an async pool re-index) before moving the value, and
+  // storage writes are debounced on top of that - poll rather than assert once.
+  await expect
+    .poll(
+      async () => {
+        const records = await persistedRecords(page);
+        return records.find((record) => record["@id"] === dataId)?.category;
+      },
+      { timeout: 15_000 },
+    )
+    .toBe("Incident response");
+  const records = await persistedRecords(page);
+  const dataRecord = records.find((record) => record["@id"] === dataId);
+  expect(dataRecord?.sectionName).toBeUndefined();
+
+  await page.goto("/");
+  await expect(page.locator(".record-card")).toContainText("Incident response");
+});
+
 test("every created property gets a clean, non-composite subject id", async ({ page }) => {
   // Reported live: a PropertyDef's auto-generated @id came back with the
   // vault's own graph embedded in it TWICE, joined by a literal "|"

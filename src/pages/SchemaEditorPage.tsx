@@ -1,11 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import type { PropertyDef, Widget } from "../shapes/orm/metaShapes.typings";
 import { usePropertyDefs } from "../hooks/usePropertyDefs";
 import { useSchemas } from "../hooks/useSchemas";
 import { useBlocks } from "../hooks/useBlocks";
 import { useWidgets } from "../hooks/useWidgets";
+import { useShape } from "../hooks/useShape";
+import { useMetaStore } from "../hooks/MetaStoreContext";
+import { buildShapeType } from "../utils/dynamicSchema";
 import { TrashIcon } from "../components/icons";
+
+const EMPTY_SCHEMA_SHAPE = {
+  shape: "did:ng:z:MissingSchemaShape",
+  schema: {
+    "did:ng:z:MissingSchemaShape": {
+      iri: "did:ng:z:MissingSchemaShape",
+      predicates: [],
+    },
+  },
+} as ReturnType<typeof buildShapeType>;
 
 const DATA_TYPES: Array<{ value: PropertyDef["dataType"]; label: string }> = [
   { value: "did:ng:z:text", label: "Text" },
@@ -307,6 +320,45 @@ export function SchemaEditorPage() {
   const { blocks } = useBlocks();
   const { widgets, createWidget, deleteWidget } = useWidgets();
   const schema = schemas.find((candidate) => candidate["@id"] === schemaId);
+  const { privateNuri } = useMetaStore();
+  const propertySignature = properties
+    .map((item) => `${item["@id"]}|${item.name}|${item.dataType}|${item.cardinality}|${item.referenceSchemaId ?? ""}`)
+    .join(";");
+  const shapeType = useMemo(
+    () => (schema ? buildShapeType(schema, properties) : EMPTY_SCHEMA_SHAPE),
+    // Predicate IRIs are derived from each property's current name, so the
+    // shape must be rebuilt whenever a name changes - see propertySignature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schema?.["@id"], propertySignature],
+  );
+  const records = useShape(shapeType, schema ? privateNuri : undefined);
+  // A rename must move a property's stored values under its new name. The new
+  // name is not a valid predicate on the shape built from the pre-rename
+  // properties, so the write has to wait for the next render's shape (built
+  // from propertySignature above, which includes the renamed property).
+  const [pendingRename, setPendingRename] = useState<{
+    propertyName: string;
+    values: Map<string, unknown>;
+  } | null>(null);
+  useEffect(() => {
+    if (!pendingRename) return;
+    const remaining = new Map(pendingRename.values);
+    for (const record of records) {
+      if (remaining.has(record["@id"])) {
+        record[pendingRename.propertyName] = remaining.get(record["@id"]);
+        remaining.delete(record["@id"]);
+      }
+    }
+    // The shape rebuild that makes the new predicate writable can lag a
+    // render behind the property rename (the ORM pool re-indexes
+    // asynchronously) - keep the still-unwritten values pending rather than
+    // dropping them, so this effect retries as `records` updates.
+    if (remaining.size === 0) setPendingRename(null);
+    else if (remaining.size !== pendingRename.values.size) {
+      setPendingRename({ propertyName: pendingRename.propertyName, values: remaining });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRename, records]);
   const [schemaNameDraft, setSchemaNameDraft] = useState("");
   const labelProperties = properties.filter(
     (property) =>
@@ -463,7 +515,15 @@ export function SchemaEditorPage() {
                     if (block.filterPropertyName === property.name) block.filterPropertyName = next;
                     if (block.sortPropertyName === property.name) block.sortPropertyName = next;
                   }
+                  const values = new Map<string, unknown>();
+                  for (const record of records) {
+                    if (property.name in record) {
+                      values.set(record["@id"], record[property.name]);
+                      delete record[property.name];
+                    }
+                  }
                   property.name = next;
+                  if (values.size > 0) setPendingRename({ propertyName: next, values });
                 }}
                 onDisplayTypeChange={() => {
                   if (
