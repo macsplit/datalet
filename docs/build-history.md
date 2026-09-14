@@ -52,6 +52,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 28 | SEO/discoverability pass: OpenGraph/Twitter meta tags, an expanded About page, GitHub topics. |
 | 29 | `tools/json-import`: a standalone CLI that infers a schema from a generic multi-entity JSON document and produces a backup file for the existing, unmodified "Start an empty one" + "Import backup" flow - no new app UI, no dependency on the app's own source. Found and fixed along the way: a schema's `labelPropertyId` could not be a date property, so a schema whose only descriptive field was a date (a dated log, say) had every reference to its records display as an opaque id. |
 | 30 | Real user-reported defect: renaming a schema property in the editor updated its widgets and blocks but never the existing data records, so every record's value for that field stayed under the old key and appeared as "Not set" - permanently, since nothing ever wrote it back. Fixed by having the rename read each record's value under the old name, then write it under the new name once the shape rebuilt from the new property name makes that predicate writable (the ORM pool re-indexes a renamed shape asynchronously, so the write is deferred to an effect that retries until it lands). |
+| 31 | A third `Block` kind, content blocks: static markdown text placed directly in the layout tree, unattached to any schema - for page-level context (an intro, instructions) rather than record data. |
 
 ---
 

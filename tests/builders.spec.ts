@@ -375,3 +375,33 @@ test("a nested block list says which level it is", async ({ page }) => {
   // layout's contents, which is what made the two levels confusing.
   await expect(page.getByRole("heading", { name: "Nested blocks" })).toBeVisible();
 });
+
+test("a static text block holds its own markdown, unattached to any schema", async ({ page }) => {
+  const tabId = "tab-intro";
+  await seedSession(page);
+  await seedRecords(page, [
+    ...singletonRecords,
+    { "@graph": GRAPH, "@id": tabId, "@type": "did:ng:z:Tab", title: "Intro", order: 1 },
+  ]);
+  await page.goto(`/settings/tabs/${tabId}/blocks`);
+
+  await page.getByRole("button", { name: "+ Add text block" }).click();
+  const textBlock = page.locator("article.builder-card").filter({ hasText: "Text block" }).first();
+  await expect(textBlock).toBeVisible();
+  await textBlock.getByLabel("Optional title").fill("About this datalet");
+  await textBlock.getByLabel("Markdown text").fill("This tracks **career** notes.\n\n- one\n- two");
+
+  await page.getByRole("link", { name: "View tab →" }).click();
+  await expect(page.getByRole("heading", { name: "About this datalet" })).toBeVisible();
+  await expect(page.locator(".markdown-body strong")).toHaveText("career");
+  await expect(page.locator(".markdown-body li")).toHaveCount(2);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "About this datalet" })).toBeVisible();
+  await expect(page.locator(".markdown-body strong")).toHaveText("career");
+
+  const records = await persistedRecords(page);
+  const block = records.find((record) => record["@type"] === "did:ng:z:Block");
+  expect(block?.blockType).toBe("did:ng:z:content");
+  expect(block?.content).toContain("**career**");
+});

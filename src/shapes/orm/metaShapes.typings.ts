@@ -53,11 +53,11 @@ export interface Block {
    */
   "@type": "did:ng:z:Block";
   /**
-   * Whether this block lays out child blocks or displays a data collection
+   * Whether this block lays out child blocks, displays a data collection, or shows static text
    *
    * Original IRI: did:ng:z:blockType
    */
-  blockType: "did:ng:z:layout" | "did:ng:z:data";
+  blockType: "did:ng:z:layout" | "did:ng:z:data" | "did:ng:z:content";
   /**
    * Sort order among sibling blocks
    *
@@ -76,6 +76,12 @@ export interface Block {
    * Original IRI: did:ng:z:layoutMode
    */
   layoutMode?: "did:ng:z:stack" | "did:ng:z:row" | "did:ng:z:grid";
+  /**
+   * Markdown text shown by this block (content blocks only)
+   *
+   * Original IRI: did:ng:z:content
+   */
+  content?: string;
   /**
    * The SchemaDef this block displays records of (data blocks only)
    *

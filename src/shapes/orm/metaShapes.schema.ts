@@ -70,6 +70,10 @@ export const metaShapesSchema: Schema = {
             valType: "iri",
             literals: ["did:ng:z:data"],
           },
+          {
+            valType: "iri",
+            literals: ["did:ng:z:content"],
+          },
         ],
         maxCardinality: 1,
         minCardinality: 1,
@@ -117,6 +121,17 @@ export const metaShapesSchema: Schema = {
         minCardinality: 0,
         iri: "did:ng:z:layoutMode",
         readablePredicate: "layoutMode",
+      },
+      {
+        dataTypes: [
+          {
+            valType: "string",
+          },
+        ],
+        maxCardinality: 1,
+        minCardinality: 0,
+        iri: "did:ng:z:content",
+        readablePredicate: "content",
       },
       {
         dataTypes: [

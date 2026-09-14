@@ -17,6 +17,7 @@ import { useWidgets } from "../hooks/useWidgets";
 import { TrashIcon } from "../components/icons";
 import { RuntimeCircuitNotice } from "../components/RuntimeSafety";
 import { collectDescendantBlockIds } from "../utils/blockGraph";
+import { MARKDOWN_FIELD_MAX_LENGTH } from "../utils/markdown";
 import { reportRuntimeIssue, RUNTIME_LIMITS } from "../utils/runtimeHealth";
 import { tabRouteSegment } from "../utils/tabRoutes";
 
@@ -636,6 +637,44 @@ function LayoutBlockEditor({
   );
 }
 
+function ContentBlockEditor({
+  block,
+  index,
+  siblingCount,
+  onMove,
+  onDelete,
+}: BlockEditorProps) {
+  return (
+    <article className="builder-card builder-card-column">
+      <BlockHeader
+        label="Text block"
+        block={block}
+        index={index}
+        siblingCount={siblingCount}
+        onMove={onMove}
+        onDelete={onDelete}
+      />
+      <div className="builder-grid">
+        <BlockTitleInput block={block} />
+      </div>
+      <div className="field-group">
+        <label className="field-label" htmlFor={`${block["@id"]}-content`}>
+          Markdown text
+        </label>
+        <textarea
+          id={`${block["@id"]}-content`}
+          className="textarea textarea-mono"
+          rows={6}
+          maxLength={MARKDOWN_FIELD_MAX_LENGTH}
+          placeholder="Add context for people using this page..."
+          value={block.content ?? ""}
+          onChange={(event) => (block.content = event.target.value)}
+        />
+      </div>
+    </article>
+  );
+}
+
 function BlockTitleInput({ block }: { block: Block }) {
   return (
     <div className="field-group">
@@ -723,11 +762,13 @@ function BlockEditor(props: BlockEditorProps) {
   if (props.depth >= RUNTIME_LIMITS.blockDepth) {
     return <RuntimeCircuitNotice message={`Block nesting exceeded ${RUNTIME_LIMITS.blockDepth} levels and was not opened further.`} />;
   }
-  return props.block.blockType === "did:ng:z:layout" ? (
-    <LayoutBlockEditor {...props} />
-  ) : (
-    <DataBlockEditor {...props} />
-  );
+  if (props.block.blockType === "did:ng:z:layout") {
+    return <LayoutBlockEditor {...props} />;
+  }
+  if (props.block.blockType === "did:ng:z:content") {
+    return <ContentBlockEditor {...props} />;
+  }
+  return <DataBlockEditor {...props} />;
 }
 
 function BlockListEditor({
@@ -755,8 +796,14 @@ function BlockListEditor({
     }
   }, [schemaId, schemaIds]);
 
-  const addBlock = (newType: "layout" | "data") => {
-    if (newType === "data") {
+  const addBlock = (newType: "layout" | "data" | "content") => {
+    if (newType === "content") {
+      createBlock({
+        ...parent,
+        blockType: "did:ng:z:content",
+        title: "New text",
+      });
+    } else if (newType === "data") {
       if (!schemaId) return;
       const schema = schemas.find((candidate) => candidate["@id"] === schemaId);
       const blockId = createBlock({
@@ -823,6 +870,9 @@ function BlockListEditor({
         <div className="builder-actions">
           <button type="button" className="secondary-btn" onClick={() => addBlock("layout")}>
             + Add layout block
+          </button>
+          <button type="button" className="secondary-btn" onClick={() => addBlock("content")}>
+            + Add text block
           </button>
           <select
             className="select builder-compact-select"

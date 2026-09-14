@@ -321,7 +321,7 @@ Five metadata types, all ordinary records in the same graph:
 | Type | What it is |
 | --- | --- |
 | `Tab` | A navigation destination. `Home` has a fixed well-known id and is always first. |
-| `Block` | Either a layout container (stack / row / grid, nestable via `parentBlockId`) or a data block bound to a schema. |
+| `Block` | A layout container (stack / row / grid, nestable via `parentBlockId`), a data block bound to a schema, or a content block holding its own static markdown (`content`), unattached to any schema. |
 | `Widget` | Rendering and editing configuration belonging to a data block: panel title, add button, one per field, edit/delete actions. |
 | `SchemaDef` | A user-defined record type, optionally naming the property used as its records' display label. |
 | `PropertyDef` | One ordered field of a schema: data type, cardinality, enum options, reference target. |

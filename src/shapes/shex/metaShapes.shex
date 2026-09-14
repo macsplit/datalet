@@ -12,14 +12,16 @@ ex:TabShape {
 
 ex:BlockShape {
   a [ex:Block] ;
-  ex:blockType [ex:layout ex:data]
-    // rdfs:comment "Whether this block lays out child blocks or displays a data collection" ;
+  ex:blockType [ex:layout ex:data ex:content]
+    // rdfs:comment "Whether this block lays out child blocks, displays a data collection, or shows static text" ;
   ex:order xsd:integer
     // rdfs:comment "Sort order among sibling blocks" ;
   ex:title xsd:string ?
     // rdfs:comment "Optional heading shown for this block" ;
   ex:layoutMode [ex:stack ex:row ex:grid] ?
     // rdfs:comment "How child blocks are arranged (layout blocks only)" ;
+  ex:content xsd:string ?
+    // rdfs:comment "Markdown text shown by this block (content blocks only)" ;
   ex:schemaId IRI ?
     // rdfs:comment "The SchemaDef this block displays records of (data blocks only)" ;
   ex:filterPropertyName xsd:string ?

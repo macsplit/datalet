@@ -155,7 +155,9 @@ cardinality.](docs/images/schema-editor.png)
 4. Open **Settings → Manage tabs**.
 5. Create a navigation tab or manage the Home tab.
 6. Open **Manage blocks** for that tab.
-7. Add layout blocks to arrange the page and data blocks to display records.
+7. Add layout blocks to arrange the page, data blocks to display records, and
+   text blocks for standalone markdown (an intro, instructions) unattached to
+   any schema.
 8. Select a schema for each data block and configure its widgets.
 9. Open **View tab** to use the generated record interface.
 

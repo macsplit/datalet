@@ -586,6 +586,22 @@ function LayoutBlock({
   );
 }
 
+function ContentBlock({ block }: { block: Block }) {
+  return (
+    <section className="section-stack">
+      {block.title && <h2 className="title">{block.title}</h2>}
+      {block.content ? (
+        <div
+          className="markdown-body"
+          dangerouslySetInnerHTML={{ __html: renderMarkdownToSafeHtml(block.content) }}
+        />
+      ) : (
+        <p className="muted">This content block is empty.</p>
+      )}
+    </section>
+  );
+}
+
 /** Render a graph-defined block, recursively for layout blocks. */
 export function BlockRenderer({
   block,
@@ -605,9 +621,11 @@ export function BlockRenderer({
 
   const nextAncestry = new Set(ancestry);
   nextAncestry.add(block["@id"]);
-  return block.blockType === "did:ng:z:layout" ? (
-    <LayoutBlock block={block} ancestry={nextAncestry} depth={depth + 1} />
-  ) : (
-    <DataBlock block={block} />
-  );
+  if (block.blockType === "did:ng:z:layout") {
+    return <LayoutBlock block={block} ancestry={nextAncestry} depth={depth + 1} />;
+  }
+  if (block.blockType === "did:ng:z:content") {
+    return <ContentBlock block={block} />;
+  }
+  return <DataBlock block={block} />;
 }

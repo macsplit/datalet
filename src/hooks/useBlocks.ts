@@ -9,7 +9,7 @@ export type BlockParent =
 
 export type CreateBlock = BlockParent &
   Pick<Block, "blockType"> &
-  Partial<Pick<Block, "order" | "title" | "layoutMode" | "schemaId">>;
+  Partial<Pick<Block, "order" | "title" | "layoutMode" | "schemaId" | "content">>;
 
 /** Read all sibling blocks for a tab/layout block and expose mutations. */
 export function useBlocks(parent?: BlockParent) {
@@ -42,6 +42,7 @@ export function useBlocks(parent?: BlockParent) {
         ...(values.title !== undefined && { title: values.title }),
         ...(values.layoutMode !== undefined && { layoutMode: values.layoutMode }),
         ...(values.schemaId !== undefined && { schemaId: values.schemaId }),
+        ...(values.content !== undefined && { content: values.content }),
         ...(values.parentTabId !== undefined
           ? { parentTabId: values.parentTabId }
           : { parentBlockId: values.parentBlockId }),
