@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Clean.** All suites pass: 193 client Playwright tests (+1 intentionally
+**Clean.** All suites pass: 199 client Playwright tests (+1 intentionally
 skipped), 79/79 server (node --test, integration required), 4/4 offline, the
 real-scale copy smoke (`pnpm test:smoke:copy-scale`), the real two-device user
 story (`pnpm test:smoke:user-story-sync`), and the real source/copy story
@@ -19,6 +19,13 @@ copy here. For what's left, deferred, or out of scope on purpose, see
 
 - **`pnpm test:server` used to hang forever after all tests passed.** Root cause: `fetch()`'s connection pool (undici) leaves an idle keep-alive socket open per ephemeral-port test server, even after `server.close()` + `closeAllConnections()`. Not a real leak — confirmed via `--test-force-exit` (Node 22's documented fix for this exact class of issue), which now runs clean in ~10-13s. It's in the `test:server` script in `package.json`; don't remove it without re-verifying.
 - **If a security/invite/stress test run against the local dev Redis returns confusing "unknown vault" or "not found" errors after repeated manual runs**, check the rate-limit keys before assuming a real bug: `redis-cli keys "rate:vault-create:*"` — `VAULT_CREATE_RATE_LIMIT` is 10/window by default and repeated debug runs from the same IP exhaust it fast. `redis-cli del "rate:vault-create:::ffff:127.0.0.1"` clears it.
+
+### Learning points
+
+- **`useShape`'s `records` does not change identity when a field of a record is edited** — only on add/delete. Anything memoised on `records` alone goes stale after an edit (the reader sort/search did, until issue #1). Depend on an explicit revision as well: see the comment on `visibleRecords` in `BlockRenderer.tsx`.
+- **To keep a card from moving while it is being edited or created, use the `editing` pin in `BlockRenderer.tsx`** rather than a second mechanism; new records reuse it. A pin whose record vanishes must be dropped, or the whole list stays frozen.
+- **Reproduce before fixing:** write the failing Playwright test first, confirm it fails on unmodified code (`git stash`), then fix. For issue #1 this showed part of the problem (the stale sort) was pre-existing, which changed the fix.
+- **Cloud (claude.ai/code) containers:** the pre-installed Chromium can be older than the one the pinned Playwright expects. `playwright.config.ts` uses `/usr/bin/chromium` when it exists, so `ln -s /opt/pw-browsers/chromium /usr/bin/chromium` fixes it without touching the repo. In those containers three datalet-switching tests (`clone-codes.spec.ts` "LG1 code is not marked as a copy", `datalets.spec.ts` "a code adds a second datalet" and "a switch restores the target") failed with "Execution context was destroyed" on unmodified code too — an environment/timing issue there, not a regression.
 
 ### Test harnesses (fuzz / stress / security)
 

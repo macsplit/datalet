@@ -53,6 +53,7 @@ what caught most of the defects below — several were invisible from the UI.
 | 29 | `tools/json-import`: a standalone CLI that infers a schema from a generic multi-entity JSON document and produces a backup file for the existing, unmodified "Start an empty one" + "Import backup" flow - no new app UI, no dependency on the app's own source. Found and fixed along the way: a schema's `labelPropertyId` could not be a date property, so a schema whose only descriptive field was a date (a dated log, say) had every reference to its records display as an opaque id. |
 | 30 | Real user-reported defect: renaming a schema property in the editor updated its widgets and blocks but never the existing data records, so every record's value for that field stayed under the old key and appeared as "Not set" - permanently, since nothing ever wrote it back. Fixed by having the rename read each record's value under the old name, then write it under the new name once the shape rebuilt from the new property name makes that predicate writable (the ORM pool re-indexes a renamed shape asynchronously, so the write is deferred to an effect that retries until it lands). |
 | 31 | A third `Block` kind, content blocks: static markdown text placed directly in the layout tree, unattached to any schema - for page-level context (an intro, instructions) rather than record data. |
+| 32 | Issue #1: a newly added record is pinned first on page 1 and opened for editing until Done, instead of being sorted (blank) onto another page or outside the search. Found along the way: the reader-side sort and search never recomputed after a field edit. See "Application-layer defects worth remembering". |
 
 ---
 
@@ -280,6 +281,31 @@ pre-existing by stashing the local changes. Fixed with an inert-batch guard in
 the live store — the first attempt compared against the live store, where ORM
 signals had already applied the mutation, and so treated every genuine edit as
 inert.
+
+**A new record looked like a failed add (issue #1).** `createRecord` added the
+record with blank defaults and it was sorted like any other: under the default
+`@id` sort it landed at random, under a property sort at one end, and with
+paging often on another page; an active search or block filter hid it
+entirely. It also appeared read-only, so even on screen it was easy to miss.
+Fixed by reusing the existing "pin an open editor at its position" mechanism
+in `BlockRenderer.tsx`: Add pins the new key at index 0 of the frozen order,
+resets to page 1, and `RecordCard` mounts it already editing (`startEditing`)
+with its first field focused. Done releases it like any other editor. Blocks
+without edit actions keep it pinned until reload. Pins whose record vanishes
+(undo of the add, a remote delete) are pruned, since one stale pin freezes the
+whole list's order.
+
+**Sort and search went stale after a field edit.** Pre-existing, and the
+reason the fix above first appeared not to work: after Done the new record
+fell back to where its *blank* values had sorted. `visibleRecords` was
+memoised on `records`, on the documented assumption that `useShape` hands back
+a new proxy identity whenever anything changes. It does for adds and deletes,
+but not for a field edit, so an edited record stayed in its old place until
+some unrelated add or delete. Confirmed with a console log in the memo on
+unmodified code. The memo now also depends on a counter bumped when an editor
+closes, the undo-applied revision and the engine's external (sync) revision —
+between them every way a field can change, without re-sorting on unrelated
+re-renders. Pinned by its own test in `data-blocks.spec.ts`.
 
 ---
 

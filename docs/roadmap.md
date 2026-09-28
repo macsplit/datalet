@@ -135,6 +135,15 @@ listed so they are not mistaken for oversights.
 
 ## Delivered
 
+### New records appear first, open for editing, until Done
+
+A newly added record was sorted like any other, so with blank defaults it
+could land on another page or outside the active search and the add looked
+like it had failed (issue #1). It is now pinned first on page 1 and opened
+for editing until Done. Fixing it exposed a pre-existing stale sort after
+field edits, fixed too. Write-up:
+[`build-history.md`](build-history.md#application-layer-defects-worth-remembering).
+
 ### "Ask to keep data" reads as a real answer on mobile
 
 Worked as designed on desktop Firefox, appeared to do nothing on iPadOS and
