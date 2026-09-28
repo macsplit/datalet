@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PropertyDef,
   Widget,
@@ -13,6 +13,7 @@ export function RecordCard({
   properties,
   onDelete,
   onEditingChange,
+  startEditing = false,
   displayRecord,
   displayRevision,
 }: {
@@ -21,13 +22,28 @@ export function RecordCard({
   properties: PropertyDef[];
   onDelete: () => void;
   onEditingChange?: (editing: boolean) => void;
+  startEditing?: boolean;
   displayRecord?: Record<string, unknown>;
   displayRevision?: number;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(startEditing);
   const hasActions = widgets.some(
     (widget) => widget.widgetType === "did:ng:z:editDeleteActions",
   );
+  const cardRef = useRef<HTMLElement>(null);
+
+  // A card that mounts already editing is a record the reader just added (or
+  // an editor paged back into view): bring it on screen with its first field
+  // focused. Mount-only, like the initial state it mirrors.
+  useEffect(() => {
+    if (!startEditing || !hasActions) return;
+    const card = cardRef.current;
+    card?.scrollIntoView({ block: "nearest" });
+    card
+      ?.querySelector<HTMLElement>(".info-grid input, .info-grid textarea, .info-grid select")
+      ?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const fieldWidgets = widgets.filter(
     (widget) => widget.widgetType === "did:ng:z:field",
   );
@@ -46,7 +62,7 @@ export function RecordCard({
   };
 
   return (
-    <article className="record-card">
+    <article className="record-card" ref={cardRef}>
       {hasActions && (
         <div className="record-header">
           <div className="record-header-text">

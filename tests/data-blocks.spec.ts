@@ -1088,3 +1088,199 @@ test("printing shows only the block's data, without any of the app around it", a
   await expect(page.getByRole("button", { name: "Print Books" })).toBeHidden();
   await expect(sheet).toHaveCSS("color", "rgb(0, 0, 0)");
 });
+
+const ADD_WIDGET = {
+  "@graph": GRAPH,
+  "@id": "widget-add",
+  "@type": "did:ng:z:Widget",
+  parentBlockId: BLOCK_ID,
+  order: 2,
+  widgetType: "did:ng:z:addButton",
+  label: "Add book",
+};
+const ACTIONS_WIDGET = {
+  "@graph": GRAPH,
+  "@id": "widget-actions",
+  "@type": "did:ng:z:Widget",
+  parentBlockId: BLOCK_ID,
+  order: 3,
+  widgetType: "did:ng:z:editDeleteActions",
+};
+
+test("a new record opens for editing at the top of page 1 whatever the sort", async ({ page }) => {
+  // The reported bug: a new record is sorted like any other, so with blank
+  // defaults it lands on another page and the add looks like it failed.
+  await seedSession(page);
+  const titles = Array.from({ length: 5 }, (_, index) => ({
+    title: `Book ${index + 1}`,
+    rating: index + 1,
+  }));
+  await seedNewFormat(page, [
+    ...booksFixture(titles, {
+      pageSize: 2,
+      sortPropertyName: "Rating",
+      sortDirection: "did:ng:z:descending",
+    }),
+    ADD_WIDGET,
+    ACTIONS_WIDGET,
+  ]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Showing 3–4 of 5")).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(page.getByText("Showing 1–2 of 6")).toBeVisible();
+  await expect(cards.nth(0).getByRole("button", { name: "Done editing" })).toBeVisible();
+  await expect(cards.nth(0).getByLabel("Title")).toBeFocused();
+  await expect(cards.nth(1)).toContainText("Book 5");
+
+  // Finishing the edit releases the pin: rating 0 sorts it onto the last page.
+  await cards.nth(0).getByLabel("Title").fill("Zebra");
+  await cards.nth(0).getByRole("button", { name: "Done editing" }).click();
+  await expect(cards.nth(0)).toContainText("Book 5");
+  await expect(cards.nth(1)).toContainText("Book 4");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Showing 5–6 of 6")).toBeVisible();
+  await expect(cards.nth(1)).toContainText("Zebra");
+});
+
+test("a new record stays visible under an active search until editing is done", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, [
+    ...booksFixture(
+      [
+        { title: "Dune", rating: 5 },
+        { title: "Dusk", rating: 4 },
+        { title: "Emma", rating: 3 },
+      ],
+      { searchEnabled: true, sortPropertyName: "Rating" },
+    ),
+    ADD_WIDGET,
+    ACTIONS_WIDGET,
+  ]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+
+  await page.getByLabel(SEARCH_LABEL).fill("du");
+  await expect(cards).toHaveCount(2);
+
+  // A blank record matches no search, but the reader must still see it.
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0).getByRole("button", { name: "Done editing" })).toBeVisible();
+
+  await cards.nth(0).getByLabel("Title").fill("Neuromancer");
+  await cards.nth(0).getByRole("button", { name: "Done editing" }).click();
+  // Once done it follows the search like any record: hidden, not lost.
+  await expect(cards).toHaveCount(2);
+  await expect(page.getByText("Neuromancer")).toHaveCount(0);
+  await page.getByLabel(SEARCH_LABEL).fill("");
+  await expect(cards).toHaveCount(4);
+  await expect(page.getByText("Neuromancer", { exact: true })).toBeVisible();
+});
+
+test("without edit actions a new record is pinned first until the page reloads", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, [...booksFixture([{ title: "Dune", rating: 5 }]), ADD_WIDGET]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+  const persistedCount = () => page.evaluate((key) =>
+    (JSON.parse(localStorage.getItem(key) ?? "[]") as string[]).length, INDEX_KEY);
+  const before = await persistedCount();
+
+  // Default sort is by @id, and "book-0" sorts before any generated id.
+  await expect(cards.nth(0)).toContainText("Dune");
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).not.toContainText("Dune");
+  await expect(page.getByRole("button", { name: "Done editing" })).toHaveCount(0);
+
+  await expect.poll(persistedCount).toBeGreaterThan(before);
+  await page.reload();
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText("Dune");
+});
+
+test("several new records stay pinned newest first and release independently", async ({ page }) => {
+  await seedSession(page);
+  await seedNewFormat(page, [
+    ...booksFixture(
+      [{ title: "Dune", rating: 5 }],
+      { sortPropertyName: "Rating", sortDirection: "did:ng:z:descending" },
+    ),
+    ADD_WIDGET,
+    ACTIONS_WIDGET,
+  ]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await cards.nth(0).getByLabel("Title").fill("First");
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0).getByLabel("Title")).toHaveValue("");
+  await expect(cards.nth(1).getByLabel("Title")).toHaveValue("First");
+
+  await cards.nth(1).getByRole("button", { name: "Done editing" }).click();
+  // "First" (rating 0) now sorts after Dune; the newer one is still pinned.
+  await expect(cards.nth(0).getByRole("button", { name: "Done editing" })).toBeVisible();
+  await expect(cards.nth(1)).toContainText("Dune");
+  await expect(cards.nth(2)).toContainText("First");
+});
+
+test("undoing a pinned new record releases its pin", async ({ page }) => {
+  await seedSession(page);
+  const titles = Array.from({ length: 3 }, (_, index) => ({
+    title: `Book ${index + 1}`,
+    rating: index + 1,
+  }));
+  await seedNewFormat(page, [
+    ...booksFixture(titles, { sortPropertyName: "Rating" }),
+    ADD_WIDGET,
+    ACTIONS_WIDGET,
+  ]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+
+  await page.getByRole("button", { name: "+ Add book" }).click();
+  await expect(cards).toHaveCount(4);
+  await page.keyboard.press("Control+z");
+  await expect(cards).toHaveCount(3);
+
+  // With no pin left, a live edit re-sorts straight away again.
+  await cards.nth(0).getByRole("button", { name: "Edit record" }).click();
+  await cards.nth(0).getByLabel("Rating").fill("9");
+  await cards.nth(0).getByRole("button", { name: "Done editing" }).click();
+  await expect(cards.nth(2)).toContainText("Book 1");
+});
+
+test("editing an existing record's sort field re-sorts it once editing is done", async ({ page }) => {
+  // The records proxy keeps its identity on a field edit, so this used to
+  // leave the edited card in its old place until some other add or delete.
+  await seedSession(page);
+  await seedNewFormat(page, [
+    ...booksFixture(
+      [
+        { title: "Alpha", rating: 1 },
+        { title: "Bravo", rating: 2 },
+        { title: "Charlie", rating: 3 },
+      ],
+      { sortPropertyName: "Rating" },
+    ),
+    ACTIONS_WIDGET,
+  ]);
+  await page.goto("/");
+  const cards = page.locator(".record-card");
+
+  await cards.nth(0).getByRole("button", { name: "Edit record" }).click();
+  await cards.nth(0).getByLabel("Rating").fill("9");
+  // Still pinned while the editor is open...
+  await expect(cards.nth(0).getByLabel("Rating")).toHaveValue("9");
+  await cards.nth(0).getByRole("button", { name: "Done editing" }).click();
+  // ...and in its sorted place once it closes.
+  await expect(cards.nth(0)).toContainText("Bravo");
+  await expect(cards.nth(2)).toContainText("Alpha");
+});

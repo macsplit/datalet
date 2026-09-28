@@ -160,8 +160,8 @@ async function buildDistinctDatalet(page: Page, identity: DataletIdentity) {
   await page.getByRole("button", { name: "+ Add data block" }).click();
   await page.goto("/");
   await page.getByRole("button", { name: `+ Add ${identity.schema}` }).click();
+  // A new record opens pinned first and already editing.
   const card = page.locator(".record-card").first();
-  await card.getByRole("button", { name: "Edit record" }).click();
   await card.getByLabel("Title").fill(identity.record);
   await card.getByRole("button", { name: "Done editing" }).click();
   await expect(card).toContainText(identity.record);
@@ -232,8 +232,8 @@ test("a reader adopts and maintains an established reading log", async ({ page }
   console.log("[user-story J1] Adding a book, then proving it survives reload");
   await search.fill("");
   await page.getByRole("button", { name: "+ Add book" }).click();
+  // A new record opens pinned first and already editing.
   const newCard = cards.first();
-  await newCard.getByRole("button", { name: "Edit record" }).click();
   await newCard.getByLabel("Title").fill("A Psalm for the Wild-Built");
   await newCard.getByLabel("Author").fill("Becky Chambers");
   await newCard.getByLabel("Finished").fill("2026-08-24");
@@ -327,12 +327,10 @@ test("a project tracker is built, used at moderate size, and evolved", async ({ 
   const cards = page.locator(".record-card");
   for (let number = 1; number <= 24; number += 1) {
     await page.getByRole("button", { name: "+ Add Projects" }).click();
-    // Title ascending keeps the one blank record first. Fill Title last: as
-    // soon as it gains text it moves to its sorted position, so the final
-    // Done action is intentionally located globally rather than through the
-    // now-moving first-card locator.
+    // A new record opens pinned first and already editing. It only moves to
+    // its sorted position on Done, so the Done action is located globally
+    // rather than through the first-card locator.
     const blank = cards.first();
-    await blank.getByRole("button", { name: "Edit record" }).click();
     await blank.getByLabel("Owner").fill(number % 2 === 0 ? "Team A" : "Team B");
     await blank.getByLabel("Budget").fill(String(number * 1_000));
     await blank.getByLabel("Notes").fill(`## Project ${number}\n\nNext review in **two weeks**.`);
